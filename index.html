@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cyberpunk UI Showcase | Red Neon Edition</title>
+  <!-- Google Fonts: Orbitron & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+  
+  <style>
+    /* ==========================================================================
+       1. ПЕРЕМЕННЫЕ И ОСНОВНЫЕ СТИЛИ (VARIABLES & BASE STYLES)
+       ========================================================================== */
+    :root {
+      --bg-dark: #0d0d0d;
+      --bg-card: rgba(24, 20, 20, 0.75);
+      --bg-card-hover: rgba(32, 25, 25, 0.85);
+      
+      /* Основные красные акценты */
+      --neon-red-bright: #ff0055;     /* Яркий неоновый алый */
+      --neon-red-crimson: #ff2a2a;    /* Кроваво-красный */
+      --neon-red-coral: #ff5533;      /* Кораллово-красный */
+      --neon-red-dark: #990033;       /* Тёмно-бордовый / Рубиновый */
+      
+      --neon-red-glow: rgba(255, 0, 85, 0.45);
+      --neon-red-dim: rgba(255, 0, 85, 0.15);
+      --text-main: #f6f0f0;
+      --text-muted: #9b8e8e;
+      --border-color: rgba(255, 0, 85, 0.25);
+      --border-radius: 15px;
+      --font-heading: 'Orbitron', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 15% 20%, rgba(255, 0, 85, 0.04) 0%, transparent 45%),
+        radial-gradient(circle at 85% 80%, rgba(255, 0, 85, 0.03) 0%, transparent 45%),
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+      color: var(--text-main);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      padding-top: 90px;
+      padding-bottom: 60px;
+      min-height: 100vh;
+    }
+
+    body.modal-open {
+      overflow: hidden;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    h1, h2, h3, h4 {
+      font-family: var(--font-heading);
+      letter-spacing: 1px;
+    }
+
+    /* ==========================================================================
+       2. ВЕРХНЕЕ МЕНЮ (NAVIGATION BAR)
+       ========================================================================== */
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 75px;
+      background: rgba(13, 13, 13, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-color);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+    }
+
+    .nav-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+
+    .logo {
+      font-family: var(--font-heading);
+      font-size: 1.4rem;
+      font-weight: 900;
+      color: var(--neon-red-bright);
+      text-shadow: 0 0 10px var(--neon-red-glow);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 12px;
+      height: 12px;
+      background: var(--neon-red-bright);
+      border-radius: 50%;
+      box-shadow: 0 0 12px var(--neon-red-bright);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 35px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--text-main);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.95rem;
+      position: relative;
+      padding: 8px 0;
+      transition: var(--transition);
+    }
+
+    .nav-links a::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 0%;
+      height: 2px;
+      background-color: var(--neon-red-bright);
+      box-shadow: 0 0 8px var(--neon-red-bright);
+      transition: width 0.3s ease-in-out;
+    }
+
+    .nav-links a:hover {
+      color: var(--neon-red-bright);
+    }
+
+    .nav-links a:hover::after {
+      width: 100%;
+    }
+
+    /* ==========================================================================
+       3. СЕТКА И КАРТОЧКИ (GRID & MODULE CARDS)
+       ========================================================================== */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 24px;
+      margin-top: 20px;
+    }
+
+    .col-12 { grid-column: span 12; }
+    .col-6  { grid-column: span 6; }
+    .col-4  { grid-column: span 4; }
+
+    .module-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      padding: 28px;
+      position: relative;
+      transition: var(--transition);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .module-card:hover {
+      border-color: var(--neon-red-bright);
+      box-shadow: 0 0 20px var(--neon-red-glow);
+      background: var(--bg-card-hover);
+    }
+
+    .module-title {
+      font-size: 1.1rem;
+      color: var(--neon-red-bright);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+
+    .module-title::before {
+      content: '//';
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+
+    /* ==========================================================================
+       4. КРАСНЫЕ КНОПКИ РАЗНЫХ ОТТЕНКОВ (RED BUTTON VARIATIONS)
+       ========================================================================== */
+    .btn-group {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .btn {
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 0.9rem;
+      padding: 12px 24px;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      outline: none;
+      text-decoration: none;
+    }
+
+    /* 1. Neon Crimson (Алый / Кроваво-красный) */
+    .btn-crimson {
+      background: var(--neon-red-crimson);
+      color: #fff;
+      border-color: var(--neon-red-crimson);
+      box-shadow: 0 0 12px rgba(255, 42, 42, 0.4);
+    }
+    .btn-crimson:hover {
+      background: #ff5555;
+      box-shadow: 0 0 22px rgba(255, 42, 42, 0.7);
+      transform: translateY(-2px);
+    }
+
+    /* 2. Neon Coral (Кораллово-красный / Огненный) */
+    .btn-coral {
+      background: var(--neon-red-coral);
+      color: #000;
+      border-color: var(--neon-red-coral);
+      box-shadow: 0 0 12px rgba(255, 85, 51, 0.4);
+    }
+    .btn-coral:hover {
+      background: #ff7755;
+      box-shadow: 0 0 22px rgba(255, 85, 51, 0.7);
+      transform: translateY(-2px);
+    }
+
+    /* 3. Dark Ruby / Burgundy (Тёмно-бордовый / Рубиновый) */
+    .btn-ruby {
+      background: var(--neon-red-dark);
+      color: #fff;
+      border-color: #cc0044;
+      box-shadow: 0 0 10px rgba(153, 0, 51, 0.4);
+    }
+    .btn-ruby:hover {
+      background: #bb003e;
+      box-shadow: 0 0 20px rgba(204, 0, 68, 0.6);
+      transform: translateY(-2px);
+    }
+
+    /* 4. Outline Neon Red (Контурная неоново-красная) */
+    .btn-outline-red {
+      background: transparent;
+      color: var(--neon-red-bright);
+      border-color: var(--neon-red-bright);
+    }
+    .btn-outline-red:hover {
+      background: rgba(255, 0, 85, 0.15);
+      box-shadow: 0 0 18px var(--neon-red-glow);
+      transform: translateY(-2px);
+    }
+
+    /* 5. Loading Red Button */
+    .btn-loading {
+      background: rgba(255, 0, 85, 0.15);
+      color: var(--neon-red-bright);
+      border-color: var(--neon-red-bright);
+      position: relative;
+      cursor: wait;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--neon-red-glow);
+      border-top: 2px solid var(--neon-red-bright);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* ==========================================================================
+       5. ПОЛЯ ВВОДА (INPUTS)
+       ========================================================================== */
+    .inputs-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .floating-group { position: relative; }
+
+    .floating-input {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      color: var(--text-main);
+      font-size: 0.95rem;
+      outline: none;
+      transition: var(--transition);
+    }
+
+    .floating-label {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      pointer-events: none;
+      transition: var(--transition);
+      background: transparent;
+      padding: 0 4px;
+    }
+
+    .floating-input:focus,
+    .floating-input:not(:placeholder-shown) {
+      border-color: var(--neon-red-bright);
+      box-shadow: 0 0 10px var(--neon-red-glow);
+    }
+
+    .floating-input:focus ~ .floating-label,
+    .floating-input:not(:placeholder-shown) ~ .floating-label {
+      top: 0;
+      transform: translateY(-50%) scale(0.85);
+      color: var(--neon-red-bright);
+      background: var(--bg-dark);
+      border-radius: 4px;
+    }
+
+    .search-group { position: relative; }
+
+    .search-input {
+      width: 100%;
+      padding: 14px 16px 14px 45px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      color: var(--text-main);
+      font-size: 0.95rem;
+      outline: none;
+      transition: var(--transition);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      transition: var(--transition);
+      pointer-events: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--neon-red-bright);
+      box-shadow: 0 0 10px var(--neon-red-glow);
+    }
+
+    .search-input:focus + .search-icon {
+      color: var(--neon-red-bright);
+    }
+
+    /* ==========================================================================
+       6. ФОРМА ЛОГИНА (LOGIN FORM)
+       ========================================================================== */
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px 16px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      color: var(--text-main);
+      font-size: 0.9rem;
+      outline: none;
+      transition: var(--transition);
+    }
+
+    .form-input:focus {
+      border-color: var(--neon-red-bright);
+      box-shadow: 0 0 10px var(--neon-red-glow);
+    }
+
+    /* ==========================================================================
+       7. ЧЕКБОКСЫ И TOGGLES
+       ========================================================================== */
+    .controls-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .custom-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .custom-checkbox input { display: none; }
+
+    .checkbox-box {
+      width: 22px;
+      height: 22px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+    }
+
+    .checkbox-box svg {
+      width: 14px;
+      height: 14px;
+      stroke: #fff;
+      stroke-width: 3;
+      fill: none;
+      opacity: 0;
+      transform: scale(0.5);
+      transition: var(--transition);
+    }
+
+    .custom-checkbox input:checked + .checkbox-box {
+      background: var(--neon-red-bright);
+      border-color: var(--neon-red-bright);
+      box-shadow: 0 0 10px var(--neon-red-glow);
+    }
+
+    .custom-checkbox input:checked + .checkbox-box svg {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .toggle-switch {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-switch input { display: none; }
+
+    .toggle-slider {
+      width: 48px;
+      height: 24px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--border-color);
+      border-radius: 30px;
+      position: relative;
+      transition: var(--transition);
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: var(--transition);
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background: var(--neon-red-dim);
+      border-color: var(--neon-red-bright);
+      box-shadow: 0 0 10px var(--neon-red-glow);
+    }
+
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(24px);
+      background: var(--neon-red-bright);
+      box-shadow: 0 0 8px var(--neon-red-bright);
+    }
+
+    /* ==========================================================================
+       8. КАРТОЧКИ ТОВАРОВ
+       ========================================================================== */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      width: 100%;
+    }
+
+    .product-card {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      transition: var(--transition);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .product-card:hover {
+      border-color: var(--neon-red-bright);
+      box-shadow: 0 0 15px var(--neon-red-glow);
+      transform: translateY(-4px);
+    }
+
+    .product-img-wrapper {
+      width: 100%;
+      height: 180px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .product-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.5s ease;
+    }
+
+    .product-card:hover .product-img { transform: scale(1.08); }
+
+    .product-info {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+    }
+
+    .product-title {
+      font-size: 1rem;
+      color: var(--text-main);
+      margin-bottom: 8px;
+    }
+
+    .product-desc {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 15px;
+      flex-grow: 1;
+    }
+
+    .product-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .product-price {
+      font-family: var(--font-heading);
+      font-size: 1.1rem;
+      color: var(--neon-red-bright);
+    }
+
+    /* ==========================================================================
+       9. СЛАЙДЕР И ПРОГРЕСС
+       ========================================================================== */
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .slider-value {
+      font-family: var(--font-heading);
+      color: var(--neon-red-bright);
+      font-size: 1.2rem;
+      text-shadow: 0 0 8px var(--neon-red-glow);
+    }
+
+    .range-input {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      outline: none;
+    }
+
+    .range-input::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--neon-red-bright);
+      cursor: pointer;
+      box-shadow: 0 0 12px var(--neon-red-bright);
+      transition: var(--transition);
+    }
+
+    .range-input::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+    .progress-wrapper { margin-top: 10px; }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 10px;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--neon-red-bright);
+      box-shadow: 0 0 12px var(--neon-red-bright);
+      transition: width 3s linear;
+      border-radius: 20px;
+    }
+
+    /* ==========================================================================
+       10. МОДАЛЬНОЕ ОКНО
+       ========================================================================== */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: var(--transition);
+      z-index: 2000;
+    }
+
+    .modal-backdrop.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .modal-box {
+      background: var(--bg-card);
+      border: 1px solid var(--neon-red-bright);
+      box-shadow: 0 0 30px var(--neon-red-glow);
+      border-radius: var(--border-radius);
+      width: 90%;
+      max-width: 450px;
+      padding: 30px;
+      transform: scale(0.85);
+      transition: var(--transition);
+      position: relative;
+    }
+
+    .modal-backdrop.active .modal-box { transform: scale(1); }
+
+    .modal-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.5rem;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .modal-close:hover { color: var(--neon-red-bright); }
+
+    .profile-avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 2px solid var(--neon-red-bright);
+      box-shadow: 0 0 15px var(--neon-red-glow);
+      margin: 0 auto 15px auto;
+      display: block;
+    }
+
+    .profile-name {
+      text-align: center;
+      color: var(--neon-red-bright);
+      margin-bottom: 5px;
+    }
+
+    .profile-role {
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+
+    .profile-stats {
+      display: flex;
+      justify-content: space-around;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 12px;
+      border-radius: var(--border-radius);
+      margin-bottom: 20px;
+      border: 1px solid var(--border-color);
+    }
+
+    .stat-item { text-align: center; }
+    .stat-val { font-family: var(--font-heading); color: var(--neon-red-bright); }
+    .stat-lbl { font-size: 0.75rem; color: var(--text-muted); }
+
+    /* ==========================================================================
+       11. УВЕДОМЛЕНИЯ (TOASTS)
+       ========================================================================== */
+    .toast-container {
+      position: fixed;
+      bottom: 25px;
+      right: 25px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 3000;
+    }
+
+    .toast {
+      background: rgba(13, 13, 13, 0.95);
+      border: 1px solid var(--neon-red-bright);
+      box-shadow: 0 0 15px var(--neon-red-glow);
+      color: var(--text-main);
+      padding: 14px 20px;
+      border-radius: var(--border-radius);
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: slideIn 0.3s forwards, fadeOut 0.3s 3.7s forwards;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    /* ==========================================================================
+       12. АДАПТИВНОСТЬ
+       ========================================================================== */
+    @media (max-width: 992px) {
+      .col-6, .col-4 { grid-column: span 12; }
+    }
+
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .col-12, .col-6, .col-4 { grid-column: span 1; }
+      .btn-group { flex-direction: column; width: 100%; }
+      .btn { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ВЕРХНЯЯ ПАНЕЛЬ НАВИГАЦИИ -->
+  <header class="header">
+    <div class="container nav-container">
+      <div class="logo">
+        <div class="logo-icon"></div>
+        CYBER_KIT
+      </div>
+      <ul class="nav-links">
+        <li><a href="#buttons">Кнопки</a></li>
+        <li><a href="#inputs">Ввод</a></li>
+        <li><a href="#forms">Формы</a></li>
+        <li><a href="#cards">Товары</a></li>
+        <li><a href="#system">Система</a></li>
+      </ul>
+    </div>
+  </header>
+
+  <!-- ОСНОВНОЙ КОНТЕНТ -->
+  <main class="container">
+    <div class="dashboard-grid">
+
+      <!-- 1. КНОПКИ (BUTTONS) В КРАСНЫХ ОТТЕНКАХ -->
+      <section id="buttons" class="module-card col-6">
+        <h3 class="module-title">Red Buttons Collection</h3>
+        <div class="btn-group">
+          <!-- Алый / Crimson -->
+          <button class="btn btn-crimson">Crimson Red</button>
+          
+          <!-- Коралловый / Coral -->
+          <button class="btn btn-coral">Coral Red</button>
+          
+          <!-- Рубиновый / Ruby -->
+          <button class="btn btn-ruby">Ruby Dark</button>
+          
+          <!-- Контурный алый -->
+          <button class="btn btn-outline-red">Neon Outline</button>
+          
+          <!-- Загрузка -->
+          <button class="btn btn-loading">
+            <div class="spinner"></div>
+            Loading...
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. ПОЛЯ ВВОДА (INPUTS) -->
+      <section id="inputs" class="module-card col-6">
+        <h3 class="module-title">Inputs</h3>
+        <div class="inputs-stack">
+          <div class="floating-group">
+            <input type="text" id="username" class="floating-input" placeholder=" " autocomplete="off">
+            <label for="username" class="floating-label">Пользовательское имя</label>
+          </div>
+          <div class="search-group">
+            <input type="text" class="search-input" placeholder="Поиск в системе...">
+            <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. ФОРМА ЛОГИНА (LOGIN FORM) -->
+      <section id="forms" class="module-card col-4">
+        <h3 class="module-title">Form Submittal</h3>
+        <form class="login-form" id="loginForm">
+          <input type="email" class="form-input" placeholder="Net ID / Email" required>
+          <input type="password" class="form-input" placeholder="Пароль" required>
+          <button type="submit" class="btn btn-crimson" style="width: 100%; margin-top: 5px;">Авторизация</button>
+        </form>
+      </section>
+
+      <!-- 4. ЧЕКБОКСЫ И TOGGLE -->
+      <section class="module-card col-4">
+        <h3 class="module-title">Controls</h3>
+        <div class="controls-stack">
+          <label class="custom-checkbox">
+            <input type="checkbox" checked>
+            <div class="checkbox-box">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <span>Алый протокол</span>
+          </label>
+          <label class="custom-checkbox">
+            <input type="checkbox">
+            <div class="checkbox-box">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <span>Шифрование трафика</span>
+          </label>
+          <label class="toggle-switch">
+            <span>Кибер-защита</span>
+            <input type="checkbox" checked>
+            <div class="toggle-slider"></div>
+          </label>
+        </div>
+      </section>
+
+      <!-- 5. ПОП-АПЫ & СИСТЕМА -->
+      <section id="system" class="module-card col-4">
+        <h3 class="module-title">System & Popups</h3>
+        <button class="btn btn-outline-red" id="openModalBtn" style="width: 100%; margin-bottom: 20px;">
+          Открыть профиль
+        </button>
+
+        <div class="slider-header">
+          <span style="font-size: 0.85rem; color: var(--text-muted);">Мощность сети</span>
+          <span class="slider-value" id="sliderVal">75%</span>
+        </div>
+        <input type="range" min="0" max="100" value="75" class="range-input" id="rangeInput">
+
+        <div class="progress-wrapper">
+          <div class="progress-info">
+            <span>Загрузка ядра</span>
+            <span id="progressPercent">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressBar"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. КАРТОЧКИ ТОВАРОВ -->
+      <section id="cards" class="module-card col-12">
+        <h3 class="module-title">Product Catalog</h3>
+        <div class="cards-grid">
+          
+          <div class="product-card">
+            <div class="product-img-wrapper">
+              <img src="https://picsum.photos/300/200?random=10" alt="Product" class="product-img">
+            </div>
+            <div class="product-info">
+              <h4 class="product-title">Нейро-имплант V1</h4>
+              <p class="product-desc">Увеличивает скорость обработки визуальной информации.</p>
+              <div class="product-bottom">
+                <span class="product-price">2,400 ₡</span>
+                <button class="btn btn-crimson" style="padding: 8px 16px; font-size: 0.8rem;">Купить</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="product-card">
+            <div class="product-img-wrapper">
+              <img src="https://picsum.photos/300/200?random=11" alt="Product" class="product-img">
+            </div>
+            <div class="product-info">
+              <h4 class="product-title">Кибер-дека Matrix</h4>
+              <p class="product-desc">Портативный терминал для автономного взлома подсетей.</p>
+              <div class="product-bottom">
+                <span class="product-price">5,800 ₡</span>
+                <button class="btn btn-coral" style="padding: 8px 16px; font-size: 0.8rem;">Купить</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="product-card">
+            <div class="product-img-wrapper">
+              <img src="https://picsum.photos/300/200?random=12" alt="Product" class="product-img">
+            </div>
+            <div class="product-info">
+              <h4 class="product-title">Оптика "Oculus-X"</h4>
+              <p class="product-desc">Спектральное зрение с интегрированным тепловизором.</p>
+              <div class="product-bottom">
+                <span class="product-price">1,950 ₡</span>
+                <button class="btn btn-ruby" style="padding: 8px 16px; font-size: 0.8rem;">Купить</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- МОДАЛЬНОЕ ОКНО -->
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal-box">
+      <button class="modal-close" id="closeModalBtn">&times;</button>
+      <img src="https://picsum.photos/150/150?random=99" alt="Avatar" class="profile-avatar">
+      <h3 class="profile-name">ALEX_CYBER_88</h3>
+      <p class="profile-role">Netrunner // Level 42</p>
+      
+      <div class="profile-stats">
+        <div class="stat-item">
+          <div class="stat-val">128</div>
+          <div class="stat-lbl">Взлома</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">99.9%</div>
+          <div class="stat-lbl">Аптайм</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">A+</div>
+          <div class="stat-lbl">Рейтинг</div>
+        </div>
+      </div>
+
+      <button class="btn btn-crimson" style="width: 100%;" id="modalActionBtn">Закрыть профиль</button>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+
+      // 1. Slider logic
+      const rangeInput = document.getElementById('rangeInput');
+      const sliderVal = document.getElementById('sliderVal');
+      rangeInput.addEventListener('input', (e) => {
+        sliderVal.textContent = e.target.value + '%';
+      });
+
+      // 2. Progress bar animation
+      const progressBar = document.getElementById('progressBar');
+      const progressPercent = document.getElementById('progressPercent');
+      setTimeout(() => {
+        progressBar.style.width = '100%';
+        let currentPercent = 0;
+        const interval = setInterval(() => {
+          currentPercent += 1;
+          progressPercent.textContent = currentPercent + '%';
+          if (currentPercent >= 100) clearInterval(interval);
+        }, 30);
+      }, 300);
+
+      // 3. Modal logic
+      const openModalBtn = document.getElementById('openModalBtn');
+      const closeModalBtn = document.getElementById('closeModalBtn');
+      const modalActionBtn = document.getElementById('modalActionBtn');
+      const modalBackdrop = document.getElementById('modalBackdrop');
+
+      const openModal = () => {
+        modalBackdrop.classList.add('active');
+        document.body.classList.add('modal-open');
+      };
+      const closeModal = () => {
+        modalBackdrop.classList.remove('active');
+        document.body.classList.remove('modal-open');
+      };
+
+      openModalBtn.addEventListener('click', openModal);
+      closeModalBtn.addEventListener('click', closeModal);
+      modalActionBtn.addEventListener('click', closeModal);
+
+      modalBackdrop.addEventListener('click', (e) => {
+        if (e.target === modalBackdrop) closeModal();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modalBackdrop.classList.contains('active')) closeModal();
+      });
+
+      // 4. Toast notifications & Form
+      const toastContainer = document.getElementById('toastContainer');
+      const showToast = (message) => {
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.innerHTML = `
+          <svg width="18" height="18" fill="var(--neon-red-bright)" viewBox="0 0 16 16">
+            <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l4.992-6a.75.75 0 0 0-.01-1.05z"/>
+          </svg>
+          <span>${message}</span>
+        `;
+        toastContainer.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+      };
+
+      const loginForm = document.getElementById('loginForm');
+      loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const submitBtn = loginForm.querySelector('button[type="submit"]');
+        const originalText = submitBtn.textContent;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<div class="spinner"></div> Авторизация...';
+        
+        setTimeout(() => {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalText;
+          loginForm.reset();
+          showToast('Успешный вход в кибер-систему!');
+        }, 1200);
+      });
+
+    });
+  </script>
+</body>
+</html>
+
