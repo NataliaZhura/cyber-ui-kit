@@ -1,0 +1,2454 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Наталья Журавлева — CRO / CFO-1 | Обучение и Управление рисками</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,600;0,700;1,600&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <style>
+        [v-cloak] { display: none !important; }
+
+        html, body {
+            overflow-x: hidden;
+            width: 100%;
+            scroll-behavior: smooth;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        :root {
+            --bg-light: #f9f8f6;
+            --text-main: #1c222b;
+            --text-muted: #5c6470;
+            --accent-gold: #b38b43;
+            --accent-gold-hover: #967332;
+            --border-line: rgba(179, 139, 67, 0.3);
+            
+            --font-serif: 'Cormorant Garamond', Georgia, serif;
+            --font-sans: 'Montserrat', Arial, sans-serif;
+            --font-bebas: 'Bebas Neue', Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            -webkit-font-smoothing: antialiased;
+            line-height: 1.5;
+            touch-action: pan-y;
+        }
+
+        /* Навигационная шапка */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(249, 248, 246, 0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-line);
+            z-index: 1000;
+            padding: 14px 20px;
+        }
+
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand-logo {
+            font-family: var(--font-serif);
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text-main);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            text-decoration: none;
+        }
+
+        .brand-logo span {
+            color: var(--accent-gold);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            overflow-x: auto;
+            max-width: 65%;
+            white-space: nowrap;
+        }
+
+        .nav-links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            transition: color 0.2s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent-gold);
+        }
+
+        /* ------------------- СЛАЙД 1: ГЛАВНАЯ ------------------- */
+        .hero {
+            position: relative;
+            min-height: 100vh;
+            padding-top: 100px;
+            padding-bottom: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .hero-container {
+            position: relative;
+            z-index: 2;
+            max-width: 1200px;
+            width: 100%;
+            padding: 0 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .hero-content {
+            max-width: 920px;
+            margin-bottom: 30px;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--accent-gold);
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--accent-gold);
+            padding-bottom: 4px;
+        }
+
+        .hero-title {
+            font-family: var(--font-serif);
+            font-size: clamp(2.2rem, 4.2vw, 3.8rem);
+            font-weight: 700;
+            line-height: 1.08;
+            margin-bottom: 20px;
+            letter-spacing: -0.01em;
+            color: var(--text-main);
+        }
+
+        .hero-title em {
+            font-style: italic;
+            color: var(--accent-gold);
+            font-weight: 600;
+        }
+
+        .hero-subtitle {
+            font-size: 1rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 32px;
+            margin-left: auto;
+            margin-right: auto;
+            max-width: 760px;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 40px;
+            width: 100%;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 24px;
+            font-family: var(--font-sans);
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+        }
+
+        .btn-gold {
+            background-color: var(--accent-gold);
+            color: #ffffff;
+            border: 1px solid var(--accent-gold);
+        }
+
+        .btn-gold:hover {
+            background-color: var(--accent-gold-hover);
+            border-color: var(--accent-gold-hover);
+            transform: translateY(-2px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--text-main);
+            border: 1px solid rgba(28, 34, 43, 0.25);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--accent-gold);
+            color: var(--accent-gold);
+        }
+
+        .tn-atom-btn-gold {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 20px;
+            height: 44px;
+            background-color: #ffffff;
+            color: var(--text-main);
+            font-family: var(--font-bebas);
+            font-size: 16px;
+            letter-spacing: 0.8px;
+            text-decoration: none;
+            border-radius: 30px;
+            border: 2px solid var(--accent-gold);
+            cursor: pointer;
+            transition: all 0.25s ease-in-out;
+            box-shadow: 0 4px 12px rgba(179, 139, 67, 0.1);
+        }
+
+        .tn-atom-btn-gold:hover {
+            background-color: var(--accent-gold);
+            color: #ffffff;
+            transform: translateY(-2px);
+        }
+
+        .orbit-wrapper {
+            position: relative;
+            width: 580px;
+            height: 580px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 40px;
+            max-width: 100%;
+        }
+
+        .photo-center {
+            width: 320px;
+            height: 320px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid var(--accent-gold);
+            box-shadow: 0 20px 45px rgba(28, 34, 43, 0.15);
+            z-index: 2;
+            background-color: #ffffff;
+            padding: 4px;
+        }
+
+        .photo-center img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: top center;
+            border-radius: 50%;
+        }
+
+        .orbit-line {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 1px dashed var(--border-line);
+            border-radius: 50%;
+            z-index: 1;
+        }
+
+        .orbit-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            z-index: 3;
+            animation: rotateOrbit 45s linear infinite;
+        }
+
+        .orbit-item {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 64px;
+            height: 64px;
+            margin-top: -32px;
+            margin-left: -32px;
+            background: #ffffff;
+            border: 2px solid var(--accent-gold);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .orbit-item svg {
+            width: 36px;
+            height: 36px;
+            fill: var(--accent-gold);
+            animation: counterRotate 45s linear infinite;
+        }
+
+        .item-1 { transform: rotate(0deg) translate(270px); }
+        .item-2 { transform: rotate(60deg) translate(270px); }
+        .item-3 { transform: rotate(120deg) translate(270px); }
+        .item-4 { transform: rotate(180deg) translate(270px); }
+        .item-5 { transform: rotate(240deg) translate(270px); }
+        .item-6 { transform: rotate(300deg) translate(270px); }
+
+        @keyframes rotateOrbit {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes counterRotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(-360deg); }
+        }
+
+        .hero-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            width: 100%;
+            max-width: 950px;
+            padding-top: 32px;
+            border-top: 1px solid var(--border-line);
+        }
+
+        .stat-item .stat-num {
+            font-family: var(--font-serif);
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--accent-gold);
+            line-height: 1;
+        }
+
+        .stat-item .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+            line-height: 1.3;
+        }
+
+        /* ------------------- СЛАЙД 2: ПРОГРАММЫ ------------------- */
+        .section-training {
+            position: relative;
+            min-height: 100vh;
+            padding-top: 100px;
+            padding-bottom: 90px;
+            background-image: url("https://optim.tildacdn.com/tild3837-3439-4438-b633-643237363534/-/format/webp/cover_1.png.webp");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .section-training::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(249, 248, 246, 0.88);
+            z-index: 1;
+        }
+
+        .animated-helicopter {
+            position: absolute;
+            top: 60px;
+            left: -150px;
+            z-index: 2;
+            width: 80px;
+            height: 40px;
+            opacity: 0.85;
+            animation: flyHelicopter 22s linear infinite;
+        }
+
+        .helicopter-blade {
+            position: absolute;
+            top: 0;
+            left: 10px;
+            width: 60px;
+            height: 3px;
+            background: var(--accent-gold);
+            border-radius: 2px;
+            animation: spinBlade 0.15s linear infinite;
+            transform-origin: center;
+        }
+
+        .helicopter-body {
+            position: absolute;
+            top: 6px;
+            left: 20px;
+            width: 35px;
+            height: 20px;
+            background: var(--text-main);
+            border-radius: 12px 18px 8px 8px;
+        }
+
+        .helicopter-tail {
+            position: absolute;
+            top: 10px;
+            left: -5px;
+            width: 28px;
+            height: 4px;
+            background: var(--text-main);
+        }
+
+        @keyframes flyHelicopter {
+            0% { transform: translateX(0) translateY(0); }
+            50% { transform: translateX(calc(100vw + 200px)) translateY(25px); }
+            50.01% { transform: translateX(calc(100vw + 200px)) translateY(25px) scaleX(-1); }
+            100% { transform: translateX(-200px) translateY(0) scaleX(-1); }
+        }
+
+        @keyframes spinBlade {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .animated-train-track {
+            position: absolute;
+            bottom: 15px;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: #5c6470;
+            z-index: 2;
+            box-shadow: 0 -2px 0 #b38b43;
+        }
+
+        .animated-train {
+            position: absolute;
+            bottom: 19px;
+            right: -600px;
+            z-index: 3;
+            display: flex;
+            align-items: flex-end;
+            gap: 6px;
+            animation: moveTrain 20s linear infinite;
+        }
+
+        .real-locomotive {
+            position: relative;
+            width: 110px;
+            height: 42px;
+            background: linear-gradient(180deg, #1c222b 0%, #2c3542 100%);
+            border-radius: 6px 20px 4px 2px;
+            border: 1px solid var(--accent-gold);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        .loco-cabin {
+            position: absolute;
+            top: 4px;
+            left: 8px;
+            width: 32px;
+            height: 22px;
+            background: #b38b43;
+            border-radius: 3px;
+            border: 1px solid #ffffff;
+        }
+
+        .loco-window {
+            position: absolute;
+            top: 4px;
+            left: 5px;
+            width: 12px;
+            height: 10px;
+            background: #e8f4f8;
+            border-radius: 2px;
+        }
+
+        .loco-light {
+            position: absolute;
+            top: 18px;
+            right: -4px;
+            width: 8px;
+            height: 8px;
+            background: #fff896;
+            border-radius: 50%;
+            box-shadow: 8px 0 15px #fff896, 15px 0 25px rgba(255, 248, 150, 0.8);
+        }
+
+        .real-wagon {
+            position: relative;
+            width: 95px;
+            height: 34px;
+            background: #ffffff;
+            border: 1.5px solid var(--accent-gold);
+            border-radius: 4px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: space-evenly;
+            padding: 0 6px;
+        }
+
+        .wagon-stripe {
+            position: absolute;
+            top: 14px;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: var(--accent-gold);
+        }
+
+        .wagon-w {
+            width: 14px;
+            height: 10px;
+            background: #2c3542;
+            border-radius: 2px;
+            z-index: 2;
+        }
+
+        .wheel-pair {
+            position: absolute;
+            bottom: -6px;
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            padding: 0 10px;
+        }
+
+        .wheel {
+            width: 12px;
+            height: 12px;
+            background: #1c222b;
+            border: 2px solid #b38b43;
+            border-radius: 50%;
+            animation: spinWheel 0.4s linear infinite;
+        }
+
+        @keyframes moveTrain {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(calc(-100vw - 800px)); }
+        }
+
+        @keyframes spinWheel {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(-360deg); }
+        }
+
+        .training-container {
+            position: relative;
+            z-index: 5;
+            max-width: 1200px;
+            width: 100%;
+            padding: 0 20px;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            text-align: center;
+            max-width: 800px;
+            margin: 0 auto 40px auto;
+        }
+
+        .section-title {
+            font-family: var(--font-serif);
+            font-size: clamp(2rem, 3.5vw, 3.2rem);
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1.15;
+            margin-bottom: 12px;
+        }
+
+        .carousel-wrapper {
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+            padding: 20px 0;
+        }
+
+        .carousel-track {
+            display: flex;
+            transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+            gap: 20px;
+        }
+
+        .carousel-card {
+            flex: 0 0 calc(33.333% - 14px);
+            min-width: 280px;
+            background: #ffffff;
+            border: 1px solid var(--border-line);
+            border-radius: 8px;
+            padding: 28px 24px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: transform 0.3s ease;
+        }
+
+        .carousel-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-day {
+            font-family: var(--font-bebas);
+            font-size: 1.3rem;
+            color: var(--accent-gold);
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+
+        .card-title {
+            font-family: var(--font-serif);
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1.25;
+            margin-bottom: 14px;
+        }
+
+        .card-desc {
+            font-size: 0.88rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            margin-bottom: 20px;
+            flex-grow: 1;
+        }
+
+        .btn-card {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 42px;
+            background-color: transparent;
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border: 1px solid var(--accent-gold);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .btn-card:hover {
+            background-color: var(--accent-gold);
+            color: #ffffff;
+        }
+
+        .carousel-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+
+        .carousel-dots {
+            display: flex;
+            gap: 8px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(179, 139, 67, 0.3);
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .dot.active {
+            background: var(--accent-gold);
+        }
+
+        .carousel-arrows {
+            display: flex;
+            gap: 10px;
+        }
+
+        .arrow-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid var(--accent-gold);
+            background: #ffffff;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .arrow-btn:hover {
+            background: var(--accent-gold);
+            color: #ffffff;
+        }
+
+        .arrow-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+
+        /* ------------------- СЛАЙД 3: ВИДЕО ОБЗОР ------------------- */
+        .section-video {
+            position: relative;
+            min-height: 100vh;
+            padding-top: 100px;
+            padding-bottom: 90px;
+            background-color: #f4f3ef;
+            border-top: 1px solid var(--border-line);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .video-container {
+            position: relative;
+            z-index: 5;
+            max-width: 1100px;
+            width: 100%;
+            padding: 0 20px;
+            margin: 0 auto;
+        }
+
+        .video-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            margin-top: 30px;
+        }
+
+        .video-square-card {
+            background: #ffffff;
+            border: 1px solid var(--border-line);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.04);
+            transition: all 0.3s ease;
+        }
+
+        .video-square-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--accent-gold);
+        }
+
+        .video-thumb-square {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #1c222b;
+            margin-bottom: 14px;
+            border: 2px solid var(--accent-gold);
+            cursor: pointer;
+        }
+
+        .video-thumb-square img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center top;
+        }
+
+        .video-thumb-square .play-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(28, 34, 43, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .play-btn-circle {
+            width: 48px;
+            height: 48px;
+            background: var(--accent-gold);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .play-btn-circle svg {
+            width: 20px;
+            height: 20px;
+            fill: #ffffff;
+            margin-left: 2px;
+        }
+
+        .video-card-title {
+            font-family: var(--font-serif);
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1.3;
+            margin-bottom: 14px;
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+        }
+
+        .btn-video-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 40px;
+            background-color: var(--accent-gold);
+            color: #ffffff;
+            font-family: var(--font-sans);
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            transition: background 0.25s ease;
+        }
+
+        .btn-video-link:hover {
+            background-color: var(--accent-gold-hover);
+        }
+
+        /* ------------------- СЛАЙД 4: ТЕСТ ЗРЕЛОСТИ СУР ------------------- */
+        .section-sur-quiz {
+            position: relative;
+            min-height: 100vh;
+            padding-top: 100px;
+            padding-bottom: 90px;
+            background-color: var(--bg-light);
+            border-top: 1px solid var(--border-line);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .quiz-container {
+            background: #ffffff;
+            width: 100%;
+            max-width: 820px;
+            border-radius: 12px;
+            padding: 32px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.04);
+            border: 1px solid var(--border-line);
+            position: relative;
+            z-index: 5;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: #f4f3ef;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            border: 1px solid var(--border-line);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent-gold);
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+
+        .question-card {
+            background: #fdfdfc;
+            border: 1px solid var(--border-line);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .question-title {
+            font-family: var(--font-serif);
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin-bottom: 14px;
+            color: var(--text-main);
+            line-height: 1.4;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .option-btn {
+            padding: 12px 16px;
+            background: #ffffff;
+            border: 1px solid var(--border-line);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-main);
+            transition: all 0.25s ease;
+            text-align: center;
+        }
+
+        .option-btn:hover {
+            border-color: var(--accent-gold);
+            background: #fbfbf9;
+            color: var(--accent-gold);
+        }
+
+        .option-btn.selected {
+            border-color: var(--accent-gold);
+            background: var(--accent-gold);
+            color: #ffffff;
+        }
+
+        .quiz-controls {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-line);
+        }
+
+        .score-badge {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            margin: 20px auto;
+            font-weight: 700;
+            background: #ffffff;
+            border: 3px solid var(--accent-gold);
+            box-shadow: 0 10px 25px rgba(179, 139, 67, 0.15);
+            color: var(--text-main);
+        }
+
+        .score-value {
+            font-family: var(--font-serif);
+            font-size: 2.8rem;
+            line-height: 1;
+            color: var(--accent-gold);
+        }
+
+        .score-max {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+
+        .breakdown-list {
+            text-align: left;
+            background: #fdfdfc;
+            border: 1px solid var(--border-line);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            margin-bottom: 24px;
+        }
+
+        .breakdown-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-line);
+            font-size: 0.85rem;
+        }
+
+        .breakdown-item:last-child {
+            border-bottom: none;
+        }
+
+        /* ------------------- СЛАЙД 5: КАЛЬКУЛЯТОР ------------------- */
+        .section-calculator {
+            position: relative;
+            min-height: 100vh;
+            padding-top: 100px;
+            padding-bottom: 90px;
+            background-color: #f4f3ef;
+            border-top: 1px solid var(--border-line);
+        }
+
+        .calc-card-custom {
+            background: #ffffff;
+            border: 1px solid var(--border-line);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.04);
+        }
+
+        .calc-input-custom {
+            background-color: #f4f3ef;
+            border: 1px solid rgba(179, 139, 67, 0.4);
+            border-radius: 6px;
+            color: var(--text-main);
+            transition: all 0.2s ease;
+        }
+
+        .calc-input-custom:focus {
+            outline: none;
+            border-color: var(--accent-gold);
+            box-shadow: 0 0 0 3px rgba(179, 139, 67, 0.15);
+        }
+
+        .btn-calc-submit {
+            background-color: var(--accent-gold);
+            color: #ffffff;
+            border-radius: 6px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            transition: all 0.25s ease;
+        }
+
+        .btn-calc-submit:hover {
+            background-color: var(--accent-gold-hover);
+        }
+
+        /* POPUP MODALS */
+        .t-popup {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.75);
+            z-index: 10000001;
+            overflow-y: auto;
+            padding: 30px 16px;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+        }
+
+        .t-popup.t-popup_show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .t-popup.t-popup_active {
+            opacity: 1;
+        }
+
+        .t-popup__container {
+            position: relative;
+            background-color: #fbfbf9;
+            max-width: 960px;
+            width: 100%;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+            margin: auto;
+        }
+
+        .t-popup__container.video-modal-size {
+            max-width: 860px;
+            background: #000000;
+        }
+
+        .t-popup__close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 100;
+        }
+
+        .t-popup__close-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .grid-layout-side {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            align-items: stretch;
+        }
+
+        .img-contain-wrapper {
+            background-color: #f4f3ef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .img-contain {
+            width: 100%;
+            height: 100%;
+            max-height: 550px;
+            object-fit: contain;
+            display: block;
+        }
+
+        .modal-video-wrapper {
+            position: relative;
+            width: 100%;
+            padding-top: 56.25%;
+            background: #000;
+        }
+
+        .modal-video-wrapper iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .sport-orbit-wrapper {
+            position: relative;
+            width: 100%;
+            min-height: 580px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .sport-center-card {
+            position: relative;
+            z-index: 1;
+            max-width: 420px;
+            text-align: center;
+            background: rgba(251, 251, 249, 0.94);
+            padding: 30px 24px;
+            border-radius: 16px;
+            border: 1px solid var(--border-line);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+            backdrop-filter: blur(4px);
+        }
+
+        .sport-orbit-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 500px;
+            height: 500px;
+            margin-top: -250px;
+            margin-left: -250px;
+            border: 1px dashed var(--border-line);
+            border-radius: 50%;
+            z-index: 10;
+            pointer-events: none;
+            animation: rotateOrbit 40s linear infinite;
+        }
+
+        .sport-orbit-photo {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 95px;
+            height: 95px;
+            margin-top: -47px;
+            margin-left: -47px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid var(--accent-gold);
+            background: #ffffff;
+            pointer-events: auto;
+        }
+
+        .sport-orbit-photo img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            animation: counterRotate 40s linear infinite;
+        }
+
+        .sp-1 { transform: rotate(0deg) translate(250px); }
+        .sp-2 { transform: rotate(72deg) translate(250px); }
+        .sp-3 { transform: rotate(144deg) translate(250px); }
+        .sp-4 { transform: rotate(216deg) translate(250px); }
+        .sp-5 { transform: rotate(288deg) translate(250px); }
+
+        .t390__wrapper {
+            padding: 32px;
+            text-align: left;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .t390__uptitle {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent-gold);
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .t390__title {
+            font-family: var(--font-serif);
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1.1;
+            margin-bottom: 16px;
+        }
+
+        .t390__descr {
+            font-size: 0.88rem;
+            color: var(--text-main);
+            line-height: 1.6;
+        }
+
+        .t390__descr strong {
+            display: block;
+            margin-top: 16px;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            color: var(--text-main);
+            border-bottom: 1px solid var(--border-line);
+            padding-bottom: 4px;
+        }
+
+        .t390__descr ul {
+            padding-left: 16px;
+            margin-bottom: 12px;
+        }
+
+        .t390__btn-wrapper {
+            margin-top: 20px;
+        }
+
+        .t-btnflex {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 24px;
+            color: #ffffff;
+            background-color: var(--accent-gold);
+            border-radius: 100px;
+            text-decoration: none;
+            font-family: var(--font-sans);
+            font-size: 0.8rem;
+            font-weight: 600;
+            transition: background 0.2s ease;
+            border: none;
+            cursor: pointer;
+        }
+
+        .t-btnflex:hover {
+            background-color: var(--accent-gold-hover);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 992px) {
+            .video-cards-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .carousel-card {
+                flex: 0 0 calc(50% - 10px);
+            }
+            .grid-layout-side {
+                grid-template-columns: 1fr;
+            }
+            .img-contain-wrapper {
+                max-height: 300px;
+            }
+        }
+
+        @media (max-width: 650px) {
+            .video-cards-grid {
+                grid-template-columns: 1fr;
+            }
+            .carousel-card {
+                flex: 0 0 100%;
+            }
+            .orbit-wrapper {
+                width: 320px;
+                height: 320px;
+            }
+            .photo-center {
+                width: 180px;
+                height: 180px;
+            }
+            .hero-stats {
+                grid-template-columns: 1fr;
+            }
+            .options-grid {
+                grid-template-columns: 1fr;
+            }
+            .sport-orbit-ring {
+                width: 340px;
+                height: 340px;
+                margin-top: -170px;
+                margin-left: -170px;
+            }
+            .sport-orbit-photo {
+                width: 70px;
+                height: 70px;
+                margin-top: -35px;
+                margin-left: -35px;
+            }
+            .sp-1 { transform: rotate(0deg) translate(170px); }
+            .sp-2 { transform: rotate(72deg) translate(170px); }
+            .sp-3 { transform: rotate(144deg) translate(170px); }
+            .sp-4 { transform: rotate(216deg) translate(170px); }
+            .sp-5 { transform: rotate(288deg) translate(170px); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Навигационная шапка -->
+    <header class="header">
+        <div class="header-inner">
+            <a href="#hero" class="brand-logo">Наталья <span>Журавлева</span></a>
+            <nav class="nav-links">
+                <a href="#hero">Обо мне</a>
+                <a href="#training">Программы</a>
+                <a href="#video">Видеообзор</a>
+                <a href="#sur-quiz">Тест СУР</a>
+                <a href="#calculator">Калькулятор</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- ------------------- СЛАЙД 1: ГЛАВНАЯ ------------------- -->
+    <section class="hero" id="hero">
+        <div class="hero-container">
+            
+            <div class="hero-content">
+                <span class="hero-badge">Управление рисками & Устойчивость</span>
+                
+                <h1 class="hero-title">
+                    Защита капитала и <em>финансовая устойчивость</em> бизнеса
+                </h1>
+                
+                <p class="hero-subtitle">
+                    CRO / CFO-1, эксперт инвестиционных и инфраструктурных проектов в транспортной отрасли с 16-летним опытом в АО «Государственная транспортная лизинговая компания». Построение ERM-систем, управление рисками масштабных инвестпроектов, экспертная оценка сделок и сохранение P&L в условиях высокой рыночной неопределенности.
+                </p>
+
+                <div class="hero-actions">
+                    <a href="mailto:zhurnatalia@mail.ru?subject=Запрос%20на%20консультацию" class="btn btn-gold">Обсудить сотрудничество</a>
+                    <a href="tel:+79169921784" class="btn btn-outline">+7 (916) 992-17-84</a>
+                    
+                    <button class="tn-atom-btn-gold" data-popup="popupResume">
+                        <span>резюме</span>
+                    </button>
+                    <button class="tn-atom-btn-gold" data-popup="popupHobbies">
+                        <span>увлечения</span>
+                    </button>
+                    <a href="#training" class="tn-atom-btn-gold">
+                        <span>программа обучения</span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="orbit-wrapper">
+                <div class="orbit-line"></div>
+                
+                <div class="photo-center">
+                    <img src="https://i.yapx.ru/eKGqY.jpg" alt="Наталья Журавлева">
+                </div>
+
+                <div class="orbit-container">
+                    <div class="orbit-item item-1" title="Вертолетная техника">
+                        <svg viewBox="0 0 24 24"><path d="M12 2v2h7v2h-7.17C11.4 7.16 9.84 8 8 8H4v2h3.17C7.72 10.84 9.28 12 11.17 12H12v6h-3v2h8v-2h-3v-6h1.83c1.89 0 3.45-1.16 3.96-2H22V8h-2.17c-.51-.84-2.07-2-3.96-2H13V4h7V2h-8z"/></svg>
+                    </div>
+                    <div class="orbit-item item-2" title="Авиация">
+                        <svg viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
+                    </div>
+                    <div class="orbit-item item-3" title="Водный транспорт">
+                        <svg viewBox="0 0 24 24"><path d="M20 21c-1.39 0-2.78-.47-4-1.32-2.44 1.71-5.56 1.71-8 0C6.78 20.53 5.39 21 4 21H2v2h2c1.38 0 2.74-.35 4-.99 2.52 1.29 5.48 1.29 8 0 1.26.64 2.62.99 4 .99h2v-2h-2zM3.95 19H4c1.6 0 3.02-.88 4-2 .98 1.12 2.4 2 4 2s3.02-.88 4-2c.98 1.12 2.4 2 4 2h.05l1.89-6.68c.08-.26.01-.54-.18-.74l-3.17-3.26V3c0-.55-.45-1-1-1H6c-.55 0-1 .45-1 1v5.32L1.83 11.58c-.19.2-.26.48-.18.74L3.95 19z"/></svg>
+                    </div>
+                    <div class="orbit-item item-4" title="Ж/Д транспорт">
+                        <svg viewBox="0 0 24 24"><path d="M12 2c-4.42 0-8 .5-8 4v10c0 2.15 3.58 3 8 3s8-.85 8-3V6c0-3.5-3.58-4-8-4zm0 2c3.71 0 5.13.46 5.67 1H6.33c.54-.54 1.96-1 5.67-1zm6 11H6V8h12v7zM6 18c0-.55.45-1 1-1h10c.55 0 1 .45 1 1s-.45 1-1 1H7c-.55 0-1-.45-1-1z"/></svg>
+                    </div>
+                    <div class="orbit-item item-5" title="Автотранспорт">
+                        <svg viewBox="0 0 24 24"><path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/></svg>
+                    </div>
+                    <div class="orbit-item item-6" title="Городской транспорт">
+                        <svg viewBox="0 0 24 24"><path d="M19 16.5V9c0-2.33-1.62-4.27-3.8-4.75l1.3-2.6-1.79-.89-1.56 3.12H8.85L7.29.76 5.5 1.65l1.3 2.6C4.62 4.73 3 6.67 3 9v7.5C3 18.43 4.57 20 6.5 20L5 21.5v.5h14v-.5L17.5 20c1.93 0 3.5-1.57 3.5-3.5zM6 9h12v4H6V9zm1.5 9c-.83 0-1.5-.67-1.5-1.5S6.67 15 7.5 15s1.5.67 1.5 1.5S8.33 18 7.5 18zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+                    </div>
+                </div>
+            </div>
+
+            <div class="hero-stats">
+                <div class="stat-item">
+                    <div class="stat-num">16 лет</div>
+                    <div class="stat-label">в Государственной транспортной лизинговой компании</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-num">1500+</div>
+                    <div class="stat-label">защищенных заключений по проектам транспортной отрасли с рассмотренным портфелем более 2,8 млрд руб.</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-num">&lt; 2%</div>
+                    <div class="stat-label">минимальный уровень дебиторской задолженности</div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ------------------- СЛАЙД 2: ПРОГРАММЫ ------------------- -->
+    <section class="section-training" id="training">
+        <div class="animated-helicopter">
+            <div class="helicopter-blade"></div>
+            <div class="helicopter-body"></div>
+            <div class="helicopter-tail"></div>
+        </div>
+
+        <div class="animated-train-track"></div>
+        <div class="animated-train">
+            <div class="real-wagon">
+                <div class="wagon-stripe"></div>
+                <div class="wagon-w"></div>
+                <div class="wagon-w"></div>
+                <div class="wagon-w"></div>
+                <div class="wheel-pair"><div class="wheel"></div><div class="wheel"></div></div>
+            </div>
+            <div class="real-wagon">
+                <div class="wagon-stripe"></div>
+                <div class="wagon-w"></div>
+                <div class="wagon-w"></div>
+                <div class="wagon-w"></div>
+                <div class="wheel-pair"><div class="wheel"></div><div class="wheel"></div></div>
+            </div>
+            <div class="real-locomotive">
+                <div class="loco-cabin"><div class="loco-window"></div></div>
+                <div class="loco-light"></div>
+                <div class="wheel-pair"><div class="wheel"></div><div class="wheel"></div><div class="wheel"></div></div>
+            </div>
+        </div>
+
+        <div class="training-container">
+            
+            <div class="section-header">
+                <span class="hero-badge">Авторский практикум</span>
+                <h2 class="section-title">Управление рисками и финансовая устойчивость</h2>
+                <p class="hero-subtitle" style="margin-bottom:0;">
+                    Практико-ориентированные модули для руководителей, финансовых директоров и риск-менеджеров. Принятие решений в условиях неопределенности на основе реальных финансовых моделей.
+                </p>
+            </div>
+
+            <div class="carousel-wrapper">
+                <div class="carousel-track" id="carouselTrack">
+                    
+                    <div class="carousel-card">
+                        <div>
+                            <div class="card-day">Модуль 01</div>
+                            <h3 class="card-title">Корпоративная система ERM</h3>
+                            <p class="card-desc">
+                                Переход от формальных регламентов к практическому принятию управленческих решений. Определение риск-аппетита компании и защита капитала.
+                            </p>
+                        </div>
+                        <button class="btn-card" data-popup="pop1">Подробнее о модуле</button>
+                    </div>
+
+                    <div class="carousel-card">
+                        <div>
+                            <div class="card-day">Модуль 02</div>
+                            <h3 class="card-title">Кредитный риск и контрагенты</h3>
+                            <p class="card-desc">
+                                Выявление сигналов дефолта задолго до возникновения просрочки. Система индикаторов раннего предупреждения (KRI) и лимитная политика.
+                            </p>
+                        </div>
+                        <button class="btn-card" data-popup="pop2">Подробнее о модуле</button>
+                    </div>
+
+                    <div class="carousel-card">
+                        <div>
+                            <div class="card-day">Модуль 03</div>
+                            <h3 class="card-title">Финансовая устойчивость</h3>
+                            <p class="card-desc">
+                                Стресс-тестирование ликвидности, контроль банковских ковенантов и внедрение комитета КУАП (ALCO) для баланса активов и пассивов.
+                            </p>
+                        </div>
+                        <button class="btn-card" data-popup="pop3">Подробнее о модуле</button>
+                    </div>
+
+                    <div class="carousel-card">
+                        <div>
+                            <div class="card-day">Модуль 04</div>
+                            <h3 class="card-title">Экспертиза инвестпроектов</h3>
+                            <p class="card-desc">
+                                Оценка масштабных капиталоемких проектов. Выявление скрытых рисков на стыках этапов, проверка чувствительности и сквозная аттестация.
+                            </p>
+                        </div>
+                        <button class="btn-card" data-popup="pop4">Подробнее о модуле</button>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="carousel-controls">
+                <div class="carousel-dots" id="carouselDots"></div>
+                
+                <div class="carousel-arrows">
+                    <button class="arrow-btn" id="prevBtn" aria-label="Назад">
+                        <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+                    </button>
+                    <button class="arrow-btn" id="nextBtn" aria-label="Вперед">
+                        <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ------------------- СЛАЙД 3: ВИДЕО ОБЗОР ------------------- -->
+    <section class="section-video" id="video">
+        <div class="video-container">
+            
+            <div class="section-header">
+                <span class="hero-badge">Видеоматериалы &amp; Презентация</span>
+                <h2 class="section-title">Видеообзор обучающего курса</h2>
+                <p class="hero-subtitle" style="margin-bottom: 0;">
+                    Выберите нужный фрагмент лекции для просмотра видеоматериалов и разбора реальных кейсов.
+                </p>
+            </div>
+
+            <div class="video-cards-grid">
+                
+                <div class="video-square-card">
+                    <div class="video-thumb-square">
+                        <img src="https://i.yapx.ru/eKIrY.jpg" alt="Система ERM">
+                        <div class="play-overlay">
+                            <div class="play-btn-circle">
+                                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="video-card-title">Система ERM и методология управления</div>
+                    <button class="btn-video-link" data-video-url="https://app.kinescope.io/embed/8cea5882-922d-43b0-b97f-9a05cdfb0d76">Смотреть видео</button>
+                </div>
+
+                <div class="video-square-card">
+                    <div class="video-thumb-square">
+                        <img src="https://i.yapx.ru/eKGqY.jpg" alt="Кредитный риск">
+                        <div class="play-overlay">
+                            <div class="play-btn-circle">
+                                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="video-card-title">Кредитный риск и KRI-индикаторы</div>
+                    <button class="btn-video-link" data-video-url="https://app.kinescope.io/embed/6618e4d8-45d8-4b64-b4e9-d2ce14fd0b78">Смотреть видео</button>
+                </div>
+
+                <div class="video-square-card">
+                    <div class="video-thumb-square">
+                        <img src="https://i.yapx.ru/eKIio.jpg" alt="Стресс-тестирование">
+                        <div class="play-overlay">
+                            <div class="play-btn-circle">
+                                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="video-card-title">Стресс-тестирование ликвидности</div>
+                    <button class="btn-video-link" data-video-url="https://app.kinescope.io/embed/4691c7f3-6063-4e40-9987-cfb01e871387">Смотреть видео</button>
+                </div>
+
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ------------------- СЛАЙД 4: ТЕСТ ЗРЕЛОСТИ СУР ------------------- -->
+    <section class="section-sur-quiz" id="sur-quiz">
+        <div class="quiz-container">
+            
+            <div id="quiz-screen">
+                <div class="section-header" style="margin-bottom: 20px;">
+                    <span class="hero-badge" id="section-badge">Раздел 1 из 5</span>
+                    <h2 class="section-title" id="section-title" style="font-size: 1.8rem;">Оценка зрелости СУР</h2>
+                </div>
+
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress"></div>
+                </div>
+
+                <div id="questions-container">
+                    <!-- Вопросы генерируются через JS -->
+                </div>
+
+                <div class="quiz-controls">
+                    <button class="btn btn-outline" id="prev-btn-quiz" disabled>Назад</button>
+                    <button class="btn btn-gold" id="next-btn-quiz" disabled>Далее</button>
+                </div>
+            </div>
+
+            <div id="result-screen" class="hidden text-center">
+                <div class="section-header" style="margin-bottom: 16px;">
+                    <span class="hero-badge">Экспресс-диагностика</span>
+                    <h2 class="section-title">Результаты оценки зрелости СУР</h2>
+                </div>
+
+                <div id="score-badge" class="score-badge">
+                    <span class="score-value" id="score-val">0</span>
+                    <span class="score-max">из 20 баллов</span>
+                </div>
+
+                <h3 id="result-level" class="card-title" style="font-size: 1.6rem; margin-bottom: 8px;">Определение уровня...</h3>
+                <p id="result-desc" class="card-desc" style="max-width: 600px; margin: 0 auto 20px auto;"></p>
+
+                <div class="breakdown-list">
+                    <div class="hero-badge" style="margin-bottom: 12px;">Детализация по разделам</div>
+                    <div id="breakdown-items"></div>
+                </div>
+
+                <button class="btn btn-gold" onclick="restartQuiz()">Пройти тест заново</button>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ------------------- СЛАЙД 5: КАЛЬКУЛЯТОР БИЗНЕС-РИСКОВ ------------------- -->
+    <section class="section-calculator" id="calculator">
+        <div id="app" v-cloak class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+            
+            <div class="section-header">
+                <span class="hero-badge">Интерактивный инструмент</span>
+                <h2 class="section-title">Калькулятор бизнес-рисков</h2>
+                <p class="hero-subtitle" style="margin-bottom:0;">
+                    Оценка и квантификация ожидаемых финансовых потерь по кварталам. Выберите период, задайте параметры вероятности и ущерба для суммирования рисков.
+                </p>
+            </div>
+
+            <div class="flex items-center justify-center gap-2 bg-white p-2 rounded-xl border border-[var(--border-line)] max-w-lg mx-auto shadow-sm overflow-x-auto">
+                <span class="text-xs font-bold text-[var(--text-main)] uppercase tracking-wider mr-1 whitespace-nowrap">Просмотр:</span>
+                <button 
+                    v-for="q in quarters" 
+                    :key="q.id"
+                    @click="viewQuarter = q.id"
+                    :class="['px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap', viewQuarter === q.id ? 'bg-[var(--accent-gold)] text-white shadow-sm' : 'text-[var(--text-muted)] hover:bg-[#f4f3ef]']"
+                >
+                    {{ q.shortLabel }}
+                    <span v-if="quarterlySummaries[q.id].total > 0" :class="['w-2 h-2 rounded-full', viewQuarter === q.id ? 'bg-white' : 'bg-[var(--accent-gold)]']"></span>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                
+                <div class="lg:col-span-5 calc-card-custom p-6 space-y-6">
+                    <form @submit.prevent="handleCalculate" class="space-y-5">
+                        
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <label class="text-xs font-bold text-[var(--text-main)] uppercase tracking-wider">
+                                    1. Выберите квартал <span class="text-rose-500">*</span>
+                                </label>
+                                <span v-if="selectedQuarter" class="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    ✓ {{ getQuarterLabel(selectedQuarter) }}
+                                </span>
+                            </div>
+
+                            <div class="grid grid-cols-4 gap-2">
+                                <button
+                                    v-for="q in quarters"
+                                    :key="q.id"
+                                    type="button"
+                                    @click="selectQuarter(q.id)"
+                                    :class="['py-2 px-1 rounded border text-xs font-bold transition flex flex-col items-center', selectedQuarter === q.id ? 'bg-[var(--accent-gold)] border-[var(--accent-gold)] text-white' : 'bg-[#f4f3ef] border-slate-200 text-[var(--text-main)] hover:border-[var(--accent-gold)]']"
+                                >
+                                    <span>{{ q.id }}</span>
+                                </button>
+                            </div>
+
+                            <div v-if="quarterError" class="p-2 bg-rose-50 border border-rose-200 rounded text-xs text-rose-700">
+                                Выберите квартал перед расчетом!
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-[var(--text-main)] uppercase tracking-wider mb-1.5">
+                                2. Наименование риска
+                            </label>
+                            <input
+                                type="text"
+                                v-model="riskName"
+                                placeholder="Задержка поставок / Разрыв ликвидности"
+                                class="w-full px-3.5 py-2.5 calc-input-custom text-sm"
+                            />
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <label class="text-xs font-bold text-[var(--text-main)] uppercase tracking-wider">
+                                    3. Вероятность события
+                                </label>
+                                <span class="text-sm font-black text-[var(--accent-gold)] bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                    {{ probability }}%
+                                </span>
+                            </div>
+
+                            <input
+                                type="range"
+                                min="1"
+                                max="100"
+                                v-model.number="probability"
+                                class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#b38b43]"
+                            />
+
+                            <div class="grid grid-cols-2 gap-1.5 pt-1">
+                                <button
+                                    v-for="preset in probabilityPresets"
+                                    :key="preset.value"
+                                    type="button"
+                                    @click="probability = preset.value"
+                                    :class="['text-xs py-1 px-2 rounded border transition', probability === preset.value ? 'bg-[var(--accent-gold)] text-white border-[var(--accent-gold)] font-bold' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50']"
+                                >
+                                    {{ preset.label }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <label class="text-xs font-bold text-[var(--text-main)] uppercase tracking-wider">
+                                    4. Ущерб (тыс. руб)
+                                </label>
+                            </div>
+
+                            <input
+                                type="number"
+                                min="0"
+                                step="10"
+                                v-model.number="impactThousand"
+                                class="w-full px-3.5 py-2.5 calc-input-custom text-base font-bold"
+                            />
+
+                            <div class="grid grid-cols-2 gap-1.5 pt-1">
+                                <button
+                                    v-for="preset in impactPresets"
+                                    :key="preset.value"
+                                    type="button"
+                                    @click="impactThousand = preset.value"
+                                    :class="['text-xs py-1 px-2 rounded border transition', impactThousand === preset.value ? 'bg-[var(--accent-gold)] text-white border-[var(--accent-gold)] font-bold' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50']"
+                                >
+                                    {{ preset.label }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <button
+                            type="submit"
+                            class="w-full py-3 btn-calc-submit text-xs uppercase tracking-wider"
+                        >
+                            {{ selectedQuarter ? `Добавить в ${getQuarterLabel(selectedQuarter)}` : 'Выберите квартал выше' }}
+                        </button>
+                    </form>
+                </div>
+
+                <div class="lg:col-span-7 space-y-6">
+                    
+                    <div class="calc-card-custom p-6 space-y-6">
+                        <div class="flex items-center justify-between pb-4 border-b border-[var(--border-line)]">
+                            <div>
+                                <h3 class="font-serif text-2xl font-bold text-[var(--text-main)]">
+                                    Результаты: {{ getQuarterLabel(viewQuarter) }}
+                                </h3>
+                                <p class="text-xs text-[var(--text-muted)]">Расчет потерь периода {{ viewQuarter }}</p>
+                            </div>
+
+                            <div class="flex bg-[#f4f3ef] p-1 rounded-lg border border-[var(--border-line)]">
+                                <button
+                                    v-for="q in quarters"
+                                    :key="q.id"
+                                    @click="viewQuarter = q.id"
+                                    :class="['px-2.5 py-1 text-xs font-bold rounded transition', viewQuarter === q.id ? 'bg-white text-[var(--text-main)] shadow-sm' : 'text-[var(--text-muted)]']"
+                                >
+                                    {{ q.id }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div class="p-3.5 rounded-lg bg-rose-50 border border-rose-200">
+                                <div class="text-[11px] font-bold text-rose-800 uppercase">Высокий риск (≥60%)</div>
+                                <div class="font-serif text-xl font-bold text-rose-950 mt-1">{{ formatRub(currentViewSummary.high) }} ₽</div>
+                                <div class="text-[10px] text-rose-700 mt-2 pt-1.5 border-t border-rose-200">Кол-во: {{ currentViewSummary.countHigh }}</div>
+                            </div>
+
+                            <div class="p-3.5 rounded-lg bg-amber-50 border border-amber-200">
+                                <div class="text-[11px] font-bold text-amber-800 uppercase">Средний риск (30–60%)</div>
+                                <div class="font-serif text-xl font-bold text-amber-950 mt-1">{{ formatRub(currentViewSummary.medium) }} ₽</div>
+                                <div class="text-[10px] text-amber-700 mt-2 pt-1.5 border-t border-amber-200">Кол-во: {{ currentViewSummary.countMedium }}</div>
+                            </div>
+
+                            <div class="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200">
+                                <div class="text-[11px] font-bold text-emerald-800 uppercase">Низкий риск (&lt;30%)</div>
+                                <div class="font-serif text-xl font-bold text-emerald-950 mt-1">{{ formatRub(currentViewSummary.low) }} ₽</div>
+                                <div class="text-[10px] text-emerald-700 mt-2 pt-1.5 border-t border-emerald-200">Кол-во: {{ currentViewSummary.countLow }}</div>
+                            </div>
+                        </div>
+
+                        <div class="bg-[#1c222b] text-white p-4 rounded-lg flex items-center justify-between">
+                            <div>
+                                <div class="text-xs text-slate-400 uppercase tracking-wider">Ожидаемые потери ({{ viewQuarter }}):</div>
+                                <div class="font-serif text-2xl font-bold text-[var(--accent-gold)] mt-1">{{ formatRub(currentViewSummary.total) }} ₽</div>
+                            </div>
+                            <button
+                                v-if="currentViewRisks.length > 0"
+                                @click="clearQuarter(viewQuarter)"
+                                class="text-xs bg-slate-800 hover:bg-rose-900/40 text-slate-300 border border-slate-700 px-3 py-1.5 rounded transition"
+                            >
+                                Очистить {{ viewQuarter }}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="calc-card-custom p-6 space-y-4">
+                        <h4 class="font-serif text-lg font-bold text-[var(--text-main)]">Детализация рисков ({{ viewQuarter }})</h4>
+
+                        <div v-if="currentViewRisks.length === 0" class="py-6 text-center border-2 border-dashed border-slate-200 rounded text-xs text-slate-400">
+                            В {{ getQuarterLabel(viewQuarter) }} нет рисков.
+                        </div>
+
+                        <div v-else class="overflow-x-auto">
+                            <table class="w-full text-left text-xs">
+                                <thead>
+                                    <tr class="border-b border-slate-200 text-slate-400 font-bold uppercase">
+                                        <th class="py-2">Наименование</th>
+                                        <th class="py-2">Ver%</th>
+                                        <th class="py-2">Макс. ущерб</th>
+                                        <th class="py-2">Потери</th>
+                                        <th class="py-2 text-right"></th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-for="item in currentViewRisks" :key="item.id">
+                                        <td class="py-2 font-bold text-[var(--text-main)]">{{ item.name }}</td>
+                                        <td class="py-2">{{ item.probability }}%</td>
+                                        <td class="py-2">{{ formatRub(item.maxLossRub) }} ₽</td>
+                                        <td class="py-2 font-bold text-[var(--accent-gold)]">{{ formatRub(item.expectedLossRub) }} ₽</td>
+                                        <td class="py-2 text-right">
+                                            <button @click="deleteRisk(item.id)" class="text-slate-400 hover:text-rose-600">✕</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </section>
+
+    <!-- ------------------- МОДАЛЬНЫЕ ОКНА ------------------- -->
+    <div class="t-popup" id="videoModal" role="dialog" aria-modal="true">
+        <div class="t-popup__close">
+            <button type="button" class="t-popup__close-button" aria-label="Закрыть">
+                <svg width="23px" height="23px" viewBox="0 0 23 23"><g stroke="none" stroke-width="1" fill="#fff"><rect transform="translate(11.31, 11.31) rotate(-45)" x="10.31" y="-3.68" width="2" height="30"></rect><rect transform="translate(11.31, 11.31) rotate(-315)" x="10.31" y="-3.68" width="2" height="30"></rect></g></svg>
+            </button>
+        </div>
+        <div class="t-popup__container video-modal-size">
+            <div class="modal-video-wrapper">
+                <iframe id="modalVideoIframe" src="" allow="autoplay; fullscreen; picture-in-picture; encrypted-media; gyroscope; accelerometer" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+
+    <!-- Резюме -->
+    <div class="t-popup" id="popupResume" role="dialog" aria-modal="true">
+        <div class="t-popup__close">
+            <button type="button" class="t-popup__close-button" aria-label="Закрыть">
+                <svg width="23px" height="23px" viewBox="0 0 23 23"><g stroke="none" stroke-width="1" fill="#000"><rect transform="translate(11.31, 11.31) rotate(-45)" x="10.31" y="-3.68" width="2" height="30"></rect><rect transform="translate(11.31, 11.31) rotate(-315)" x="10.31" y="-3.68" width="2" height="30"></rect></g></svg>
+            </button>
+        </div>
+        <div class="t-popup__container grid-layout-side">
+            <div class="img-contain-wrapper">
+                <img class="img-contain" src="https://i.yapx.ru/eKIio.jpg" alt="Наталья Журавлева">
+            </div>
+            
+            <div class="t390__wrapper">
+                <div class="t390__uptitle">Управление рисками &amp; Финансовая устойчивость</div>
+                <h2 class="t390__title">Наталья Журавлева</h2>
+                
+                <div class="t390__descr">
+                    <p style="margin-bottom: 12px; font-weight: 500; color: var(--accent-gold);">
+                        Москва &nbsp;|&nbsp; +7 (916) 992-17-84 &nbsp;|&nbsp; zhurnatalia@mail.ru &nbsp;|&nbsp; Telegram: @Natalia19770712
+                    </p>
+                    
+                    <strong>Профессиональный профиль</strong>
+                    Более 18 лет работы в сфере корпоративного Risk-Management и обеспечения финансовой устойчивости компании. Экспертиза включает построение систем ERM с нуля, кредитный анализ, оценку контрагентов, контроль банковских ковенантов, стресс-тестирование и управление ликвидностью в капиталоемких отраслях.
+
+                    <strong>Ключевой опыт: АО «ГТЛК», 2009 — 2025 гг.</strong>
+                    Директор по управлению рисками. Руководство командой из 15 специалистов.
+                    <ul>
+                        <li>Выстроена с нуля ERM-система, интегрированная в контур принятия инвестиционных и финансовых решений.</li>
+                        <li>Подготовлено и защищено более 1500 заключений по проектам в сферах ж/д, авиации, водного транспорта, автотехники и инфраструктуры с общим портфелем свыше 2,8 млрд руб.</li>
+                        <li>Снижен уровень дебиторской задолженности до значения менее 2% благодаря внедрению автоматизированной системы KRI-индикаторов.</li>
+                        <li>Разработана и внедрена система КУАП для сбалансированного управления активами, пассивами и ликвидностью.</li>
+                    </ul>
+
+                    <strong>Образование и квалификация</strong>
+                    Финансовый университет при Правительстве РФ (2010 г., Экономика и антикризисное управление). ISO 31000 Risk Management (2021 г.), Mini MBA EY (2020 г.).
+                </div>
+                
+                <div class="t390__btn-wrapper">
+                    <a class="t-btnflex" href="mailto:zhurnatalia@mail.ru?subject=Сотрудничество">Связаться напрямую</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Увлечения -->
+    <div class="t-popup" id="popupHobbies" role="dialog" aria-modal="true">
+        <div class="t-popup__close">
+            <button type="button" class="t-popup__close-button" aria-label="Закрыть">
+                <svg width="23px" height="23px" viewBox="0 0 23 23"><g stroke="none" stroke-width="1" fill="#000"><rect transform="translate(11.31, 11.31) rotate(-45)" x="10.31" y="-3.68" width="2" height="30"></rect><rect transform="translate(11.31, 11.31) rotate(-315)" x="10.31" y="-3.68" width="2" height="30"></rect></g></svg>
+            </button>
+        </div>
+        <div class="t-popup__container">
+            <div class="sport-orbit-wrapper">
+                <div class="sport-center-card">
+                    <div class="t390__uptitle">Энергия &amp; Дисциплина</div>
+                    <h2 class="t390__title" style="font-size: 1.8rem; margin-bottom: 12px;">Спорт и увлечения</h2>
+                    
+                    <div class="t390__descr" style="font-size: 0.88rem;">
+                        <p style="margin-bottom: 8px;"><strong>Активный образ жизни</strong></p>
+                        Спорт формирует высокую стрессоустойчивость, выносливость и быструю концентрацию в принятии решений:
+                        <ul style="padding-left: 15px; margin-top: 6px; text-align: left;">
+                            <li><strong>Фитнес и йога:</strong> базовая дисциплина и поддержание ресурса.</li>
+                            <li><strong>Горные и беговые лыжи:</strong> точность реакций и контроль скорости.</li>
+                            <li><strong>Трекинг:</strong> горные пешие маршруты и выносливость.</li>
+                        </ul>
+                    </div>
+
+                    <div class="t390__btn-wrapper" style="margin-top: 20px;">
+                        <a class="t-btnflex" href="https://app.kinescope.io/video/detail/db03d65e-ba2e-48a6-a9ea-36c1d5c4f92e" target="_blank" rel="noopener noreferrer" style="font-size: 0.8rem; padding: 12px 24px;">
+                            <span>Смотреть видео об увлечениях</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="sport-orbit-ring">
+                    <div class="sport-orbit-photo sp-1"><img src="https://i.yapx.ru/eKGv0.jpg" alt="1"></div>
+                    <div class="sport-orbit-photo sp-2"><img src="https://i.yapx.ru/eKIyP.jpg" alt="2"></div>
+                    <div class="sport-orbit-photo sp-3"><img src="https://i.yapx.ru/eKIyD.jpg" alt="3"></div>
+                    <div class="sport-orbit-photo sp-4"><img src="https://i.yapx.ru/eKIw2.jpg" alt="4"></div>
+                    <div class="sport-orbit-photo sp-5"><img src="https://i.yapx.ru/eKIwy.jpg" alt="5"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальные окна программ -->
+    <div class="t-popup" id="pop1" role="dialog" aria-modal="true">
+        <div class="t-popup__container grid-layout-side">
+            <div class="img-contain-wrapper"><img class="img-contain" src="https://i.yapx.ru/eKIrY.jpg" alt="1"></div>
+            <div class="t390__wrapper">
+                <h3 class="t390__title">Модуль 1. Корпоративная система ERM</h3>
+                <div class="t390__descr">
+                    Переход от формальных регламентов к принятию управленческих решений. Определение риск-аппетита компании, формирование карты рисков и закрепление владельцев рисков.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="t-popup" id="pop2" role="dialog" aria-modal="true">
+        <div class="t-popup__container grid-layout-side">
+            <div class="img-contain-wrapper"><img class="img-contain" src="https://i.yapx.ru/eKGqY.jpg" alt="2"></div>
+            <div class="t390__wrapper">
+                <h3 class="t390__title">Модуль 2. Кредитный риск и контрагенты</h3>
+                <div class="t390__descr">
+                    Система KRI-индикаторов раннего предупреждения («лампочки»), оценка финансовых групп холдингового типа и работа по удержанию просрочки на уровне &lt; 2%.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="t-popup" id="pop3" role="dialog" aria-modal="true">
+        <div class="t-popup__container grid-layout-side">
+            <div class="img-contain-wrapper"><img class="img-contain" src="https://i.yapx.ru/eKIio.jpg" alt="3"></div>
+            <div class="t390__wrapper">
+                <h3 class="t390__title">Модуль 3. Финансовая устойчивость</h3>
+                <div class="t390__descr">
+                    Стресс-тестирование кассовых разрывов при ключевых шоках, ведение реестра банковских ковенантов и организация работы Комитета КУАП (ALCO).
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="t-popup" id="pop4" role="dialog" aria-modal="true">
+        <div class="t-popup__container grid-layout-side">
+            <div class="img-contain-wrapper"><img class="img-contain" src="https://i.yapx.ru/eKGv0.jpg" alt="4"></div>
+            <div class="t390__wrapper">
+                <h3 class="t390__title">Модуль 4. Экспертиза инвестпроектов</h3>
+                <div class="t390__descr">
+                    Выявление скрытых рисков на стыках этапов инвестпроектов, проверка чувствительности моделей к ставкам и ценам, сквозная зашита решений.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- СКРИПТЫ -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Слайдер программ
+            const track = document.getElementById('carouselTrack');
+            const cards = document.querySelectorAll('.carousel-card');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const dotsContainer = document.getElementById('carouselDots');
+
+            let currentIndex = 0;
+
+            const getVisibleCardsCount = () => {
+                if (window.innerWidth <= 650) return 1;
+                if (window.innerWidth <= 992) return 2;
+                return 3;
+            };
+
+            const getMaxIndex = () => Math.max(0, cards.length - getVisibleCardsCount());
+
+            const updateCarousel = () => {
+                const cardWidth = cards[0].getBoundingClientRect().width;
+                const gap = 20;
+                track.style.transform = `translateX(-${currentIndex * (cardWidth + gap)}px)`;
+
+                document.querySelectorAll('.dot').forEach((dot, idx) => {
+                    dot.classList.toggle('active', idx === currentIndex);
+                });
+            };
+
+            const createDots = () => {
+                dotsContainer.innerHTML = '';
+                for (let i = 0; i <= getMaxIndex(); i++) {
+                    const dot = document.createElement('div');
+                    dot.classList.add('dot');
+                    if (i === 0) dot.classList.add('active');
+                    dot.addEventListener('click', () => {
+                        currentIndex = i;
+                        updateCarousel();
+                    });
+                    dotsContainer.appendChild(dot);
+                }
+            };
+
+            nextBtn.addEventListener('click', () => {
+                currentIndex = (currentIndex < getMaxIndex()) ? currentIndex + 1 : 0;
+                updateCarousel();
+            });
+
+            prevBtn.addEventListener('click', () => {
+                currentIndex = (currentIndex > 0) ? currentIndex - 1 : getMaxIndex();
+                updateCarousel();
+            });
+
+            window.addEventListener('resize', () => {
+                if (currentIndex > getMaxIndex()) currentIndex = getMaxIndex();
+                createDots();
+                updateCarousel();
+            });
+
+            createDots();
+            updateCarousel();
+
+            // Видеоплеер
+            const videoCards = document.querySelectorAll('.video-square-card');
+            const videoModal = document.getElementById('videoModal');
+            const videoIframe = document.getElementById('modalVideoIframe');
+
+            videoCards.forEach(card => {
+                const btn = card.querySelector('.btn-video-link');
+                const thumb = card.querySelector('.video-thumb-square');
+
+                const openVideo = () => {
+                    const url = btn.getAttribute('data-video-url');
+                    if (url) {
+                        videoIframe.src = url;
+                        videoModal.classList.add('t-popup_show');
+                        document.body.style.overflow = 'hidden';
+                        requestAnimationFrame(() => videoModal.classList.add('t-popup_active'));
+                    }
+                };
+
+                btn.addEventListener('click', openVideo);
+                thumb.addEventListener('click', openVideo);
+            });
+
+            // Попапы
+            const popups = document.querySelectorAll('.t-popup');
+            const popupBtns = document.querySelectorAll('[data-popup]');
+
+            popupBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const popupId = btn.getAttribute('data-popup');
+                    const popup = document.getElementById(popupId);
+                    if (popup) {
+                        popup.classList.add('t-popup_show');
+                        document.body.style.overflow = 'hidden';
+                        requestAnimationFrame(() => popup.classList.add('t-popup_active'));
+                    }
+                });
+            });
+
+            popups.forEach(popup => {
+                const closeBtn = popup.querySelector('.t-popup__close-button');
+                const closePopup = () => {
+                    popup.classList.remove('t-popup_active');
+                    setTimeout(() => {
+                        popup.classList.remove('t-popup_show');
+                        document.body.style.overflow = '';
+                        if (popup.id === 'videoModal') videoIframe.src = '';
+                    }, 300);
+                };
+
+                if (closeBtn) closeBtn.addEventListener('click', closePopup);
+                popup.addEventListener('click', (e) => {
+                    if (e.target === popup) closePopup();
+                });
+            });
+        });
+
+        /* --- КВИЗ СУР (Слайд 4) --- */
+        const quizSections = [
+            {
+                id: 1,
+                title: "Организационная структура",
+                questions: [
+                    { id: "q1", text: "1. Наличие выделенного подразделения по управлению рисками:", options: [{ text: "Да", score: 2 }, { text: "Нет", score: 0 }] },
+                    { id: "q2", text: "2. Подчиненность подразделения по управлению рисками:", options: [{ text: "Генеральному директору (ГД)", score: 2 }, { text: "Заместителю ГД (ЗГД)", score: 1 }] }
+                ]
+            },
+            {
+                id: 2,
+                title: "Независимость и подотчетность",
+                questions: [
+                    { id: "q3", text: "3. Независимость принятия решений подразделением рисков:", options: [{ text: "Да", score: 2 }, { text: "Нет", score: 0 }] },
+                    { id: "q4", text: "4. Подотчетность Совету директоров (СД):", options: [{ text: "Да", score: 2 }, { text: "Нет", score: 0 }] }
+                ]
+            },
+            {
+                id: 3,
+                title: "Нормативная база и отчетность",
+                questions: [
+                    { id: "q5", text: "5. Наличие политик по управлению рисками, утвержденных Советом директоров:", options: [{ text: "Да", score: 2 }, { text: "Нет", score: 0 }] },
+                    { id: "q6", text: "6. Ежеквартальная оценка рисков и регулярный отчет Совету директоров:", options: [{ text: "Да", score: 2 }, { text: "Нет", score: 0 }] }
+                ]
+            },
+            {
+                id: 4,
+                title: "Внутренний контроль и аудит",
+                questions: [
+                    { id: "q7", text: "7. Наличие службы внутреннего контроля (СВК):", options: [{ text: "Да", score: 2 }, { text: "Нет", score: 0 }] },
+                    { id: "q8", text: "8. Наличие службы внутреннего аудита (СВА):", options: [{ text: "Да", score: 2 }, { text: "Нет", score: 0 }] }
+                ]
+            },
+            {
+                id: 5,
+                title: "Модель управления и архитектура",
+                questions: [
+                    { id: "q9", text: "9. Соблюдение концепции трех линий защиты:", options: [{ text: "Да", score: 2 }, { text: "Нет", score: 0 }] },
+                    { id: "q10", text: "10. Системная интеграция оценки рисков в стратегические решения:", options: [{ text: "Да", score: 2 }, { text: "Нет", score: 0 }] }
+                ]
+            }
+        ];
+
+        let currentSectionIndex = 0;
+        const answers = {};
+
+        const sectionBadge = document.getElementById('section-badge');
+        const sectionTitle = document.getElementById('section-title');
+        const questionsContainer = document.getElementById('questions-container');
+        const progressBar = document.getElementById('progress');
+        const prevBtnQuiz = document.getElementById('prev-btn-quiz');
+        const nextBtnQuiz = document.getElementById('next-btn-quiz');
+        const quizScreen = document.getElementById('quiz-screen');
+        const resultScreen = document.getElementById('result-screen');
+
+        function renderSection() {
+            const section = quizSections[currentSectionIndex];
+            sectionBadge.textContent = `Раздел ${currentSectionIndex + 1} из ${quizSections.length}`;
+            sectionTitle.textContent = section.title;
+            progressBar.style.width = `${((currentSectionIndex + 1) / quizSections.length) * 100}%`;
+            questionsContainer.innerHTML = '';
+
+            section.questions.forEach((q) => {
+                const qCard = document.createElement('div');
+                qCard.className = 'question-card';
+                const title = document.createElement('div');
+                title.className = 'question-title';
+                title.textContent = q.text;
+
+                const optionsGrid = document.createElement('div');
+                optionsGrid.className = 'options-grid';
+
+                q.options.forEach((opt) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'option-btn';
+                    if (answers[q.id] === opt.score) btn.classList.add('selected');
+                    btn.textContent = opt.text;
+                    btn.onclick = () => selectAnswer(q.id, opt.score, optionsGrid, btn);
+                    optionsGrid.appendChild(btn);
+                });
+
+                qCard.appendChild(title);
+                qCard.appendChild(optionsGrid);
+                questionsContainer.appendChild(qCard);
+            });
+
+            updateNavigationState();
+        }
+
+        function selectAnswer(questionId, score, optionsGrid, selectedBtn) {
+            answers[questionId] = score;
+            optionsGrid.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+            selectedBtn.classList.add('selected');
+            updateNavigationState();
+        }
+
+        function updateNavigationState() {
+            const currentSection = quizSections[currentSectionIndex];
+            const allAnswered = currentSection.questions.every(q => answers.hasOwnProperty(q.id));
+            prevBtnQuiz.disabled = currentSectionIndex === 0;
+            nextBtnQuiz.disabled = !allAnswered;
+            nextBtnQuiz.textContent = currentSectionIndex === quizSections.length - 1 ? 'Завершить' : 'Далее';
+        }
+
+        prevBtnQuiz.onclick = () => { if (currentSectionIndex > 0) { currentSectionIndex--; renderSection(); } };
+        nextBtnQuiz.onclick = () => { if (currentSectionIndex < quizSections.length - 1) { currentSectionIndex++; renderSection(); } else { showResults(); } };
+
+        function calculateResults() {
+            let totalScore = 0;
+            const sectionScores = quizSections.map(sec => {
+                let secScore = 0;
+                let maxSecScore = 0;
+                sec.questions.forEach(q => {
+                    secScore += answers[q.id] || 0;
+                    maxSecScore += Math.max(...q.options.map(o => o.score));
+                });
+                totalScore += secScore;
+                return { title: sec.title, score: secScore, maxScore: maxSecScore };
+            });
+            return { totalScore, sectionScores };
+        }
+
+        function showResults() {
+            const { totalScore, sectionScores } = calculateResults();
+            quizScreen.classList.add('hidden');
+            resultScreen.classList.remove('hidden');
+            document.getElementById('score-val').textContent = totalScore;
+
+            const resultLevel = document.getElementById('result-level');
+            const resultDesc = document.getElementById('result-desc');
+
+            if (totalScore >= 16) {
+                resultLevel.textContent = 'Высокий уровень зрелости СУР';
+                resultDesc.textContent = 'Система управления рисками компании выстроена эффективно, обеспечена независимость подразделения, регулярный контроль и подотчетность Совету директоров.';
+            } else if (totalScore >= 10) {
+                resultLevel.textContent = 'Средний уровень зрелости СУР';
+                resultDesc.textContent = 'Базовые элементы системы функционируют, однако есть пробелы в независимости принятия решений, автоматизации или соблюдении трех линий защиты.';
+            } else {
+                resultLevel.textContent = 'Низкий уровень зрелости СУР';
+                resultDesc.textContent = 'Система управления рисками находится на начальном этапе развития. Требуется внедрение нормативной базы, независимого контроля и регулярной отчетности на высшем уровне.';
+            }
+
+            const breakdownContainer = document.getElementById('breakdown-items');
+            breakdownContainer.innerHTML = '';
+            sectionScores.forEach(s => {
+                const item = document.createElement('div');
+                item.className = 'breakdown-item';
+                item.innerHTML = `<span>${s.title}</span><strong style="color:var(--accent-gold);">${s.score} из ${s.maxScore} баллов</strong>`;
+                breakdownContainer.appendChild(item);
+            });
+        }
+
+        function restartQuiz() {
+            currentSectionIndex = 0;
+            for (let key in answers) delete answers[key];
+            resultScreen.classList.add('hidden');
+            quizScreen.classList.remove('hidden');
+            renderSection();
+        }
+
+        renderSection();
+
+        /* --- КАЛЬКУЛЯТОР VUE 3 (Слайд 5) --- */
+        const { createApp, ref, computed } = Vue;
+
+        createApp({
+            setup() {
+                const selectedQuarter = ref(null);
+                const viewQuarter = ref('Q1');
+                const riskName = ref('');
+                const probability = ref(30);
+                const impactThousand = ref(1500);
+                const quarterError = ref(false);
+                const riskList = ref([]);
+
+                const quarters = [
+                    { id: 'Q1', label: '1 Квартал', shortLabel: '1 кв.' },
+                    { id: 'Q2', label: '2 Квартал', shortLabel: '2 кв.' },
+                    { id: 'Q3', label: '3 Квартал', shortLabel: '3 кв.' },
+                    { id: 'Q4', label: '4 Квартал', shortLabel: '4 кв.' },
+                ];
+
+                const probabilityPresets = [
+                    { label: 'Низкая (15%)', value: 15 },
+                    { label: 'Средняя (45%)', value: 45 },
+                    { label: 'Высокая (75%)', value: 75 },
+                    { label: 'Критическая (90%)', value: 90 },
+                ];
+
+                const impactPresets = [
+                    { label: '300 тыс. ₽', value: 300 },
+                    { label: '1 млн ₽', value: 1000 },
+                    { label: '5 млн ₽', value: 5000 },
+                    { label: '15 млн ₽', value: 15000 },
+                ];
+
+                const getQuarterLabel = (qId) => quarters.find(item => item.id === qId)?.label || '';
+
+                const getImpactCategory = (prob) => {
+                    if (prob >= 60) return { key: 'high' };
+                    if (prob >= 30) return { key: 'medium' };
+                    return { key: 'low' };
+                };
+
+                const formatRub = (num) => new Intl.NumberFormat('ru-RU').format(Math.round(num || 0));
+
+                const selectQuarter = (qId) => {
+                    selectedQuarter.value = qId;
+                    quarterError.value = false;
+                };
+
+                const handleCalculate = () => {
+                    if (!selectedQuarter.value) {
+                        quarterError.value = true;
+                        return;
+                    }
+                    quarterError.value = false;
+
+                    const safeProb = Math.min(Math.max(Number(probability.value) || 0, 0), 100);
+                    const safeImpact = Math.max(Number(impactThousand.value) || 0, 0);
+                    const expectedLossRub = (safeProb * safeImpact * 1000) / 100;
+                    const category = getImpactCategory(safeProb);
+
+                    riskList.value.unshift({
+                        id: Date.now(),
+                        quarter: selectedQuarter.value,
+                        name: riskName.value.trim() || `Риск #${riskList.value.length + 1}`,
+                        probability: safeProb,
+                        impactThousand: safeImpact,
+                        maxLossRub: safeImpact * 1000,
+                        expectedLossRub,
+                        categoryKey: category.key
+                    });
+
+                    viewQuarter.value = selectedQuarter.value;
+                    riskName.value = '';
+                    impactThousand.value = 1500;
+                };
+
+                const deleteRisk = (id) => { riskList.value = riskList.value.filter(r => r.id !== id); };
+
+                const clearQuarter = (qId) => {
+                    if (confirm(`Вы уверены, что хотите удалить все риски за ${getQuarterLabel(qId)}?`)) {
+                        riskList.value = riskList.value.filter(r => r.quarter !== qId);
+                    }
+                };
+
+                const quarterlySummaries = computed(() => {
+                    const summary = {
+                        Q1: { high: 0, medium: 0, low: 0, countHigh: 0, countMedium: 0, countLow: 0, total: 0 },
+                        Q2: { high: 0, medium: 0, low: 0, countHigh: 0, countMedium: 0, countLow: 0, total: 0 },
+                        Q3: { high: 0, medium: 0, low: 0, countHigh: 0, countMedium: 0, countLow: 0, total: 0 },
+                        Q4: { high: 0, medium: 0, low: 0, countHigh: 0, countMedium: 0, countLow: 0, total: 0 },
+                    };
+
+                    riskList.value.forEach((item) => {
+                        if (summary[item.quarter]) {
+                            const q = summary[item.quarter];
+                            if (item.categoryKey === 'high') { q.high += item.expectedLossRub; q.countHigh++; }
+                            else if (item.categoryKey === 'medium') { q.medium += item.expectedLossRub; q.countMedium++; }
+                            else { q.low += item.expectedLossRub; q.countLow++; }
+                            q.total += item.expectedLossRub;
+                        }
+                    });
+
+                    return summary;
+                });
+
+                const currentViewSummary = computed(() => quarterlySummaries.value[viewQuarter.value]);
+                const currentViewRisks = computed(() => riskList.value.filter(r => r.quarter === viewQuarter.value));
+
+                return {
+                    selectedQuarter,
+                    viewQuarter,
+                    riskName,
+                    probability,
+                    impactThousand,
+                    quarterError,
+                    quarters,
+                    probabilityPresets,
+                    impactPresets,
+                    getQuarterLabel,
+                    formatRub,
+                    selectQuarter,
+                    handleCalculate,
+                    deleteRisk,
+                    clearQuarter,
+                    quarterlySummaries,
+                    currentViewSummary,
+                    currentViewRisks
+                };
+            }
+        }).mount('#calculator');
+    </script>
+
+</body>
+</html>
