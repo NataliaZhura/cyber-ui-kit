@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><?= pageTitle ?> - Управление финансовым состоянием компании</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://www.gstatic.com/charts/loader.js"></script>
+
+  <style>
+    :root {
+      --app-bg: #f3f6fa;
+      --app-bg-soft: #eef3f8;
+      --app-panel: #ffffff;
+      --app-panel-strong: #ffffff;
+      --app-border: #d8e1ea;
+      --app-border-strong: #1c6397;
+      --app-text: #173b5c;
+      --app-muted: #60778d;
+      --app-muted-2: #8193a3;
+      --app-accent: #1c6397;
+      --app-accent-soft: #e7f0f7;
+      --app-success: #237a4b;
+      --app-warning: #c98a0a;
+      --app-danger: #b52c2c;
+      --app-shadow: 0 8px 24px rgba(23, 59, 92, 0.08);
+      --app-radius: 18px;
+      --app-sidebar-width: 292px;
+      --app-topbar-height: 76px;
+      --font-ui: 'Inter', Arial, sans-serif;
+      --font-display: 'Manrope', Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--app-bg);
+      color: var(--app-text);
+      font-family: var(--font-ui);
+      overflow-x: hidden;
+    }
+
+    body {
+      background: var(--app-bg);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
+    }
+
+    .app-sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 24px 18px;
+      background: #e7eef4;
+      border-right: 1px solid var(--app-border);
+      backdrop-filter: blur(18px);
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      z-index: 10;
+      color: #173b5c;
+    }
+
+    .app-brand {
+      padding: 18px;
+      border: 1px solid var(--app-border);
+      border-radius: var(--app-radius);
+      background: #ffffff;
+      box-shadow: var(--app-shadow);
+    }
+
+    .app-brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: var(--app-accent-soft);
+      color: var(--app-accent);
+      border: 1px solid var(--app-border-strong);
+      font-weight: 900;
+      margin-bottom: 14px;
+    }
+
+    .app-brand-title {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 1.22rem;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+    }
+
+    .app-brand-subtitle {
+      margin: 8px 0 0;
+      color: #60778d;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .app-nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .app-nav-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 48px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      color: #60778d;
+      border: 1px solid transparent;
+      transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .app-nav-link:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.10);
+      border-color: var(--app-border);
+      transform: translateX(2px);
+    }
+
+    .app-nav-link.is-active {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.16);
+      border-color: var(--app-border-strong);
+      box-shadow: 0 14px 35px rgba(0, 217, 255, 0.08);
+    }
+
+    .app-nav-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 255, 255, 0.10);
+      color: currentColor;
+      flex: 0 0 auto;
+      font-size: 0.82rem;
+      font-weight: 900;
+    }
+
+    .app-sidebar-footer {
+      margin-top: auto;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid var(--app-border);
+      color: #60778d;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      background: #ffffff;
+    }
+
+    .app-main {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: var(--app-topbar-height) minmax(0, 1fr);
+    }
+
+    .app-topbar {
+      position: sticky;
+      top: 0;
+      z-index: 8;
+      min-height: var(--app-topbar-height);
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--app-border);
+      backdrop-filter: blur(18px);
+    }
+
+    .app-page-title {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: clamp(1.25rem, 2vw, 1.65rem);
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    .app-page-description {
+      margin: 4px 0 0;
+      color: var(--app-muted);
+      font-size: 0.86rem;
+    }
+
+    .app-top-nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 10px 28px;
+      background: #edf3f8;
+      border-bottom: 1px solid var(--app-border);
+    }
+
+    .app-top-nav-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 7px 11px;
+      border: 1px solid var(--app-border);
+      border-radius: 10px;
+      color: var(--app-muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .app-top-nav-link:hover,
+    .app-top-nav-link.is-active {
+      color: var(--app-text);
+      border-color: var(--app-border-strong);
+      background: var(--app-accent-soft);
+    }
+
+    .aviation-period-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 12px 28px;
+      background: #fff8e8;
+      border-bottom: 1px solid #eadfca;
+      color: var(--app-text);
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .aviation-period-bar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .aviation-period-bar select {
+      min-height: 34px;
+      padding: 6px 10px;
+      border: 1px solid #c9d6e2;
+      border-radius: 9px;
+      background: #ffffff;
+      color: var(--app-text);
+      font: inherit;
+      font-weight: 600;
+    }
+
+    .app-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .app-action-btn {
+      min-height: 40px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--app-border);
+      background: #ffffff;
+      color: var(--app-text);
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease, color 0.2s ease;
+    }
+
+    .app-action-btn:hover {
+      background: var(--app-accent-soft);
+      border-color: var(--app-border-strong);
+      color: var(--app-accent);
+      transform: translateY(-1px);
+    }
+
+    .app-content {
+      min-width: 0;
+      padding: 28px;
+    }
+
+    .page-card {
+      border: 1px solid var(--app-border);
+      border-radius: 24px;
+      background: var(--app-panel);
+      box-shadow: var(--app-shadow);
+      overflow: hidden;
+    }
+
+    .page-card-header {
+      padding: 26px;
+      border-bottom: 1px solid var(--app-border);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .page-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      color: var(--app-accent);
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .page-kicker::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--app-accent);
+      box-shadow: 0 0 22px rgba(0, 217, 255, 0.9);
+    }
+
+    .page-card-title {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: clamp(1.55rem, 3vw, 2.3rem);
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+    }
+
+    .page-card-subtitle {
+      margin: 10px 0 0;
+      color: var(--app-muted);
+      line-height: 1.65;
+      max-width: 760px;
+    }
+
+    .page-status-pill {
+      flex: 0 0 auto;
+      border: 1px solid var(--app-border-strong);
+      background: var(--app-accent-soft);
+      color: var(--app-accent);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 0.76rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .placeholder-grid {
+      padding: 26px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .placeholder-card {
+      min-height: 148px;
+      border: 1px solid var(--app-border);
+      border-radius: 18px;
+      background: #ffffff;
+      padding: 18px;
+      transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    }
+
+    .placeholder-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--app-border-strong);
+      background: rgba(0, 217, 255, 0.06);
+    }
+
+    .placeholder-label {
+      color: var(--app-muted);
+      font-size: 0.75rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .placeholder-value {
+      margin-top: 14px;
+      color: var(--app-text);
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      line-height: 1.2;
+      font-weight: 800;
+    }
+
+    .placeholder-text {
+      margin-top: 10px;
+      color: var(--app-muted);
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+
+    .app-toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      max-width: 340px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--app-border-strong);
+      background: #ffffff;
+      color: var(--app-text);
+      box-shadow: var(--app-shadow);
+      transform: translateY(18px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 50;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .app-toast.is-visible {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .aviation-flat-page {
+      background: #f3f6fa;
+      color: #173b5c;
+      padding-bottom: 8px;
+    }
+
+    .aviation-flat-page .flat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      padding: 22px 26px;
+    }
+
+    .aviation-flat-page .flat-grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .aviation-flat-page .flat-card,
+    .aviation-flat-page .flat-section {
+      border: 1px solid #d8e1ea;
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 4px 14px rgba(23, 59, 92, 0.05);
+    }
+
+    .aviation-flat-page .flat-card {
+      min-height: 112px;
+      padding: 18px;
+    }
+
+    .aviation-flat-page .flat-label {
+      color: #60778d;
+      font-size: 0.88rem;
+    }
+
+    .aviation-flat-page .flat-value {
+      margin-top: 12px;
+      color: #173b5c;
+      font-family: var(--font-display);
+      font-size: 1.55rem;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .aviation-flat-page .flat-note {
+      margin-top: 7px;
+      color: #60778d;
+      font-size: 0.78rem;
+      line-height: 1.4;
+    }
+
+    .aviation-flat-page .flat-section {
+      margin: 0 26px 22px;
+      padding: 22px;
+    }
+
+    .aviation-flat-page .flat-section h4 {
+      margin: 0 0 16px;
+      color: #173b5c;
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+    }
+
+    .aviation-flat-page .flat-table {
+      width: 100%;
+      border-collapse: collapse;
+      color: #173b5c;
+    }
+
+    .aviation-flat-page .flat-table th,
+    .aviation-flat-page .flat-table td {
+      padding: 11px 10px;
+      border-bottom: 1px solid #e2e8ef;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .aviation-flat-page .flat-table th {
+      background: #edf3f8;
+      font-weight: 800;
+    }
+
+    .aviation-flat-page .flat-alert {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border-left: 5px solid #c98a0a;
+      border-radius: 8px;
+      background: #fff8e8;
+      color: #8a5a00;
+      line-height: 1.5;
+    }
+
+    .aviation-flat-page .flat-alert.danger {
+      border-left-color: #b52c2c;
+      background: #fff0f0;
+      color: #a32626;
+    }
+
+    .aviation-flat-page .flat-alert.success {
+      border-left-color: #237a4b;
+      background: #edf8f0;
+      color: #237a4b;
+    }
+
+    .aviation-flat-page .flat-negative { color: #b52c2c; font-weight: 800; }
+    .aviation-flat-page .flat-positive { color: #237a4b; font-weight: 800; }
+
+    @media (max-width: 1000px) {
+      .aviation-flat-page .flat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 650px) {
+      .aviation-flat-page .flat-grid,
+      .aviation-flat-page .flat-grid.two { grid-template-columns: 1fr; padding: 18px; }
+      .aviation-flat-page .flat-section { margin-left: 18px; margin-right: 18px; padding: 18px; overflow-x: auto; }
+      .aviation-flat-page .flat-table { min-width: 620px; }
+    }
+
+    @media (max-width: 768px) {
+      :root {
+        --app-sidebar-width: 100%;
+        --app-topbar-height: auto;
+      }
+
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .app-sidebar {
+        position: relative;
+        height: auto;
+        padding: 16px;
+        border-right: 0;
+        border-bottom: 1px solid var(--app-border);
+      }
+
+      .app-brand {
+        padding: 16px;
+      }
+
+      .app-nav {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .app-nav-link {
+        min-height: 74px;
+        flex-direction: column;
+        justify-content: center;
+        text-align: center;
+        gap: 8px;
+        padding: 10px 8px;
+      }
+
+      .app-nav-icon {
+        width: 28px;
+        height: 28px;
+      }
+
+      .app-sidebar-footer {
+        display: none;
+      }
+
+      .app-main {
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+
+      .app-topbar {
+        position: relative;
+        align-items: flex-start;
+        padding: 18px 16px;
+        flex-direction: column;
+      }
+
+      .app-top-nav {
+        padding: 10px 16px;
+      }
+
+      .app-actions {
+        width: 100%;
+        justify-content: stretch;
+      }
+
+      .app-action-btn {
+        flex: 1 1 0;
+      }
+
+      .app-content {
+        padding: 16px;
+      }
+
+      .page-card-header {
+        flex-direction: column;
+        padding: 22px;
+      }
+
+      .placeholder-grid {
+        grid-template-columns: 1fr;
+        padding: 22px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .app-brand-title {
+        font-size: 1.05rem;
+      }
+
+      .app-brand-subtitle {
+        font-size: 0.82rem;
+      }
+
+      .app-nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .app-nav-link {
+        min-height: 58px;
+        flex-direction: row;
+        justify-content: flex-start;
+        text-align: left;
+      }
+
+      .app-action-btn {
+        flex: 1 1 100%;
+      }
+
+      .page-card {
+        border-radius: 18px;
+      }
+
+      .page-card-header,
+      .placeholder-grid {
+        padding: 18px;
+      }
+
+      .page-status-pill {
+        white-space: normal;
+      }
+    }
+  </style>
+</head>
+
+<body data-page="<?= pageKey ?>">
+  <div class="app-shell">
+    <aside class="app-sidebar" aria-label="Главное меню">
+      <section class="app-brand">
+        <div class="app-brand-mark">ФС</div>
+        <h1 class="app-brand-title">Управление финансовым состоянием компании</h1>
+        <p class="app-brand-subtitle">Управляй финансами легко</p>
+      </section>
+
+      <nav class="app-nav">
+        <? navItems.forEach(function(item, index) { ?>
+          <a
+            class="app-nav-link <?= item.key === pageKey ? 'is-active' : '' ?>"
+            href="<?= item.url ?>"
+            aria-current="<?= item.key === pageKey ? 'page' : 'false' ?>"
+            title="<?= item.fullTitle ?>"
+          >
+            <span class="app-nav-icon"><?= index + 1 ?></span>
+            <span><?= item.title ?></span>
+          </a>
+        <? }); ?>
+      </nav>
+
+      <div class="app-sidebar-footer">
+        Источник: <?= appConfig.spreadsheetName ?>. Производные показатели берутся из API единого источника.
+      </div>
+    </aside>
+
+    <main class="app-main">
+      <header class="app-topbar">
+        <div>
+          <h2 class="app-page-title"><?= pageTitle ?></h2>
+          <p class="app-page-description"><?= pageDescription ?></p>
+        </div>
+
+        <div class="app-actions" aria-label="Действия">
+          <button class="app-action-btn" type="button" data-action="refresh">Обновить</button>
+          <button class="app-action-btn" type="button" data-action="settings">Настройки</button>
+          <button class="app-action-btn" type="button" data-action="logout">Выход</button>
+        </div>
+      </header>
+
+      <nav class="app-top-nav" aria-label="Переключение страниц">
+        <? navItems.forEach(function(item) { ?>
+          <a class="app-top-nav-link <?= item.key === pageKey ? 'is-active' : '' ?>" href="<?= item.url ?>"><?= item.title ?></a>
+        <? }); ?>
+      </nav>
+
+      <div class="aviation-period-bar" aria-label="Расчетный период">
+        <span>Период расчета:</span>
+        <label>Тип <select id="aviation-period-type"><option value="year">Год</option><option value="quarter">Квартал</option></select></label>
+        <label>Год <select id="aviation-period-year"><? availableYears.forEach(function(itemYear) { ?><option value="<?= itemYear ?>"><?= itemYear ?></option><? }); ?></select></label>
+        <label id="aviation-period-quarter-wrap" style="display:none">Квартал <select id="aviation-period-quarter"><option value="1">I квартал</option><option value="2">II квартал</option><option value="3">III квартал</option><option value="4">IV квартал</option></select></label>
+        <button id="aviation-period-apply" type="button">Показать</button>
+        <span id="aviation-period-note" style="font-weight:500;color:#60778d"></span>
+      </div>
+
+      <section class="app-content">
+        <?!= include(contentFile); ?>
+      </section>
+    </main>
+  </div>
+
+  <div class="app-toast" id="appToast" role="status" aria-live="polite"></div>
+
+  <script>
+    (function () {
+      const toast = document.getElementById('appToast');
+      const pageKey = document.body.dataset.page || 'dashboard';
+      const appUrl = '<?= appUrl ?>';
+      const aviationPeriod = <?!= JSON.stringify(initialPeriod) ?>;
+      window.AVIATION_PERIOD = aviationPeriod;
+      const chartsCallbacks = [];
+      let chartsReady = false;
+      let chartsFailed = false;
+      const messages = {
+        refresh: 'Обновление будет подключено на этапе чтения данных из Google Sheets.',
+        settings: 'Настройки будут добавлены после утверждения структуры расчетов.',
+        logout: 'Выход является заглушкой. Для публичного web-app авторизация будет определена отдельно.'
+      };
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('is-visible');
+        window.clearTimeout(showToast.timer);
+        showToast.timer = window.setTimeout(function () {
+          toast.classList.remove('is-visible');
+        }, 2800);
+      }
+
+      document.querySelectorAll('[data-action]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          const action = button.getAttribute('data-action');
+          showToast(messages[action] || 'Функция будет подключена позже.');
+        });
+      });
+
+      function updatePeriodLinks() {
+        document.querySelectorAll('.app-nav-link, .app-top-nav-link').forEach(function (link) {
+          const url = new URL(link.href, window.location.href);
+          url.searchParams.set('periodType', aviationPeriod.periodType);
+          url.searchParams.set('year', String(aviationPeriod.year));
+          if (aviationPeriod.periodType === 'quarter') url.searchParams.set('quarter', String(aviationPeriod.quarter));
+          else url.searchParams.delete('quarter');
+          link.href = url.toString();
+        });
+      }
+
+      function applyPeriodFromControls() {
+        aviationPeriod.periodType = document.getElementById('aviation-period-type').value;
+        aviationPeriod.year = Number(document.getElementById('aviation-period-year').value || 2024);
+        aviationPeriod.quarter = Number(document.getElementById('aviation-period-quarter').value || 1);
+        const query = new URLSearchParams();
+        query.set('page', pageKey);
+        query.set('periodType', aviationPeriod.periodType);
+        query.set('year', String(aviationPeriod.year));
+        if (aviationPeriod.periodType === 'quarter') query.set('quarter', String(aviationPeriod.quarter));
+        const nextUrl = appUrl + '?' + query.toString();
+        window.location.assign(nextUrl);
+      }
+
+      const periodTypeEl = document.getElementById('aviation-period-type');
+      const periodYearEl = document.getElementById('aviation-period-year');
+      const periodQuarterEl = document.getElementById('aviation-period-quarter');
+      const periodQuarterWrap = document.getElementById('aviation-period-quarter-wrap');
+      const periodNoteEl = document.getElementById('aviation-period-note');
+      const periodApplyEl = document.getElementById('aviation-period-apply');
+      if (periodTypeEl && periodYearEl && periodQuarterEl && periodQuarterWrap && periodNoteEl && periodApplyEl) {
+        periodTypeEl.value = aviationPeriod.periodType;
+        periodYearEl.value = String(aviationPeriod.year);
+        periodQuarterEl.value = String(aviationPeriod.quarter);
+        periodQuarterWrap.style.display = aviationPeriod.periodType === 'quarter' ? 'inline-flex' : 'none';
+        periodNoteEl.textContent = aviationPeriod.periodType === 'quarter'
+          ? 'Доступны только квартальные строки, загруженные в отчетность.'
+          : 'Доступны только годы с загруженной отчетностью.';
+        periodTypeEl.addEventListener('change', function () {
+          periodQuarterWrap.style.display = periodTypeEl.value === 'quarter' ? 'inline-flex' : 'none';
+        });
+        periodApplyEl.addEventListener('click', applyPeriodFromControls);
+      }
+      updatePeriodLinks();
+
+      function flushChartsCallbacks(error) {
+        while (chartsCallbacks.length) {
+          const callback = chartsCallbacks.shift();
+          callback(error || null);
+        }
+      }
+
+      function onChartsReady(callback) {
+        if (typeof callback !== 'function') {
+          return;
+        }
+
+        if (chartsReady) {
+          callback(null);
+          return;
+        }
+
+        if (chartsFailed) {
+          callback(new Error('Библиотека графиков не загрузилась в отведенное время.'));
+          return;
+        }
+
+        chartsCallbacks.push(callback);
+      }
+
+      window.onChartsReady = onChartsReady;
+
+      if (window.google && google.charts) {
+        const chartTimeout = window.setTimeout(function () {
+          if (!chartsReady) {
+            chartsFailed = true;
+            flushChartsCallbacks(new Error('Таймаут загрузки библиотеки графиков.'));
+          }
+        }, 8000);
+
+        google.charts.load('current', { packages: ['corechart', 'bar', 'line'] });
+        google.charts.setOnLoadCallback(function () {
+          if (chartsFailed) {
+            return;
+          }
+
+          window.clearTimeout(chartTimeout);
+          chartsReady = true;
+          flushChartsCallbacks(null);
+        });
+      } else {
+        chartsFailed = true;
+        flushChartsCallbacks(new Error('Google Charts loader недоступен.'));
+      }
+
+      window.AppShell = {
+        pageKey: pageKey,
+        showToast: showToast
+      };
+    })();
+  </script>
+</body>
+</html>
