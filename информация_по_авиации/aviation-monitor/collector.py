@@ -341,17 +341,25 @@ def apply_threads(groups, cfg):
     return out
 
 
+def word_start(words):
+    """Совпадение только с начала слова: «флот» не находится в «Аэрофлот», «списан» — в «расписание»."""
+    return re.compile(r"(?<![а-яёa-z0-9])(?:" + "|".join(re.escape(w.strip()) for w in words if w.strip()) + ")")
+
+
 def section_of(title, summ, cfg):
-    """Раздел справки: первый подходящий по приоритету (суды → сделки → имущество → …)."""
+    """Раздел справки: первый подходящий по приоритету (суды → финансы → сделки → имущество → …)."""
     low = f"{title} {summ}".lower()
     head = title.lower()
-    for sec in cfg["sections"]:
-        words = sec.get("words", [])
-        if any(x in head for x in words):
-            return sec["name"]
-    for sec in cfg["sections"]:  # в заголовке не нашлось — смотрим текст
-        if any(x in low for x in sec.get("words", [])):
-            return sec["name"]
+    military = any(x in head for x in cfg.get("military_words", []))
+    # атака дронов — это сбой перевозок, а не имущество в виде БПЛА
+    pats = [(sec["name"], word_start(sec.get("words", []))) for sec in cfg["sections"]
+            if not (military and sec["name"] == "Вертолёты и БПЛА")]
+    for name, pat in pats:
+        if pat.search(head):
+            return name
+    for name, pat in pats:  # в заголовке не нашлось — смотрим текст
+        if pat.search(low):
+            return name
     return "Прочее"
 
 
