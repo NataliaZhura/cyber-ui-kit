@@ -185,6 +185,10 @@ def tag_item(title, summ, cfg, watch):
                 or avia.search(head)
                 # санкции важны для любой отрасли, даже если авиация в заголовке не названа
                 or any(x in head for x in cfg.get("always_relevant", [])))
+    # военные сводки про дроны и ПВО — не про рынок; оставляем, только если задета гражданская авиация
+    if aviation and any(x in head for x in cfg.get("military_words", [])):
+        aviation = (any(a.lower() in head for w in watch for a in w["aliases"])
+                    or any(x in head for x in cfg.get("civil_override", [])))
     score = 1 + 3 * len(ents) + 3 * len(risks) + len(assets) if aviation else 0
     return ents, assets, risks, score
 
