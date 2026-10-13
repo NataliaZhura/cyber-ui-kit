@@ -44,7 +44,7 @@ def item_html(g, num):
     pub, src, title, summ, url = g["main"][:5]
     head = f"<b>Сюжет «{e(g['thread'])}»</b> ({len(g['items'])} новостей), последняя: " if g.get("thread") else ""
     also = f" · ещё {len(g['also'])} ист." if g.get("also") else ""
-    return (f"<li><span class='num'>{num}</span>{head}<a href='{e(url)}' target='_blank' rel='noopener'>{e(title)}</a>"
+    return (f"<li><span class='num'>{num}</span>{head}<a href='{e(url)}' target='_blank' rel='noopener'>{e(C.clean_title(title))}</a>"
             f" <span class='line'>— {e(C.fmt_dt(pub))}, {e(src)}{also}</span></li>")
 
 

@@ -355,6 +355,17 @@ def section_of(title, summ, cfg):
     return "Прочее"
 
 
+def clean_title(title):
+    """Убирает хвост « - Forbes.ru», который добавляет поиск новостей."""
+    return re.sub(r"\s[-–—]\s(?!.*\s[-–—]\s).{2,40}$", "", title).strip()
+
+
+def useful_summary(title, summ):
+    """Анонс показываем, только если он добавляет что-то к заголовку."""
+    t, s = clean_title(title).lower(), (summ or "").lower().strip()
+    return "" if not s or s.startswith(t[:60]) or t.startswith(s[:60]) else summ
+
+
 def level(score):
     return ("высокий", "🔴") if score >= 7 else ("средний", "🟡") if score >= 4 else ("фон", "⚪")
 
@@ -387,7 +398,7 @@ def render_md(meta, sections, out):
             p(f"- {fmt_dt(pub)} · {src} · приоритет: {lv[0]} ({score})")
             for h in g.get("items", [])[1:6]:
                 p(f"  - ранее {fmt_dt(h['main'][0])}: {h['main'][2]} — {h['main'][4]}")
-            if summ and summ.strip() != title.strip():
+            if useful_summary(title, summ):
                 p(f"- {summ[:600]}")
             p(f"- {url}")
             if g["also"]:
@@ -464,7 +475,11 @@ def render_html(meta, sections, out):
         w(f"<li><a href='#s{si}'>{e(name)}</a> <span class='n'>— {len(items)}</span></li>")
     w("</ol></nav>")
     for si, (name, items) in enumerate(sections, 1):
-        w(f"<h2 id='s{si}'>{si}. {e(name)} <span class='n'>· {len(items)}</span></h2>")
+        if name == "Прочее" and items:
+            w(f"<h2 id='s{si}'>{si}. {e(name)} <span class='n'>· {len(items)}</span></h2>"
+              "<details><summary>Новости без явного отношения к рискам — открыть</summary>")
+        else:
+            w(f"<h2 id='s{si}'>{si}. {e(name)} <span class='n'>· {len(items)}</span></h2>")
         if not items:
             w("<p class='empty'>Существенных новостей нет.</p>")
             continue
@@ -476,10 +491,10 @@ def render_html(meta, sections, out):
             if g.get("thread"):
                 w(f"<div class='thread'>Сюжет «{e(g['thread'])}» · {len(g['items'])} новостей за период</div>")
             w(f"<h3><span class='num'>{si}.{ii}</span>"
-              f"<a href='{e(url)}' target='_blank' rel='noopener'>{e(title)}</a></h3>")
+              f"<a href='{e(url)}' target='_blank' rel='noopener'>{e(clean_title(title))}</a></h3>")
             w(f"<div class='line'>{e(fmt_dt(pub))} · {e(src)}"
               f"<span class='tag {cls}'>{lv[1]} {e(lv[0])}</span></div>")
-            if summ and summ.strip() != title.strip():
+            if useful_summary(title, summ):
                 w(f"<p class='sum'>{e(summ[:600])}</p>")
             if g.get("items", [])[1:]:
                 w("<details class='also'><summary>Хронология сюжета</summary><ul>" + "".join(
@@ -490,6 +505,8 @@ def render_html(meta, sections, out):
                                   for r in g["also"][:8])
                 w(f"<p class='also'>Также писали ({len(g['also'])}): {links}</p>")
             w("</article>")
+        if name == "Прочее" and items:
+            w("</details>")
     w(f"<footer>Источники: открытые СМИ, сайты ведомств, поиск новостей, публичные Telegram-каналы. "
       f"Каждый факт проверяйте по ссылке на первоисточник. Сформировано {e(meta['made'])} МСК.</footer>")
     w("</main></body></html>")
