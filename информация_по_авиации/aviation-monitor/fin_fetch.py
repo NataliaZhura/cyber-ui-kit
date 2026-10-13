@@ -10,10 +10,23 @@
 import json
 import sys
 import urllib.parse
+import urllib.error
 import urllib.request
 from datetime import date
 
 UA = "Mozilla/5.0 (X11; Linux x86_64) AviationMonitor/1.0"
+
+
+def peek(url, timeout=30):
+    """Что сервер отвечает на самом деле: код, тип содержимого, начало ответа."""
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/json",
+                                               "Referer": "https://bo.nalog.ru/"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read(400).decode("utf-8", "replace")
+            return r.status, r.headers.get("Content-Type", ""), body
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("Content-Type", ""), e.read(400).decode("utf-8", "replace")
 
 
 def get_json(url, timeout=30):
@@ -34,17 +47,14 @@ def num(v):
         return None
 
 
-def cmd_moex(query):
+def moex_bonds(query):
+    """Облигации эмитента на Мосбирже: список выпусков и сумма рублёвых в обращении по номиналу, млрд ₽."""
     url = ("https://iss.moex.com/iss/securities.json?iss.meta=off&limit=100&q="
            + urllib.parse.quote(query))
     _, data = get_json(url)
     found = [r for r in iss_rows(data["securities"]) if "bond" in str(r.get("group", ""))]
-    if not found:
-        print(f"Облигаций по запросу «{query}» не найдено. Найдено бумаг всего: {len(data['securities']['data'])}")
-        return
     today = date.today().isoformat()
-    total = 0.0
-    print(f"{'SECID':14} {'Выпуск':32} {'Объём, млрд':>11} {'Погашение':>10} {'Купон,%':>7}")
+    out, total = [], 0.0
     for r in found:
         _, d = get_json(f"https://iss.moex.com/iss/securities/{r['secid']}.json?iss.meta=off")
         desc = {x["name"]: x.get("value") for x in iss_rows(d["description"])}
@@ -53,11 +63,24 @@ def cmd_moex(query):
         mat = desc.get("MATDATE") or ""
         bln = size * face / 1e9 if size and face else None
         live = bool(mat) and mat >= today
-        if bln and live and cur in ("RUB", "SUR"):
+        rub = cur in ("RUB", "SUR")
+        if bln and live and rub:
             total += bln
-        print(f"{r['secid']:14} {str(desc.get('SHORTNAME') or r.get('shortname'))[:32]:32} "
-              f"{(f'{bln:.1f}' if bln else '—'):>11} {mat:>10} {str(desc.get('COUPONPERCENT') or '—'):>7}"
-              f"{'' if live else '  (погашен)'}{'' if cur in ('RUB', 'SUR') else f'  ({cur})'}")
+        out.append({"secid": r["secid"], "name": str(desc.get("SHORTNAME") or r.get("shortname")),
+                    "bln": bln, "mat": mat, "coupon": desc.get("COUPONPERCENT"), "live": live, "cur": cur})
+    return out, total
+
+
+def cmd_moex(query):
+    rows, total = moex_bonds(query)
+    if not rows:
+        print(f"Облигаций по запросу «{query}» не найдено.")
+        return
+    print(f"{'SECID':14} {'Выпуск':32} {'Объём, млрд':>11} {'Погашение':>10} {'Купон,%':>7}")
+    for b in rows:
+        size = f"{b['bln']:.1f}" if b["bln"] else "—"
+        note = ("" if b["live"] else "  (погашен)") + ("" if b["cur"] in ("RUB", "SUR") else f"  ({b['cur']})")
+        print(f"{b['secid']:14} {b['name'][:32]:32} {size:>11} {b['mat']:>10} {str(b['coupon'] or '—'):>7}{note}")
     print(f"\nВ обращении рублёвых выпусков по номиналу: {total:.1f} млрд ₽ "
           f"(объём выпуска × номинал; без учёта досрочных выкупов и амортизации)")
 
@@ -78,6 +101,11 @@ def cmd_girbo(inn):
             org_id = org_id or first.get("id")
         except Exception as e:  # noqa: BLE001 — для разведки важна любая причина
             print(f"FAIL {url} -> {type(e).__name__}: {e}")
+            try:
+                st, ctype, body = peek(url)
+                print(f"   ответ: код {st}, тип {ctype}\n   начало: {' '.join(body.split())[:300]}")
+            except Exception as e2:  # noqa: BLE001
+                print(f"   не удалось прочитать ответ: {type(e2).__name__}: {e2}")
     if not org_id:
         print("\nОрганизация не найдена или формат другой — пришли этот вывод.")
         return

@@ -649,6 +649,8 @@ def main():
     k.add_argument("--min-score", type=int, default=1)
     k.add_argument("--limit", type=int, default=500)
     k.add_argument("--summary", default="", help="файл с текстом вывода (пишет агент)")
+    k.add_argument("--moex", default="", help="как искать облигации на Мосбирже (по умолчанию — первое название)")
+    k.add_argument("--no-moex", action="store_true", help="не запрашивать Мосбиржу")
     k.add_argument("--out", default="")
     k.set_defaults(fn=lambda a: __import__("card").cmd_card(a))
     sub.add_parser("stats").set_defaults(fn=cmd_stats)

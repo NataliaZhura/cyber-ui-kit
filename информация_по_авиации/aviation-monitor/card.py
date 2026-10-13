@@ -105,7 +105,26 @@ def render(a, meta, sections, groups, fin_rows, summary, out):
         w("</tbody></table>")
 
     # 3. Заимствования
-    w("<h2>3. Новые заимствования</h2>")
+    w("<h2>3. Долг на бирже и новые заимствования</h2>")
+    bonds = getattr(a, "bonds", None)
+    if bonds is not None:
+        rows, total = bonds
+        live = [b for b in rows if b["live"]]
+        if live:
+            w(f"<div class='box'><span class='big'>{fmt(total)} млрд ₽</span> — облигации в обращении по номиналу "
+              f"(Мосбиржа, на {e(meta['made'][:10])})")
+            if last_debt:
+                w(f"<br>Это <b>{total / last_debt * 100:.0f}%</b> долга на конец последнего отчётного периода "
+                  f"({fmt(last_debt)} млрд ₽). Расчёт: {fmt(total)} / {fmt(last_debt)}.")
+            w("</div><table><thead><tr><th>Выпуск</th><th>Объём, млрд ₽</th><th>Погашение</th><th>Купон, %</th>"
+              "</tr></thead><tbody>" + "".join(
+                  f"<tr><td>{e(b['name'])} <span class='line'>{e(b['secid'])}</span></td><td>{fmt(b['bln'])}</td>"
+                  f"<td>{e(b['mat'])}</td><td>{e(str(b['coupon'] or '—'))}</td></tr>" for b in live)
+              + "</tbody></table><p class='cap'>Объём выпуска × номинал, без учёта досрочных выкупов и амортизации. "
+              "Прочерк в купоне — ставка не указана в описании выпуска (часто плавающий купон).</p>")
+        else:
+            w("<p class='empty'>Облигаций в обращении на Мосбирже не найдено.</p>")
+    w("<h3 style='margin:12px 0 4px'>Новые заимствования из новостей за период</h3>")
     bor = F.borrowings(groups)
     if not bor:
         w("<p class='empty'>За период в новостях нет сумм по облигациям и кредитам.</p>")
@@ -165,6 +184,13 @@ def cmd_card(a):
     names = [n.strip() for n in a.entity.split(",") if n.strip()]
     fin = F.load(names)
     summary = open(a.summary, encoding="utf-8-sig").read() if a.summary else ""
+    a.bonds = None
+    if not a.no_moex:
+        try:
+            import fin_fetch
+            a.bonds = fin_fetch.moex_bonds(a.moex or names[0])
+        except Exception as ex:  # noqa: BLE001 — биржа недоступна: карточка без этого блока
+            print(f"Мосбиржа недоступна: {type(ex).__name__}: {ex}")
     out = a.out or f"{names[0]}_карточка.html"
     with open(out, "w", encoding="utf-8") as f:
         render(a, meta, sections, groups, fin, summary, f)
