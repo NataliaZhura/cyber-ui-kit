@@ -117,14 +117,18 @@ def title_key(title):
     return re.sub(r"[^a-zа-яё0-9]+", "", t)[:120]
 
 
-def tag_item(text, cfg, watch):
-    low = text.lower()
+def tag_item(title, summ, cfg, watch):
+    low = f"{title} {summ}".lower()
+    head = title.lower()
     ents = [w["name"] for w in watch if any(a.lower() in low for a in w["aliases"])]
     assets = [k for k, words in cfg["assets"].items() if any(x in low for x in words)]
     risks = [k for k, words in cfg["risks"].items() if any(x in low for x in words)]
-    aviation = ents or assets or any(x in low for x in cfg.get("aviation_words", []))
-    # без связи с авиацией новость не важна, какие бы рисковые слова в ней ни были
-    score = 3 * len(ents) + 3 * len(risks) + len(assets) if aviation else 0
+    # про авиацию должен быть сам заголовок: упоминание мимоходом в тексте не считается
+    avia = re.compile(r"(?<![а-яёa-z0-9])(?:" + "|".join(map(re.escape, cfg.get("aviation_words", []))) + ")")
+    aviation = (any(a.lower() in head for w in watch for a in w["aliases"])
+                or any(x in head for words in cfg["assets"].values() for x in words)
+                or avia.search(head))
+    score = 1 + 3 * len(ents) + 3 * len(risks) + len(assets) if aviation else 0
     return ents, assets, risks, score
 
 
@@ -172,7 +176,7 @@ def cmd_collect(a):
             tk = title_key(title)
             if con.execute("SELECT 1 FROM news WHERE title_key=?", (tk,)).fetchone():
                 continue
-            ents, assets, risks, score = tag_item(f"{title} {summ}", cfg, watch)
+            ents, assets, risks, score = tag_item(title, summ, cfg, watch)
             src = name if not name.startswith("Поиск:") else re.split(r"\s[-–—]\s", title)[-1]
             cur = con.execute(
                 "INSERT OR IGNORE INTO news VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -219,7 +223,7 @@ def cmd_rescore(_):
     con = db()
     rows = con.execute("SELECT id, title, summary FROM news").fetchall()
     for nid, title, summ in rows:
-        ents, assets, risks, score = tag_item(f"{title} {summ}", cfg, watch)
+        ents, assets, risks, score = tag_item(title, summ, cfg, watch)
         con.execute("UPDATE news SET entities=?, assets=?, risks=?, score=? WHERE id=?",
                     (", ".join(ents), ", ".join(assets), ", ".join(risks), score, nid))
     con.commit()
