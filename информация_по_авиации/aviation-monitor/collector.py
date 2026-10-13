@@ -292,7 +292,137 @@ def group_stories(rows):
     return groups
 
 
+def section_of(title, summ, cfg):
+    """Раздел справки: первый подходящий по приоритету (суды → сделки → имущество → …)."""
+    low = f"{title} {summ}".lower()
+    head = title.lower()
+    for sec in cfg["sections"]:
+        words = sec.get("words", [])
+        if any(x in head for x in words):
+            return sec["name"]
+    for sec in cfg["sections"]:  # в заголовке не нашлось — смотрим текст
+        if any(x in low for x in sec.get("words", [])):
+            return sec["name"]
+    return "Прочее"
+
+
+def level(score):
+    return ("высокий", "🔴") if score >= 7 else ("средний", "🟡") if score >= 4 else ("фон", "⚪")
+
+
+def fmt_dt(iso):
+    d = datetime.fromisoformat(iso).astimezone(MSK)
+    return d.strftime("%d.%m.%Y %H:%M")
+
+
+def fmt_d(s):
+    return date.fromisoformat(s).strftime("%d.%m.%Y")
+
+
+def render_md(meta, sections, out):
+    p = functools.partial(builtins.print, file=out)
+    p(f"# {meta['title']}")
+    p(f"Период: {meta['period']} · Выгрузка: {meta['made']} МСК")
+    p(f"Сюжетов: {meta['n_groups']} (публикаций: {meta['n_rows']}). Повторы из разных источников склеены.\n")
+    for si, (name, items) in enumerate(sections, 1):
+        p(f"## {si}. {name} — {len(items)}")
+        if not items:
+            p("Существенных новостей нет.\n")
+            continue
+        for ii, g in enumerate(items, 1):
+            pub, src, title, summ, url, ents, assets, risks, score = g["main"]
+            lv = level(score)
+            p(f"### {si}.{ii}. {lv[1]} {title}")
+            p(f"- {fmt_dt(pub)} · {src} · приоритет: {lv[0]} ({score})")
+            if summ and summ.strip() != title.strip():
+                p(f"- {summ[:600]}")
+            p(f"- {url}")
+            if g["also"]:
+                p(f"- также писали ({len(g['also'])}): " + "; ".join(f"{r[1]} {r[4]}" for r in g["also"][:5]))
+            p()
+
+
+HTML_CSS = """
+:root{--ink:#1b1f24;--muted:#5f6b7a;--line:#d9dee5;--bg:#ffffff;--soft:#f4f6f9;--accent:#0b4f8a;
+--red:#b42318;--amber:#b54708;--grey:#667085}
+@media (prefers-color-scheme: dark){:root{--ink:#e6e9ee;--muted:#9aa4b2;--line:#323843;--bg:#16191e;--soft:#1e232a;--accent:#7cb4ec;
+--red:#f97066;--amber:#fdb022;--grey:#98a2b3}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",Arial,sans-serif}
+main{max-width:920px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:24px;margin:0 0 6px}
+.meta{color:var(--muted);font-size:13px;display:flex;flex-wrap:wrap;gap:4px 18px;margin-bottom:18px}
+.meta b{color:var(--ink);font-weight:600}
+.legend{font-size:12px;color:var(--muted);margin:-8px 0 18px}
+nav{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin-bottom:26px}
+nav ol{margin:0;padding-left:22px;columns:2;column-gap:28px}
+nav li{margin:2px 0}
+nav a{color:var(--accent);text-decoration:none}
+nav .n{color:var(--muted)}
+h2{font-size:18px;margin:30px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--accent)}
+h2 .n{color:var(--muted);font-weight:400}
+.empty{color:var(--muted);font-style:italic;margin:6px 0 0}
+article{border-left:4px solid var(--grey);padding:8px 0 8px 14px;margin:0 0 14px}
+article.hi{border-color:var(--red)} article.mid{border-color:var(--amber)}
+.num{font-weight:700;color:var(--muted);margin-right:6px;font-variant-numeric:tabular-nums}
+h3{font-size:15.5px;margin:0 0 4px;font-weight:600}
+h3 a{color:var(--ink);text-decoration:none} h3 a:hover{text-decoration:underline}
+.line{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tag{display:inline-block;font-size:11.5px;padding:0 7px;border-radius:9px;margin-left:6px;border:1px solid currentColor}
+.tag.hi{color:var(--red)} .tag.mid{color:var(--amber)} .tag.lo{color:var(--grey)}
+.sum{margin:5px 0 0;font-size:14px}
+.also{margin:5px 0 0;font-size:12.5px;color:var(--muted)}
+.also a{color:var(--accent)}
+footer{margin-top:36px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+@media print{nav{break-after:page} article{break-inside:avoid} a{color:inherit}}
+@media (max-width:600px){nav ol{columns:1}}
+"""
+
+
+def render_html(meta, sections, out):
+    e = html.escape
+    w = out.write
+    w(f"<!doctype html><html lang='ru'><head><meta charset='utf-8'>"
+      f"<meta name='viewport' content='width=device-width,initial-scale=1'><title>{e(meta['title'])}</title>"
+      f"<style>{HTML_CSS}</style></head><body><main>")
+    w(f"<h1>{e(meta['title'])}</h1><div class='meta'>"
+      f"<span>Период: <b>{e(meta['period'])}</b></span>"
+      f"<span>Выгрузка: <b>{e(meta['made'])} МСК</b></span>"
+      f"<span>Сюжетов: <b>{meta['n_groups']}</b> (публикаций: {meta['n_rows']})</span></div>")
+    w("<div class='legend'>Приоритет рассчитан по ключевым словам и служит для сортировки, "
+      "это не оценка кредитного риска. 🔴 высокий · 🟡 средний · ⚪ фон. "
+      "Одна новость из разных источников показана один раз.</div>")
+    w("<nav><ol>")
+    for si, (name, items) in enumerate(sections, 1):
+        w(f"<li><a href='#s{si}'>{e(name)}</a> <span class='n'>— {len(items)}</span></li>")
+    w("</ol></nav>")
+    for si, (name, items) in enumerate(sections, 1):
+        w(f"<h2 id='s{si}'>{si}. {e(name)} <span class='n'>· {len(items)}</span></h2>")
+        if not items:
+            w("<p class='empty'>Существенных новостей нет.</p>")
+            continue
+        for ii, g in enumerate(items, 1):
+            pub, src, title, summ, url, ents, assets, risks, score = g["main"]
+            lv = level(score)
+            cls = {"высокий": "hi", "средний": "mid"}.get(lv[0], "lo")
+            w(f"<article class='{cls}'><h3><span class='num'>{si}.{ii}</span>"
+              f"<a href='{e(url)}' target='_blank' rel='noopener'>{e(title)}</a></h3>")
+            w(f"<div class='line'>{e(fmt_dt(pub))} · {e(src)}"
+              f"<span class='tag {cls}'>{lv[1]} {e(lv[0])}</span></div>")
+            if summ and summ.strip() != title.strip():
+                w(f"<p class='sum'>{e(summ[:600])}</p>")
+            if g["also"]:
+                links = ", ".join(f"<a href='{e(r[4])}' target='_blank' rel='noopener'>{e(r[1])}</a>"
+                                  for r in g["also"][:8])
+                w(f"<p class='also'>Также писали ({len(g['also'])}): {links}</p>")
+            w("</article>")
+    w(f"<footer>Источники: открытые СМИ, сайты ведомств, поиск новостей, публичные Telegram-каналы. "
+      f"Каждый факт проверяйте по ссылке на первоисточник. Сформировано {e(meta['made'])} МСК.</footer>")
+    w("</main></body></html>")
+
+
 def cmd_export(a):
+    cfg, _ = load_config()
     con = db()
     d_from = a.date_from
     d_to = (date.fromisoformat(a.date_to) + timedelta(days=1)).isoformat()
@@ -304,27 +434,25 @@ def cmd_export(a):
         names = [n.strip().lower() for n in a.entity.split(",") if n.strip()]
         rows = [r for r in rows if any(n in f"{r[2]} {r[3]} {r[5]}".lower() for n in names)]
     groups = group_stories(rows)[:a.limit]
-    out = open(a.out, "w", encoding="utf-8-sig") if a.out else sys.stdout
-    print = functools.partial(builtins.print, file=out)  # noqa: A001 — пишем в файл или на экран
-    head = f"# Новости {a.date_from} — {a.date_to}"
-    if a.entity:
-        head += f" · {a.entity}"
-    print(f"{head}: {len(groups)} сюжетов из {len(rows)} публикаций (сверху самые важные)\n")
+    order = [s["name"] for s in cfg["sections_display"]]
+    buckets = {n: [] for n in order}
     for g in groups:
-        pub, src, title, summ, url, ents, assets, risks, score = g["main"]
-        print(f"## [{score}] {title}")
-        print(f"- дата: {pub[:16].replace('T', ' ')} | источник: {src}")
-        if ents or assets or risks:
-            print(f"- компании: {ents or '—'} | активы: {assets or '—'} | риски: {risks or '—'}")
-        if summ:
-            print(f"- кратко: {summ[:600]}")
-        print(f"- ссылка: {url}")
-        if g["also"]:
-            print(f"- также писали ({len(g['also'])}): " + "; ".join(f"{r[1]} {r[4]}" for r in g["also"][:5]))
-        print()
+        sec = section_of(g["main"][2], g["main"][3], cfg)
+        buckets.setdefault(sec, []).append(g)
+    for items in buckets.values():  # внутри раздела: сначала важнее, при равенстве — свежее
+        items.sort(key=lambda g: (g["main"][8], g["main"][0]), reverse=True)
+    sections = [(n, buckets[n]) for n in order] + [(n, v) for n, v in buckets.items() if n not in order]
+    subject = a.entity.split(",")[0].strip() if a.entity else "Авиарынок"
+    meta = {"title": f"{subject}: мониторинг новостей",
+            "period": f"{fmt_d(a.date_from)} — {fmt_d(a.date_to)}",
+            "made": datetime.now(MSK).strftime("%d.%m.%Y %H:%M"),
+            "n_groups": len(groups), "n_rows": len(rows)}
     if a.out:
-        out.close()
-        builtins.print(f"Сохранено {len(groups)} сюжетов ({len(rows)} публикаций) в файл {a.out}")
+        with open(a.out, "w", encoding="utf-8" if a.out.lower().endswith((".html", ".htm")) else "utf-8-sig") as f:
+            (render_html if a.out.lower().endswith((".html", ".htm")) else render_md)(meta, sections, f)
+        builtins.print(f"Сохранено: {len(groups)} сюжетов ({len(rows)} публикаций) → {a.out}")
+    else:
+        render_md(meta, sections, sys.stdout)
 
 
 def cmd_company(a):
