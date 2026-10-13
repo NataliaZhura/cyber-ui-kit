@@ -288,8 +288,15 @@
     "bombardier",
     "atr"
   ],
-  "_telegram_note": "Публичные Telegram-каналы: имя без @ или ссылка t.me/... Закрытые каналы так не читаются.",
-  "telegram": [],
+  "_telegram_note": "Публичные Telegram-каналы: имя без @. aviation_channels — каналы, где любой пост считается авиационным (без проверки слов в заголовке).",
+  "telegram": [
+    "rhc_aero",
+    "favt_ru",
+    "favt_drone",
+    "ao_gtlk",
+    "PROtransportr",
+    "rostecru"
+  ],
   "always_relevant": [
     "санкц",
     "эмбарго",
@@ -702,5 +709,10 @@
     "\"{region}\" бюджет дефицит",
     "\"{region}\" субсидии авиаперевозки",
     "\"{region}\" региональные авиаперевозки"
+  ],
+  "aviation_channels": [
+    "rhc_aero",
+    "favt_ru",
+    "favt_drone"
   ]
 }

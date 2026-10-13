@@ -184,7 +184,7 @@ def stem(region):
     return max(main, key=len)[:-1] if main else region.lower()
 
 
-def tag_item(title, summ, cfg, watch):
+def tag_item(title, summ, cfg, watch, source=""):
     low = f"{title} {summ}".lower()
     head = title.lower()
     ents = [w["name"] for w in watch if any(a.lower() in low for a in w["aliases"])]
@@ -192,7 +192,9 @@ def tag_item(title, summ, cfg, watch):
     risks = [k for k, words in cfg["risks"].items() if any(x in low for x in words)]
     # про авиацию должен быть сам заголовок: упоминание мимоходом в тексте не считается
     avia = re.compile(r"(?<![а-яёa-z0-9])(?:" + "|".join(map(re.escape, cfg.get("aviation_words", []))) + ")")
-    aviation = (any(a.lower() in head for w in watch for a in w["aliases"])
+    channel = source[4:] if source.startswith("TG @") else ""
+    aviation = (channel in cfg.get("aviation_channels", [])  # профильный канал: Росавиация, Вертолёты России
+                or any(a.lower() in head for w in watch for a in w["aliases"])
                 or any(x in head for words in cfg["assets"].values() for x in words)
                 or avia.search(head)
                 # санкции важны для любой отрасли, даже если авиация в заголовке не названа
@@ -202,7 +204,9 @@ def tag_item(title, summ, cfg, watch):
                     and any(stem(r) in head for w in watch if w.get("subsidy") for r in w["regions"])))
     # военные сводки про дроны и ПВО — не про рынок; оставляем, только если задета гражданская авиация
     if aviation and any(x in head for x in cfg.get("military_words", [])):
-        aviation = (any(a.lower() in head for w in watch for a in w["aliases"])
+        channel = source[4:] if source.startswith("TG @") else ""
+    aviation = (channel in cfg.get("aviation_channels", [])  # профильный канал: Росавиация, Вертолёты России
+                or any(a.lower() in head for w in watch for a in w["aliases"])
                     or any(x in head for x in cfg.get("civil_override", [])))
     score = 1 + 3 * len(ents) + 3 * len(risks) + len(assets) if aviation else 0
     return ents, assets, risks, score
@@ -251,7 +255,7 @@ def store(con, cfg, watch, name, items, since):
         tk = title_key(title)
         if con.execute("SELECT 1 FROM news WHERE title_key=?", (tk,)).fetchone():
             continue
-        ents, assets, risks, score = tag_item(title, summ, cfg, watch)
+        ents, assets, risks, score = tag_item(title, summ, cfg, watch, name)
         src = name if not name.startswith("Поиск:") else re.split(r"\s[-–—]\s", title)[-1]
         cur = con.execute(
             "INSERT OR IGNORE INTO news VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -533,7 +537,7 @@ def build(a, cfg):
         _, watch = load_config()
         watch = watch + [{"name": names[0], "aliases": names, "regions": [], "subsidy": False}]
         low = [n.lower() for n in names]
-        rows = [r[:5] + tuple(", ".join(x) if i < 3 else x for i, x in enumerate(tag_item(r[2], r[3], cfg, watch)))
+        rows = [r[:5] + tuple(", ".join(x) if i < 3 else x for i, x in enumerate(tag_item(r[2], r[3], cfg, watch, r[1])))
                 + (r[9],) for r in rows if any(n in f"{r[2]} {r[3]}".lower() for n in low)]
         rows = sorted((r for r in rows if r[8] >= a.min_score), key=lambda r: (r[8], r[0]), reverse=True)
     if getattr(a, "new", False):  # ежедневная: только то, что собрано после прошлой такой выгрузки
@@ -600,9 +604,9 @@ def cmd_company(a):
 def cmd_rescore(_):
     cfg, watch = load_config()
     con = db()
-    rows = con.execute("SELECT id, title, summary FROM news").fetchall()
-    for nid, title, summ in rows:
-        ents, assets, risks, score = tag_item(title, summ, cfg, watch)
+    rows = con.execute("SELECT id, title, summary, source FROM news").fetchall()
+    for nid, title, summ, src in rows:
+        ents, assets, risks, score = tag_item(title, summ, cfg, watch, src)
         con.execute("UPDATE news SET entities=?, assets=?, risks=?, score=? WHERE id=?",
                     (", ".join(ents), ", ".join(assets), ", ".join(risks), score, nid))
     con.commit()
