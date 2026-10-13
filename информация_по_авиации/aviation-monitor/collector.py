@@ -6,6 +6,8 @@
   collect [--days N]            собрать свежие новости в архив
   export --from D --to D        выгрузить новости за период, дубли склеены в один сюжет
   company "Ютэйр, UTair"        всё о компании или производителе за год (досбор + выгрузка)
+  card "Аэрофлот" --from D --to D  карточка для инвестора: вывод, финансы, долг, имущество, суды
+  export ... --new              ежедневная: только новое с прошлой выгрузки
   stats                         сколько новостей в архиве по месяцам
   rescore                       пересчитать баллы архива после правки ключевых слов
 """
@@ -44,7 +46,9 @@ def load_config():
                 if not name:
                     continue
                 aliases = [a.strip() for a in (row.get("синонимы") or "").split(",") if a.strip()]
-                watch.append({"name": name, "aliases": [name] + aliases})
+                regions = [r.strip() for r in (row.get("регион") or "").split(",") if r.strip()]
+                subsidy = (row.get("зависит_от_субсидий") or "").strip().lower() in ("да", "yes", "1", "+")
+                watch.append({"name": name, "aliases": [name] + aliases, "regions": regions, "subsidy": subsidy})
     return cfg, watch
 
 
@@ -172,6 +176,14 @@ def title_key(title):
     return re.sub(r"[^a-zа-яё0-9]+", "", t)[:120]
 
 
+def stem(region):
+    """«Республика Саха (Якутия)» → «якути»: грубая основа, чтобы ловить «Якутии», «якутского»."""
+    words = re.findall(r"[а-яё]+", region.lower())
+    skip = {"республика", "край", "область", "автономный", "округ", "федеральный", "город", "саха"}
+    main = [w for w in words if w not in skip] or words
+    return max(main, key=len)[:-1] if main else region.lower()
+
+
 def tag_item(title, summ, cfg, watch):
     low = f"{title} {summ}".lower()
     head = title.lower()
@@ -184,7 +196,10 @@ def tag_item(title, summ, cfg, watch):
                 or any(x in head for words in cfg["assets"].values() for x in words)
                 or avia.search(head)
                 # санкции важны для любой отрасли, даже если авиация в заголовке не названа
-                or any(x in head for x in cfg.get("always_relevant", [])))
+                or any(x in head for x in cfg.get("always_relevant", []))
+                # бюджет региона, где летает компания на субсидиях
+                or (any(x in low for x in cfg.get("budget_words", []))
+                    and any(stem(r) in head for w in watch if w.get("subsidy") for r in w["regions"])))
     # военные сводки про дроны и ПВО — не про рынок; оставляем, только если задета гражданская авиация
     if aviation and any(x in head for x in cfg.get("military_words", [])):
         aviation = (any(a.lower() in head for w in watch for a in w["aliases"])
@@ -201,6 +216,11 @@ def feeds(cfg, watch):
     for w in watch:
         q = " OR ".join(f'"{a}"' for a in w["aliases"][:4])
         yield f"Поиск: {w['name']}", GNEWS.format(q=urllib.parse.quote(q))
+    regions = {r for w in watch if w.get("subsidy") for r in w["regions"]}
+    for r in sorted(regions):
+        for q in cfg.get("region_queries", []):
+            q = q.format(region=r)
+            yield f"Поиск: {q}", GNEWS.format(q=urllib.parse.quote(q))
     for ch in cfg.get("telegram", []):
         ch = ch.strip().lstrip("@").replace("https://t.me/", "").strip("/")
         if ch:
@@ -278,18 +298,47 @@ def story_tokens(title, summ):
 def group_stories(rows):
     """Склеивает одну и ту же новость из разных источников: общая часть слов ≥ 50% и ≥ 3 слов, разница ≤ 2 дней."""
     groups = []
+    money = re.compile(r"(\d+(?:[.,]\d+)?)\s*(трлн|млрд|млн)", re.I)
     for r in rows:  # rows уже отсортированы по важности — первая в группе самая сильная
         tok = story_tokens(r[2], r[3])
         day = datetime.fromisoformat(r[0])
+        amt = {m.group(0).lower().replace(",", ".") for m in money.finditer(r[2])}
         for g in groups:
             common = len(tok & g["tok"])
+            if amt and g["amt"] and not (amt & g["amt"]):
+                continue  # разные суммы в заголовках — разные события (два выпуска облигаций, два иска)
             if (common >= 3 and common / max(1, min(len(tok), len(g["tok"]))) >= 0.5
                     and abs((day - g["day"]).total_seconds()) <= 2 * 86400):
                 g["also"].append(r)
                 break
         else:
-            groups.append({"main": r, "tok": tok, "day": day, "also": []})
+            groups.append({"main": r, "tok": tok, "day": day, "amt": amt, "also": []})
     return groups
+
+
+def apply_threads(groups, cfg):
+    """Сквозные сюжеты: все сюжеты одной темы (МС-21, ремонт двигателей…) — один пункт с хронологией."""
+    out, threads = [], {}
+    for g in groups:
+        head = g["main"][2].lower()
+        th = next((t["name"] for t in cfg.get("threads", []) if any(w in head for w in t["words"])), None)
+        if not th:
+            out.append(g)
+            continue
+        if th not in threads:
+            threads[th] = {"thread": th, "items": [], "also": []}
+            out.append(threads[th])
+        threads[th]["items"].append(g)
+    for name, t in list(threads.items()):
+        if len(t["items"]) == 1:  # одна новость — не сюжет, показываем как обычную
+            out[out.index(t)] = t["items"][0]
+            del threads[name]
+    for t in threads.values():
+        t["items"].sort(key=lambda g: g["main"][0], reverse=True)       # хронология: свежее сверху
+        best = max(t["items"], key=lambda g: g["main"][8])
+        t["main"] = t["items"][0]["main"][:8] + (best["main"][8],)     # последний статус, приоритет — максимальный
+        t["tok"], t["day"] = set(), None
+    return out
 
 
 def section_of(title, summ, cfg):
@@ -332,8 +381,12 @@ def render_md(meta, sections, out):
         for ii, g in enumerate(items, 1):
             pub, src, title, summ, url, ents, assets, risks, score = g["main"]
             lv = level(score)
-            p(f"### {si}.{ii}. {lv[1]} {title}")
+            if g.get("thread"):
+                p(f"### {si}.{ii}. {lv[1]} Сюжет «{g['thread']}» — {len(g['items'])} новостей, последняя:")
+            p(f"{'' if g.get('thread') else f'### {si}.{ii}. {lv[1]} '}{title}" if not g.get("thread") else f"- {title}")
             p(f"- {fmt_dt(pub)} · {src} · приоритет: {lv[0]} ({score})")
+            for h in g.get("items", [])[1:6]:
+                p(f"  - ранее {fmt_dt(h['main'][0])}: {h['main'][2]} — {h['main'][4]}")
             if summ and summ.strip() != title.strip():
                 p(f"- {summ[:600]}")
             p(f"- {url}")
@@ -373,6 +426,20 @@ h3 a{color:var(--ink);text-decoration:none} h3 a:hover{text-decoration:underline
 .sum{margin:5px 0 0;font-size:14px}
 .also{margin:5px 0 0;font-size:12.5px;color:var(--muted)}
 .also a{color:var(--accent)}
+.thread{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--accent);font-weight:600;margin-bottom:2px}
+details.also summary{cursor:pointer} details.also ul{margin:4px 0 0;padding-left:18px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:6px 0 14px;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:right}
+th:first-child,td:first-child{text-align:left}
+thead th{background:var(--soft);font-weight:600}
+td.calc{color:var(--accent)}
+.cap{font-size:12.5px;color:var(--muted);margin:0 0 4px}
+.lights{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 4px}
+.light{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;background:var(--soft)}
+.box{border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:8px 0 6px;background:var(--soft)}
+.big{font-size:17px;font-weight:600}
+ol.plain{list-style:none;padding:0;margin:4px 0 8px} ol.plain li{margin:0 0 7px;padding-left:0}
+ol.plain a{color:var(--ink)} .line{color:var(--muted)}
 footer{margin-top:36px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
 @media print{nav{break-after:page} article{break-inside:avoid} a{color:inherit}}
 @media (max-width:600px){nav ol{columns:1}}
@@ -405,12 +472,19 @@ def render_html(meta, sections, out):
             pub, src, title, summ, url, ents, assets, risks, score = g["main"]
             lv = level(score)
             cls = {"высокий": "hi", "средний": "mid"}.get(lv[0], "lo")
-            w(f"<article class='{cls}'><h3><span class='num'>{si}.{ii}</span>"
+            w(f"<article class='{cls}'>")
+            if g.get("thread"):
+                w(f"<div class='thread'>Сюжет «{e(g['thread'])}» · {len(g['items'])} новостей за период</div>")
+            w(f"<h3><span class='num'>{si}.{ii}</span>"
               f"<a href='{e(url)}' target='_blank' rel='noopener'>{e(title)}</a></h3>")
             w(f"<div class='line'>{e(fmt_dt(pub))} · {e(src)}"
               f"<span class='tag {cls}'>{lv[1]} {e(lv[0])}</span></div>")
             if summ and summ.strip() != title.strip():
                 w(f"<p class='sum'>{e(summ[:600])}</p>")
+            if g.get("items", [])[1:]:
+                w("<details class='also'><summary>Хронология сюжета</summary><ul>" + "".join(
+                    f"<li>{e(fmt_dt(h['main'][0]))} — <a href='{e(h['main'][4])}' target='_blank' rel='noopener'>"
+                    f"{e(h['main'][2])}</a></li>" for h in g["items"][1:12]) + "</ul></details>")
             if g["also"]:
                 links = ", ".join(f"<a href='{e(r[4])}' target='_blank' rel='noopener'>{e(r[1])}</a>"
                                   for r in g["also"][:8])
@@ -421,23 +495,36 @@ def render_html(meta, sections, out):
     w("</main></body></html>")
 
 
-def cmd_export(a):
-    cfg, _ = load_config()
+def build(a, cfg):
+    """Отбор, склейка дублей, сквозные сюжеты и раскладка по разделам — общее для справки и карточки."""
     con = db()
-    d_from = a.date_from
     d_to = (date.fromisoformat(a.date_to) + timedelta(days=1)).isoformat()
+    names = [n.strip() for n in (a.entity or "").split(",") if n.strip()]
     rows = con.execute(
-        "SELECT published, source, title, summary, url, entities, assets, risks, score FROM news "
-        "WHERE published >= ? AND published < ? AND score >= ? ORDER BY score DESC, published DESC",
-        (d_from, d_to, a.min_score)).fetchall()
-    if a.entity:  # регистр не важен, в т.ч. для русских букв
-        names = [n.strip().lower() for n in a.entity.split(",") if n.strip()]
-        rows = [r for r in rows if any(n in f"{r[2]} {r[3]} {r[5]}".lower() for n in names)]
-    groups = group_stories(rows)[:a.limit]
+        "SELECT published, source, title, summary, url, entities, assets, risks, score, collected FROM news "
+        "WHERE published >= ? AND published < ? AND (score >= ? OR ?) ORDER BY score DESC, published DESC",
+        (a.date_from, d_to, a.min_score, bool(names))).fetchall()
+    if names:  # по выбранной компании её новости важны, даже если в заголовке нет слов про авиацию
+        _, watch = load_config()
+        watch = watch + [{"name": names[0], "aliases": names, "regions": [], "subsidy": False}]
+        low = [n.lower() for n in names]
+        rows = [r[:5] + tuple(", ".join(x) if i < 3 else x for i, x in enumerate(tag_item(r[2], r[3], cfg, watch)))
+                + (r[9],) for r in rows if any(n in f"{r[2]} {r[3]}".lower() for n in low)]
+        rows = sorted((r for r in rows if r[8] >= a.min_score), key=lambda r: (r[8], r[0]), reverse=True)
+    if getattr(a, "new", False):  # ежедневная: только то, что собрано после прошлой такой выгрузки
+        state_path = BASE / "state.json"
+        state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+        mark = state.get(a.out or "screen", "")
+        rows = [r for r in rows if r[9] > mark]
+        state[a.out or "screen"] = datetime.now(MSK).isoformat(timespec="seconds")
+        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+    rows = [r[:9] for r in rows]
+    groups = apply_threads(group_stories(rows), cfg)[:a.limit]
     order = [s["name"] for s in cfg["sections_display"]]
     buckets = {n: [] for n in order}
     for g in groups:
-        sec = section_of(g["main"][2], g["main"][3], cfg)
+        sec = next((th.get("section") for th in cfg.get("threads", []) if th["name"] == g.get("thread")), None) \
+            or section_of(g["main"][2], g["main"][3], cfg)
         buckets.setdefault(sec, []).append(g)
     for items in buckets.values():  # внутри раздела: сначала важнее, при равенстве — свежее
         items.sort(key=lambda g: (g["main"][8], g["main"][0]), reverse=True)
@@ -446,10 +533,19 @@ def cmd_export(a):
     meta = {"title": f"{subject}: мониторинг новостей",
             "period": f"{fmt_d(a.date_from)} — {fmt_d(a.date_to)}",
             "made": datetime.now(MSK).strftime("%d.%m.%Y %H:%M"),
-            "n_groups": len(groups), "n_rows": len(rows)}
+            "n_groups": len(groups), "n_rows": len(rows), "subject": subject}
+    return meta, rows, groups, sections
+
+
+def cmd_export(a):
+    cfg, _ = load_config()
+    meta, rows, groups, sections = build(a, cfg)
+    if getattr(a, "new", False):
+        meta["title"] = meta["title"].replace("мониторинг новостей", "новое с прошлой справки")
     if a.out:
-        with open(a.out, "w", encoding="utf-8" if a.out.lower().endswith((".html", ".htm")) else "utf-8-sig") as f:
-            (render_html if a.out.lower().endswith((".html", ".htm")) else render_md)(meta, sections, f)
+        is_html = a.out.lower().endswith((".html", ".htm"))
+        with open(a.out, "w", encoding="utf-8" if is_html else "utf-8-sig") as f:
+            (render_html if is_html else render_md)(meta, sections, f)
         builtins.print(f"Сохранено: {len(groups)} сюжетов ({len(rows)} публикаций) → {a.out}")
     else:
         render_md(meta, sections, sys.stdout)
@@ -508,7 +604,8 @@ def main():
     e.add_argument("--min-score", type=int, default=0)
     e.add_argument("--entity", default="")
     e.add_argument("--limit", type=int, default=300)
-    e.add_argument("--out", default="", help="записать в файл (UTF-8) вместо вывода на экран")
+    e.add_argument("--out", default="", help="файл .html (для чтения) или .md (для агента)")
+    e.add_argument("--new", action="store_true", help="только новое с прошлой выгрузки в этот же файл (ежедневная)")
     e.set_defaults(fn=cmd_export)
     co = sub.add_parser("company", help="всё о компании: досбор из поиска + выгрузка из архива")
     co.add_argument("name", help="название, можно несколько через запятую: \"Ютэйр, UTair\"")
@@ -516,6 +613,15 @@ def main():
     co.add_argument("--limit", type=int, default=300)
     co.add_argument("--out", default="")
     co.set_defaults(fn=cmd_company)
+    k = sub.add_parser("card", help="карточка компании для инвестора (HTML): вывод, финансы, долг, имущество, суды")
+    k.add_argument("entity", help="название и синонимы через запятую: \"Аэрофлот, Aeroflot\"")
+    k.add_argument("--from", dest="date_from", required=True)
+    k.add_argument("--to", dest="date_to", required=True)
+    k.add_argument("--min-score", type=int, default=1)
+    k.add_argument("--limit", type=int, default=500)
+    k.add_argument("--summary", default="", help="файл с текстом вывода (пишет агент)")
+    k.add_argument("--out", default="")
+    k.set_defaults(fn=lambda a: __import__("card").cmd_card(a))
     sub.add_parser("stats").set_defaults(fn=cmd_stats)
     sub.add_parser("rescore", help="пересчитать метки и баллы архива после правки sources.json").set_defaults(fn=cmd_rescore)
     a = p.parse_args()
