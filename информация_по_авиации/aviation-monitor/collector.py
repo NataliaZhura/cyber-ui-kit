@@ -6,6 +6,7 @@
   collect [--days N]            собрать свежие новости в архив
   export --from D --to D        выгрузить новости за период (для справки агента)
   stats                         сколько новостей в архиве по месяцам
+  rescore                       пересчитать баллы архива после правки ключевых слов
 """
 import argparse
 import builtins
@@ -121,7 +122,9 @@ def tag_item(text, cfg, watch):
     ents = [w["name"] for w in watch if any(a.lower() in low for a in w["aliases"])]
     assets = [k for k, words in cfg["assets"].items() if any(x in low for x in words)]
     risks = [k for k, words in cfg["risks"].items() if any(x in low for x in words)]
-    score = 3 * len(ents) + 2 * len(risks) + len(assets)
+    aviation = ents or assets or any(x in low for x in cfg.get("aviation_words", []))
+    # без связи с авиацией новость не важна, какие бы рисковые слова в ней ни были
+    score = 3 * len(ents) + 3 * len(risks) + len(assets) if aviation else 0
     return ents, assets, risks, score
 
 
@@ -211,6 +214,18 @@ def cmd_export(a):
         builtins.print(f"Сохранено {len(rows)} новостей в файл {a.out}")
 
 
+def cmd_rescore(_):
+    cfg, watch = load_config()
+    con = db()
+    rows = con.execute("SELECT id, title, summary FROM news").fetchall()
+    for nid, title, summ in rows:
+        ents, assets, risks, score = tag_item(f"{title} {summ}", cfg, watch)
+        con.execute("UPDATE news SET entities=?, assets=?, risks=?, score=? WHERE id=?",
+                    (", ".join(ents), ", ".join(assets), ", ".join(risks), score, nid))
+    con.commit()
+    print(f"Пересчитано новостей: {len(rows)}")
+
+
 def cmd_stats(_):
     con = db()
     for m, n, hi in con.execute(
@@ -234,6 +249,7 @@ def main():
     e.add_argument("--out", default="", help="записать в файл (UTF-8) вместо вывода на экран")
     e.set_defaults(fn=cmd_export)
     sub.add_parser("stats").set_defaults(fn=cmd_stats)
+    sub.add_parser("rescore", help="пересчитать метки и баллы архива после правки sources.json").set_defaults(fn=cmd_rescore)
     a = p.parse_args()
     a.fn(a)
 
