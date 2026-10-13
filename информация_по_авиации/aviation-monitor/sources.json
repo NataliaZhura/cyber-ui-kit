@@ -295,7 +295,15 @@
     "favt_drone",
     "ao_gtlk",
     "PROtransportr",
-    "rostecru"
+    "rostecru",
+    "logisticsscm",
+    "boilerroomchannel",
+    "AviaPortTeam",
+    "banksta",
+    "vestiru",
+    "vestiru24",
+    "Vgudok",
+    "echo_msk"
   ],
   "always_relevant": [
     "санкц",
@@ -713,6 +721,7 @@
   "aviation_channels": [
     "rhc_aero",
     "favt_ru",
-    "favt_drone"
+    "favt_drone",
+    "AviaPortTeam"
   ]
 }
