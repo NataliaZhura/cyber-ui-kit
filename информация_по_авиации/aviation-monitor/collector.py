@@ -8,8 +8,10 @@
   stats                         сколько новостей в архиве по месяцам
 """
 import argparse
+import builtins
 import csv
 import email.utils
+import functools
 import hashlib
 import html
 import json
@@ -193,6 +195,8 @@ def cmd_export(a):
     sql += " ORDER BY score DESC, published DESC LIMIT ?"
     args.append(a.limit)
     rows = con.execute(sql, args).fetchall()
+    out = open(a.out, "w", encoding="utf-8-sig") if a.out else sys.stdout
+    print = functools.partial(builtins.print, file=out)  # noqa: A001 — пишем в файл или на экран
     print(f"# Новости {a.date_from} — {a.date_to}: {len(rows)} шт. (отсортированы по важности)\n")
     for pub, src, title, summ, url, ents, assets, risks, score in rows:
         print(f"## [{score}] {title}")
@@ -202,6 +206,9 @@ def cmd_export(a):
         if summ:
             print(f"- кратко: {summ[:600]}")
         print(f"- ссылка: {url}\n")
+    if a.out:
+        out.close()
+        builtins.print(f"Сохранено {len(rows)} новостей в файл {a.out}")
 
 
 def cmd_stats(_):
@@ -224,6 +231,7 @@ def main():
     e.add_argument("--min-score", type=int, default=0)
     e.add_argument("--entity", default="")
     e.add_argument("--limit", type=int, default=300)
+    e.add_argument("--out", default="", help="записать в файл (UTF-8) вместо вывода на экран")
     e.set_defaults(fn=cmd_export)
     sub.add_parser("stats").set_defaults(fn=cmd_stats)
     a = p.parse_args()
