@@ -3,6 +3,7 @@
 
   python3 checko.py profile 1025007509768 [2025]   понятная справка (финансы столбиком: 2 последних года до указанного)
   python3 checko.py compare <ОГРН1> <ОГРН2> [2025]  две компании за один год, столбиком
+  python3 checko.py find "ЮТэйр"                   поиск по названию → ИНН, ОГРН, регион, статус (до 10 вариантов)
   python3 checko.py raw company 1025007509768      ответ API как есть → checko/<id>_company.json (+ структура на экран)
   python3 checko.py fin 1025007509768 "Название АК" отчётность РСБУ по годам → строки finance.csv (млрд ₽)
   python3 checko.py risk 1025007509768             суды, исполнительные производства, банкротство → checko/*.json
@@ -339,10 +340,45 @@ def cmd_compare(id1, id2, upto=None):
     print("\n".join(out))
 
 
+def records(x):
+    """Список карточек организаций из ответа поиска — где бы он ни лежал в JSON."""
+    if isinstance(x, list) and x and isinstance(x[0], dict) and ("ИНН" in x[0] or "ОГРН" in x[0]):
+        return x
+    if isinstance(x, dict):
+        for v in x.values():
+            r = records(v)
+            if r:
+                return r
+    return []
+
+
+def cmd_find(*words):
+    """Поиск компании по названию → ИНН, ОГРН, регион, статус. Формат метода поиска Checko сверяется
+    по ответу; если метод недоступен на тарифе — сообщает, и агент ищет через onec.py find."""
+    query = " ".join(words)
+    q = urllib.parse.urlencode({"key": key(), "by": "name", "obj": "org", "query": query, "limit": 10})
+    req = urllib.request.Request(API + "search?" + q, headers={"User-Agent": "AviationMonitor/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        sys.exit(f"Поиск Checko недоступен: HTTP {e.code} {e.read(200).decode('utf-8', 'replace')}")
+    meta = data.get("meta") or {}
+    if meta.get("status") not in (None, "ok"):
+        sys.exit(f"Поиск Checko недоступен: {meta}")
+    rows = records(data.get("data"))
+    if not rows:
+        print(f"По «{query}» ничего не найдено в Checko.")
+        return
+    for i, r in enumerate(rows[:10], 1):
+        print(f"{i} — {r.get('НаимСокр') or r.get('НаимПолн')} · ИНН {r.get('ИНН')} · ОГРН {r.get('ОГРН')} · "
+              f"{name_of(r.get('Регион'))} · {name_of(r.get('Статус'))}")
+
+
 if __name__ == "__main__":
-    cmds = {"raw": (cmd_raw, 2), "fin": (cmd_fin, 2), "risk": (cmd_risk, 1), "profile": (cmd_profile, 1), "compare": (cmd_compare, 2)}
+    cmds = {"raw": (cmd_raw, 2), "fin": (cmd_fin, 2), "risk": (cmd_risk, 1), "profile": (cmd_profile, 1), "compare": (cmd_compare, 2), "find": (cmd_find, 1)}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds or len(sys.argv) - 2 < cmds[sys.argv[1]][1]:
         print(__doc__)
         sys.exit(1)
     fn, n = cmds[sys.argv[1]]
-    fn(*sys.argv[2:3 + n])  # последний необязательный аргумент — год отчётности
+    fn(*(sys.argv[2:] if fn is cmd_find else sys.argv[2:3 + n]))  # последний необязательный аргумент — год отчётности

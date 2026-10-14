@@ -3,6 +3,7 @@
 
   ~/pw/bin/python onec.py probe                      что показывает сайт без входа: адрес, поля формы, кнопки
   ~/pw/bin/python onec.py login                      вход; сессия сохраняется, пароль больше не нужен до её истечения
+  ~/pw/bin/python onec.py find "ЮТэйр"               поиск по названию → варианты с ОГРН
   ~/pw/bin/python onec.py report 1025007509768       все разделы (скоринг, финансы, суды, приставы, лизинги…) → 1cont/<ОГРН>_отчёт_1С.txt
   ~/pw/bin/python onec.py fetch 1025007509768        страница скоринга компании по ОГРН → текст в 1cont/
   ~/pw/bin/python onec.py fetch 1025007509768 main/finance   другой раздел той же компании
@@ -223,8 +224,39 @@ def cmd_report(ogrn, limit="4000"):
     print(f"Отчёт: {path}")
 
 
+def cmd_find(*words):
+    """Поиск на fd.1cont.ru (публичная строка поиска): название → варианты с ОГРН (он есть в ссылке на карточку)."""
+    query = " ".join(words)
+    with sync_playwright() as p:
+        b, ctx = browser(p)
+        page = ctx.new_page()
+        page.goto(START, wait_until="networkidle", timeout=60000)
+        ok = page.get_by_role("button", name="ОК")
+        if ok.count():
+            ok.first.click()
+        box = page.wait_for_selector("input[type=search]", timeout=30000)
+        box.fill(query)
+        box.press("Enter")
+        page.wait_for_load_state("networkidle", timeout=60000)
+        page.wait_for_timeout(2500)
+        seen, n = set(), 0
+        for a in page.query_selector_all("a[href*='/contragent/']"):
+            m = re.search(r"/contragent/(\d{13,15})", a.get_attribute("href") or "")
+            if not m or m.group(1) in seen:
+                continue
+            seen.add(m.group(1))
+            card = a.evaluate("e => (e.closest('li,tr,article,section,div') || e).innerText") or ""
+            n += 1
+            print(f"{n} — ОГРН {m.group(1)} · {' '.join(card.split())[:220]}")
+            if n >= 10:
+                break
+        if not n:
+            print(f"По «{query}» ничего не найдено на 1С:Контрагент.")
+        b.close()
+
+
 if __name__ == "__main__":
-    cmds = {"probe": cmd_probe, "login": cmd_login, "fetch": cmd_fetch, "report": cmd_report}
+    cmds = {"probe": cmd_probe, "login": cmd_login, "fetch": cmd_fetch, "report": cmd_report, "find": cmd_find}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print(__doc__)
         sys.exit(1)
