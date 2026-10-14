@@ -46,12 +46,28 @@ def describe(page):
         print(f"  встроенное окно: {f.url}")
 
 
+def open_login(page):
+    """Стартовая страница — публичный поиск; форма входа открывается кнопкой «Вход и регистрация»."""
+    page.goto(START, wait_until="networkidle", timeout=60000)
+    if not page.query_selector("input[type=password]"):
+        page.get_by_text("Вход и регистрация", exact=False).first.click()
+        page.wait_for_load_state("networkidle", timeout=60000)
+        page.wait_for_timeout(2000)
+    return page
+
+
 def cmd_probe():
     with sync_playwright() as p:
         b, ctx = browser(p, with_state=False)
         page = ctx.new_page()
         page.goto(START, wait_until="networkidle", timeout=60000)
+        print("— стартовая страница —")
         describe(page)
+        open_login(page)
+        print("\n— после «Вход и регистрация» —")
+        describe(page)
+        text = " ".join(page.inner_text("body").split())
+        print(f"Текст страницы: {text[:400]}")
         OUT.mkdir(exist_ok=True)
         page.screenshot(path=str(OUT / "probe.png"), full_page=True)
         print(f"Снимок экрана: {OUT / 'probe.png'}")
@@ -64,8 +80,7 @@ def cmd_login():
     login, password = CREDS.read_text(encoding="utf-8").splitlines()[:2]
     with sync_playwright() as p:
         b, ctx = browser(p, with_state=False)
-        page = ctx.new_page()
-        page.goto(START, wait_until="networkidle", timeout=60000)
+        page = open_login(ctx.new_page())
         pwd = page.wait_for_selector("input[type=password]", timeout=30000)
         user = page.query_selector("input[type=email], input[name*=login i], input[name*=user i], "
                                    "input[name*=mail i], input[type=text]")
@@ -94,8 +109,8 @@ def cmd_fetch(ogrn, section="main/scoring"):
         page = ctx.new_page()
         page.goto(url, wait_until="networkidle", timeout=90000)
         page.wait_for_timeout(3000)  # дорисовка таблиц и графиков после загрузки
-        if page.query_selector("input[type=password]"):
-            sys.exit("Сессия истекла или вход не выполнен — запусти: onec.py login")
+        if page.query_selector("input[type=password]") or "Вход и регистрация" in page.inner_text("body")[:3000]:
+            print("Внимание: вход не выполнен — сохраняю то, что видно без входа.")
         OUT.mkdir(exist_ok=True)
         stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
         name = f"{ogrn}_{section.strip('/').replace('/', '_')}_{stamp}"
