@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Данные о компании из API Checko (api.checko.ru): реквизиты, отчётность РСБУ, суды, исполнительные производства.
 
-  python3 checko.py profile 1025007509768          понятная справка по компании (для Telegram) → checko/<id>_профиль.txt
+  python3 checko.py profile 1025007509768 [2025]   понятная справка (финансы столбиком: 2 последних года до указанного)
+  python3 checko.py compare <ОГРН1> <ОГРН2> [2025]  две компании за один год, столбиком
   python3 checko.py raw company 1025007509768      ответ API как есть → checko/<id>_company.json (+ структура на экран)
   python3 checko.py fin 1025007509768 "Название АК" отчётность РСБУ по годам → строки finance.csv (млрд ₽)
   python3 checko.py risk 1025007509768             суды, исполнительные производства, банкротство → checko/*.json
@@ -208,7 +209,67 @@ def section(title, rows):
     return [f"\n▎{title}"] + [f"• {r}" for r in rows] if rows else []
 
 
-def cmd_profile(ident):
+# Строки таблицы: подпись → коды РСБУ (суммируются). Обязательства = долгосрочные + краткосрочные.
+ROWS = [("Выручка", ["2110"]), ("Прибыль от продаж", ["2200"]), ("Чистая прибыль", ["2400"]),
+        ("Активы", ["1600"]), ("Собственный капитал", ["1300"]), ("Обязательства долгоср.", ["1400"]),
+        ("Обязательства краткоср.", ["1500"]), ("Кредиты и займы", ["1410", "1510"]),
+        ("Дебиторская задолж.", ["1230"]), ("Денежные средства", ["1250"])]
+
+
+def val(year_lines, codes):
+    vs = [year_lines.get(c) for c in codes]
+    vs = [float(v) for v in vs if isinstance(v, (int, float))]
+    return sum(vs) if vs else None
+
+
+def bln(v):
+    if v is None:
+        return "н/д"
+    digits = 3 if 0 < abs(v) < 1e8 else 1  # мелкие суммы (например, 13,7 млн ₽) не превращаем в «0,0»
+    return f"{v / 1e9:,.{digits}f}".replace(",", " ").replace(".", ",")
+
+
+def chg(a, b):
+    """Изменение в %. Если хоть одно значение отрицательное (убыток) — % вводит в заблуждение,
+    поэтому пишем разницу в млрд ₽: «убыток сократился на 5,3» будет видно как «+5,3»."""
+    if a is None or b is None:
+        return ""
+    if a < 0 or b < 0:
+        return f"{(b - a) / 1e9:+.1f}".replace(".", ",")
+    return f"{(b - a) / a * 100:+.0f}%" if a else ""
+
+
+def pick(fin, upto=None):
+    """Два последних года (до upto включительно) — по умолчанию только они."""
+    ys = [y for y in sorted(fin) if not upto or y <= str(upto)]
+    return ys[-2:]
+
+
+def fin_table(fin, upto=None):
+    """Таблица столбиком (млрд ₽): показатель | прошлый год | последний год | изменение.
+    Третий год не показываем, но если выручка или активы вернулись к уровню позапрошлого года — пишем об этом."""
+    ys = pick(fin, upto)
+    if not ys:
+        return []
+    w = 24
+    rows = [f"{'млрд ₽':<{w}}" + "".join(f"{y:>9}" for y in ys) + ("   изм." if len(ys) == 2 else "")]
+    for label, codes in ROWS:
+        vals = [val(fin[y], codes) for y in ys]
+        rows.append(f"{label:<{w}}" + "".join(f"{bln(v):>9}" for v in vals)
+                    + (f"{chg(*vals):>7}" if len(vals) == 2 else ""))
+    notes = []
+    allys = [y for y in sorted(fin) if not upto or y <= str(upto)]
+    if len(allys) >= 3:
+        y0, last = allys[-3], allys[-1]
+        for label, code in (("Выручка", "2110"), ("Активы", "1600"), ("Собственный капитал", "1300")):
+            a, b = val(fin[y0], [code]), val(fin[last], [code])
+            if a and b is not None and b <= a:
+                notes.append(f"{label} {last} ({bln(b)}) — на уровне {y0} или ниже ({bln(a)}).")
+    legend = "изм.: % к прошлому году; для убытков — разница в млрд ₽ (плюс = улучшение)"
+    return ["```"] + rows + ["```", legend] + notes
+
+
+def cmd_profile(ident, upto=None):
     c = cached("company", ident) or {}
     if not c:
         sys.exit("Компания не найдена.")
@@ -230,14 +291,7 @@ def cmd_profile(ident):
     lines = head + section("Реквизиты", reg) + section("Владельцы", own[:6] + ([f"… ещё {len(own) - 6}"] if len(own) > 6 else []))
 
     if fin:
-        fr = []
-        for y in sorted(fin)[-3:]:
-            v = fin[y]
-            debt = [v.get(k) for k in ("1410", "1510") if v.get(k) is not None]
-            fr.append(f"{y}: выручка {money(v.get('2110'))}, чистая прибыль {money(v.get('2400'))}, "
-                      f"активы {money(v.get('1600'))}, капитал {money(v.get('1300'))}, "
-                      f"кредиты и займы {money(sum(map(float, debt))) if debt else 'н/д'}")
-        lines += section("Финансы (РСБУ, юрлицо)", fr)
+        lines += ["\n▎Финансы (РСБУ, юрлицо, млрд ₽)"] + fin_table(fin, upto)
     else:
         lines += section("Финансы (РСБУ, юрлицо)", ["н/д — отчётность недоступна по текущему тарифу или не сдана"])
 
@@ -256,10 +310,39 @@ def cmd_profile(ident):
     print(text)
 
 
+def cmd_compare(id1, id2, upto=None):
+    """Две компании за один и тот же последний год (или год upto), столбиком."""
+    data = []
+    for ident in (id1, id2):
+        c = cached("company", ident) or {}
+        fin = years(cached("finances", ident)) or {}
+        data.append((c.get("НаимСокр") or ident, fin))
+    common = sorted(set(data[0][1]) & set(data[1][1]))
+    if upto:
+        common = [y for y in common if y <= str(upto)]
+    if not common:
+        sys.exit("Нет общего года отчётности у двух компаний.")
+    y = common[-1]
+    w = 24
+    out = [f"Сравнение за {y} год, РСБУ юрлиц, млрд ₽ (Checko)",
+           *[f"{i}) {n}" for i, (n, _) in enumerate(data, 1)], "```",
+           f"{'':<{w}}{'1)':>9}{'2)':>9}"]
+    for label, codes in ROWS:
+        out.append(f"{label:<{w}}" + "".join(f"{bln(val(f[y], codes)):>9}" for _, f in data))
+    for label, a, b in (("Капитал / активы", "1300", "1600"), ("Чистая рентаб.", "2400", "2110")):
+        cells = []
+        for _, f in data:
+            x, z = val(f[y], [a]), val(f[y], [b])
+            cells.append(f"{x / z * 100:.1f}%".replace(".", ",") if x is not None and z else "н/д")
+        out.append(f"{label:<{w}}" + "".join(f"{c:>9}" for c in cells))
+    out.append("```")
+    print("\n".join(out))
+
+
 if __name__ == "__main__":
-    cmds = {"raw": (cmd_raw, 2), "fin": (cmd_fin, 2), "risk": (cmd_risk, 1), "profile": (cmd_profile, 1)}
+    cmds = {"raw": (cmd_raw, 2), "fin": (cmd_fin, 2), "risk": (cmd_risk, 1), "profile": (cmd_profile, 1), "compare": (cmd_compare, 2)}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds or len(sys.argv) - 2 < cmds[sys.argv[1]][1]:
         print(__doc__)
         sys.exit(1)
     fn, n = cmds[sys.argv[1]]
-    fn(*sys.argv[2:2 + n])
+    fn(*sys.argv[2:3 + n])  # последний необязательный аргумент — год отчётности

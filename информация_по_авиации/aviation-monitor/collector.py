@@ -204,9 +204,8 @@ def tag_item(title, summ, cfg, watch, source=""):
                     and any(stem(r) in head for w in watch if w.get("subsidy") for r in w["regions"])))
     # военные сводки про дроны и ПВО — не про рынок; оставляем, только если задета гражданская авиация
     if aviation and any(x in head for x in cfg.get("military_words", [])):
-        channel = source[4:] if source.startswith("TG @") else ""
-    aviation = (channel in cfg.get("aviation_channels", [])  # профильный канал: Росавиация, Вертолёты России
-                or any(a.lower() in head for w in watch for a in w["aliases"])
+        aviation = (channel in cfg.get("aviation_channels", [])  # профильный канал: Росавиация, Вертолёты России
+                    or any(a.lower() in head for w in watch for a in w["aliases"])
                     or any(x in head for x in cfg.get("civil_override", [])))
     score = 1 + 3 * len(ents) + 3 * len(risks) + len(assets) if aviation else 0
     return ents, assets, risks, score
