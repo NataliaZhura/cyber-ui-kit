@@ -91,6 +91,8 @@ def cmd_probe():
 
 
 def cmd_login():
+    """Вход через окно «Вход в продукты Актион» (id2.action-media.ru): логин (почта/телефон) + пароль.
+    Окно входа может закрыться само после успеха — тогда проверяем главную страницу сайта."""
     if not CREDS.exists():
         sys.exit(f"Нет файла {CREDS}: сначала создай его (логин и пароль).")
     login, password = CREDS.read_text(encoding="utf-8").splitlines()[:2]
@@ -98,23 +100,31 @@ def cmd_login():
         b, ctx = browser(p, with_state=False)
         page = open_login(ctx.new_page())
         pwd = page.wait_for_selector("input[type=password]", timeout=30000)
-        user = page.query_selector("input[type=email], input[name*=login i], input[name*=user i], "
-                                   "input[name*=mail i], input[type=text]")
+        user = page.query_selector("input[name=login], input[type=email], input[name*=user i], "
+                                   "input[name*=mail i], input[type=text], input:not([type])")
         if not user:
             sys.exit("Не нашёл поле логина — запусти probe и пришли вывод.")
         user.fill(login)
         pwd.fill(password)
-        pwd.press("Enter")
-        page.wait_for_load_state("networkidle", timeout=60000)
-        if page.query_selector("input[type=password]"):
+        btn = page.get_by_role("button", name="Войти")
+        (btn.first.click() if btn.count() else pwd.press("Enter"))
+        for _ in range(30):  # до 15 секунд: окно закрылось или ушло со страницы входа
+            ctx.pages[0].wait_for_timeout(500)
+            if page.is_closed() or "logon" not in page.url:
+                break
+        if not page.is_closed() and page.query_selector("input[type=password]"):
             OUT.mkdir(exist_ok=True)
             page.screenshot(path=str(OUT / "login_fail.png"), full_page=True)
-            describe(page)
-            sys.exit("Вход не прошёл (форма пароля осталась на странице). Снимок: 1cont/login_fail.png")
+            err = " ".join(page.inner_text("body").split())[:300]
+            sys.exit(f"Вход не прошёл. Текст на странице: {err}\nСнимок: 1cont/login_fail.png")
+        main = ctx.new_page()
+        main.goto(START, wait_until="networkidle", timeout=60000)
+        logged = "Вход и регистрация" not in main.inner_text("body")[:3000]
         SECRETS.mkdir(mode=0o700, exist_ok=True)
         ctx.storage_state(path=str(STATE))
         STATE.chmod(0o600)
-        print(f"Вход выполнен, сессия сохранена. Адрес после входа: {page.url}")
+        print("Вход выполнен, сессия сохранена." if logged else
+              "Форма входа принята, но на главной всё ещё кнопка «Вход и регистрация» — проверим fetch.")
         b.close()
 
 
