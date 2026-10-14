@@ -24,6 +24,11 @@ MENU = [("new", "Новый разговор"), ("market", "Новости ры�
         ("remember", "Запомнить компанию, правило, факт"), ("save", "Сохранить ответ или справку")]
 
 
+DESCRIPTION = ("Ави — аналитик авиарынка. Новости отрасли с оценкой влияния, справки по авиакомпаниям и производителям, "
+               "финансовый анализ и стресс-тесты моделей. Только открытые источники.")
+SHORT = "Аналитик авиарынка: новости, справки по компаниям, финансовый анализ"
+
+
 def token():
     out = subprocess.run(["openclaw", "config", "get", "channels.telegram.tokenFile"],
                          capture_output=True, text=True, timeout=60).stdout
@@ -52,4 +57,6 @@ if __name__ == "__main__":
     cmds = json.dumps([{"command": c, "description": d} for c, d in MENU], ensure_ascii=False)
     res = api("setMyCommands", commands=cmds)
     api("setChatMenuButton", menu_button=json.dumps({"type": "commands"}))
+    api("setMyDescription", description=DESCRIPTION)        # текст «Что умеет этот бот?» до нажатия «Старт»
+    api("setMyShortDescription", short_description=SHORT)   # строка в профиле бота
     print("Меню поставлено: " + ", ".join("/" + c for c, _ in MENU) if res.get("ok") else f"Ошибка Telegram: {res}")
