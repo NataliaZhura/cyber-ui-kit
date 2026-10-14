@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Данные о компании из API Checko (api.checko.ru): реквизиты, отчётность РСБУ, суды, исполнительные производства.
 
+  python3 checko.py profile 1025007509768          понятная справка по компании (для Telegram) → checko/<id>_профиль.txt
   python3 checko.py raw company 1025007509768      ответ API как есть → checko/<id>_company.json (+ структура на экран)
   python3 checko.py fin 1025007509768 "Название АК" отчётность РСБУ по годам → строки finance.csv (млрд ₽)
   python3 checko.py risk 1025007509768             суды, исполнительные производства, банкротство → checko/*.json
@@ -87,11 +88,13 @@ def years(data):
         ys = {k: v for k, v in data.items() if k.isdigit() and len(k) == 4 and isinstance(v, dict)}
         if ys:
             return ys
-    sys.exit("Формат отчётности не распознан — запусти: python3 checko.py raw finances <ОГРН> и пришли вывод.")
+    return None
 
 
 def cmd_fin(ident, company):
     ys = years(call("finances", ident))
+    if not ys:
+        sys.exit("Формат отчётности не распознан — запусти: python3 checko.py raw finances <ОГРН> и пришли вывод.")
     new = []
     for y in sorted(ys)[-3:]:
         lines = ys[y]
@@ -131,8 +134,129 @@ def cmd_risk(ident):
             print("  " + ", ".join(f"{k}={v}" for k, v in d.items() if not isinstance(v, (dict, list)))[:300])
 
 
+def cached(endpoint, ident):
+    """Ответ за сегодня берётся из файла — не тратим дневной лимит запросов."""
+    path = OUT / f"{ident}_{endpoint}.json"
+    if path.exists() and datetime.fromtimestamp(path.stat().st_mtime).date() == datetime.now().date():
+        return json.loads(path.read_text(encoding="utf-8")).get("data")
+    try:
+        return call(endpoint, ident)
+    except SystemExit as e:
+        print(f"  {endpoint}: нет данных ({e})")
+        return None
+
+
+def g(d, *path):
+    for p in path:
+        d = d.get(p) if isinstance(d, dict) else None
+    return d
+
+
+def name_of(x):
+    return x if isinstance(x, str) else g(x, "Наим") or g(x, "НаимПолн") or g(x, "НаимСокр") or g(x, "ФИО") or ""
+
+
+def money(v, unit=1e3):
+    """Рубли в «млн ₽» / «млрд ₽» по-русски. unit — во что выражено v (по умолчанию тыс. ₽ из отчётности)."""
+    try:
+        r = float(v) * unit
+    except (TypeError, ValueError):
+        return "н/д"
+    if abs(r) >= 1e9:
+        return f"{r / 1e9:,.1f} млрд ₽".replace(",", " ").replace(".", ",")
+    return f"{r / 1e6:,.1f} млн ₽".replace(",", " ").replace(".", ",")
+
+
+def dt(v):
+    """2026-01-31 → 31.01.2026."""
+    v = str(v or "")
+    return ".".join(reversed(v[:10].split("-"))) if len(v) >= 10 and v[4] == "-" else v
+
+
+def lst(x):
+    return x if isinstance(x, list) else []
+
+
+def founders(c):
+    u = c.get("Учред")
+    out = []
+    if isinstance(u, dict):
+        for group in u.values():
+            for f in lst(group):
+                share = g(f, "Доля", "Процент")
+                out.append(f"{name_of(f)}" + (f" — {share}%" if share is not None else ""))
+    elif isinstance(u, list):
+        out = [name_of(f) for f in u]
+    return [x for x in out if x]
+
+
+def cases_summary(d):
+    """Суды: число дел и сумма требований; поля API разбираются бережно — чего нет, то «н/д»."""
+    if not isinstance(d, dict):
+        return None
+    recs = lst(d.get("Записи"))
+    total = d.get("ОбщСуммИск")
+    if total is None and recs:
+        total = sum(float(r.get("СуммИск") or 0) for r in recs)
+    big = sorted(recs, key=lambda r: float(r.get("СуммИск") or 0), reverse=True)[:5]
+    return {"n": d.get("ЗапВсего", len(recs)), "sum": total, "big": big}
+
+
+def section(title, rows):
+    rows = [r for r in rows if r]
+    return [f"\n▎{title}"] + [f"• {r}" for r in rows] if rows else []
+
+
+def cmd_profile(ident):
+    c = cached("company", ident) or {}
+    if not c:
+        sys.exit("Компания не найдена.")
+    fin = years(cached("finances", ident))
+    courts = cases_summary(cached("legal-cases", ident))
+    enf = cached("enforcements", ident)
+    made = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    head = [f"🏢 {c.get('НаимСокр') or c.get('НаимПолн')}",
+            f"{name_of(c.get('Статус'))} · ИНН {c.get('ИНН')} · ОГРН {c.get('ОГРН')}",
+            f"Данные Checko (ЕГРЮЛ, ГИР БО, картотека судов) на {made} МСК"]
+    reg = [f"Регион: {name_of(c.get('Регион'))}",
+           f"Адрес: {g(c, 'ЮрАдрес', 'АдресРФ')}" + (" ⚠️ недостоверен" if g(c, "ЮрАдрес", "Недост") else ""),
+           f"Зарегистрирована: {dt(c.get('ДатаРег'))}",
+           f"Деятельность: {g(c, 'ОКВЭД', 'Код')} {name_of(c.get('ОКВЭД'))}",
+           f"Уставный капитал: {money(g(c, 'УстКап', 'Сумма'), 1)}" if g(c, "УстКап", "Сумма") else "",
+           f"Сотрудников: {c.get('СЧР')}" if c.get("СЧР") else ""]
+    own = founders(c)
+    lines = head + section("Реквизиты", reg) + section("Владельцы", own[:6] + ([f"… ещё {len(own) - 6}"] if len(own) > 6 else []))
+
+    if fin:
+        fr = []
+        for y in sorted(fin)[-3:]:
+            v = fin[y]
+            debt = [v.get(k) for k in ("1410", "1510") if v.get(k) is not None]
+            fr.append(f"{y}: выручка {money(v.get('2110'))}, чистая прибыль {money(v.get('2400'))}, "
+                      f"активы {money(v.get('1600'))}, капитал {money(v.get('1300'))}, "
+                      f"кредиты и займы {money(sum(map(float, debt))) if debt else 'н/д'}")
+        lines += section("Финансы (РСБУ, юрлицо)", fr)
+    else:
+        lines += section("Финансы (РСБУ, юрлицо)", ["н/д — отчётность недоступна по текущему тарифу или не сдана"])
+
+    if courts:
+        cr = [f"Дел: {courts['n']}, сумма требований: {money(courts['sum'], 1)}"]
+        cr += [f"{dt(r.get('Дата'))} · {r.get('Номер', '')} · {money(r.get('СуммИск'), 1)}" for r in courts["big"]]
+        lines += section("Суды (крупнейшие)", cr)
+    if isinstance(enf, dict):
+        lines += section("Исполнительные производства",
+                         [f"Всего: {enf.get('ЗапВсего', len(lst(enf.get('Записи'))))}, "
+                          f"сумма: {money(enf.get('ОбщСумДолг') or enf.get('СуммДолг'), 1)}"])
+    lines.append("\nИсточник: Checko. Цифры отчётности — в тыс. ₽ из ГИР БО, пересчитаны в млн/млрд ₽.")
+    text = "\n".join(lines)
+    OUT.mkdir(exist_ok=True)
+    (OUT / f"{ident}_профиль.txt").write_text(text, encoding="utf-8")
+    print(text)
+
+
 if __name__ == "__main__":
-    cmds = {"raw": (cmd_raw, 2), "fin": (cmd_fin, 2), "risk": (cmd_risk, 1)}
+    cmds = {"raw": (cmd_raw, 2), "fin": (cmd_fin, 2), "risk": (cmd_risk, 1), "profile": (cmd_profile, 1)}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds or len(sys.argv) - 2 < cmds[sys.argv[1]][1]:
         print(__doc__)
         sys.exit(1)
