@@ -3,6 +3,7 @@
 
   ~/pw/bin/python onec.py probe                      что показывает сайт без входа: адрес, поля формы, кнопки
   ~/pw/bin/python onec.py login                      вход; сессия сохраняется, пароль больше не нужен до её истечения
+  ~/pw/bin/python onec.py report 1025007509768       все разделы (скоринг, финансы, суды, приставы, лизинги…) → 1cont/<ОГРН>_отчёт_1С.txt
   ~/pw/bin/python onec.py fetch 1025007509768        страница скоринга компании по ОГРН → текст в 1cont/
   ~/pw/bin/python onec.py fetch 1025007509768 main/finance   другой раздел той же компании
 
@@ -151,8 +152,69 @@ def cmd_fetch(ogrn, section="main/scoring"):
         b.close()
 
 
+# Разделы для справки кредитному комитету: подпись ссылки в меню сайта → заголовок в отчёте
+REPORT = [("Скоринг", "Скоринг"), ("Руководители и учредители", "Руководители и учредители"),
+          ("Баланс и финрезультаты", "Баланс и финансовые результаты"), ("Финансовый анализ", "Финансовый анализ"),
+          ("Арбитраж", "Арбитражные суды"), ("Приставы", "Исполнительные производства"),
+          ("Налоги и взносы", "Налоги и взносы"), ("Залоги", "Залоги"), ("Лизинги", "Лизинги"),
+          ("Связи", "Связанные компании"), ("Госконтракты", "Госконтракты")]
+MENU_END = ("Дополнительные проверки", "Товарные знаки")
+
+
+def content(text):
+    """Текст страницы без левого меню сайта (оно одинаковое на всех страницах компании)."""
+    lines = text.splitlines()
+    for marker in MENU_END:
+        idx = [i for i, l in enumerate(lines) if l.strip().startswith(marker)]
+        if idx:
+            return "\n".join(l for l in lines[idx[0] + 1:] if l.strip())
+    return "\n".join(l for l in lines if l.strip())
+
+
+def cmd_report(ogrn, limit="4000"):
+    """Все разделы из REPORT одним проходом → 1cont/<ОГРН>_отчёт_1С.txt (по каждому — до limit знаков)."""
+    limit = int(limit)
+    start = f"https://fd.1cont.ru/contragent/{ogrn}/main/scoring"
+    with sync_playwright() as p:
+        b, ctx = browser(p)
+        page = ctx.new_page()
+        page.goto(start, wait_until="networkidle", timeout=90000)
+        page.wait_for_timeout(3000)
+        if "Вход и регистрация" in page.inner_text("body")[:3000]:
+            sys.exit("Вход не выполнен или сессия истекла — запусти: onec.py login")
+        menu = {}
+        for a in page.query_selector_all("a"):
+            h, t = a.get_attribute("href"), " ".join((a.inner_text() or "").split())
+            if h and f"/contragent/{ogrn}/" in h and t:
+                menu.setdefault(t, h)  # подпись может быть с числом: «Приставы 63»
+        stamp = datetime.now().strftime("%d.%m.%Y %H:%M")
+        out = [f"1С:Контрагент — {ogrn}", f"Выгружено: {stamp} МСК", ""]
+        for label, title in REPORT:
+            href = next((h for t, h in menu.items() if t.startswith(label)), None)
+            if label == "Скоринг":
+                href = start
+            if not href:
+                out += [f"=== {title} ===", "раздел не найден в меню", ""]
+                continue
+            url = href if href.startswith("http") else "https://fd.1cont.ru" + href
+            try:
+                page.goto(url, wait_until="networkidle", timeout=90000)
+                page.wait_for_timeout(2500)
+                txt = content(page.inner_text("body"))
+            except Exception as ex:  # noqa: BLE001 — один раздел не должен ронять весь отчёт
+                txt = f"не загрузился: {type(ex).__name__}"
+            cut = " … (обрезано)" if len(txt) > limit else ""
+            out += [f"=== {title} ===", f"Источник: {url}", txt[:limit] + cut, ""]
+            print(f"  {title}: {len(txt)} знаков")
+        b.close()
+    OUT.mkdir(exist_ok=True)
+    path = OUT / f"{ogrn}_отчёт_1С.txt"
+    path.write_text("\n".join(out), encoding="utf-8")
+    print(f"Отчёт: {path}")
+
+
 if __name__ == "__main__":
-    cmds = {"probe": cmd_probe, "login": cmd_login, "fetch": cmd_fetch}
+    cmds = {"probe": cmd_probe, "login": cmd_login, "fetch": cmd_fetch, "report": cmd_report}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print(__doc__)
         sys.exit(1)
