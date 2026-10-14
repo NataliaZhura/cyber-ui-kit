@@ -352,31 +352,38 @@ def records(x):
     return []
 
 
-def cmd_find(*words):
-    """Поиск компании по названию → ИНН, ОГРН, регион, статус. Формат метода поиска Checko сверяется
-    по ответу; если метод недоступен на тарифе — сообщает, и агент ищет через onec.py find."""
-    query = " ".join(words)
-    q = urllib.parse.urlencode({"key": key(), "by": "name", "obj": "org", "query": query, "limit": 10})
+def search(query, limit=10):
+    """Поиск организаций по названию в Checko → список карточек (сначала действующие)."""
+    q = urllib.parse.urlencode({"key": key(), "by": "name", "obj": "org", "query": query, "limit": limit})
     req = urllib.request.Request(API + "search?" + q, headers={"User-Agent": "AviationMonitor/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
             data = json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        sys.exit(f"Поиск Checko недоступен: HTTP {e.code} {e.read(200).decode('utf-8', 'replace')}")
+        raise RuntimeError(f"Поиск Checko недоступен: HTTP {e.code} {e.read(200).decode('utf-8', 'replace')}")
     meta = data.get("meta") or {}
     if meta.get("status") not in (None, "ok"):
-        sys.exit(f"Поиск Checko недоступен: {meta}")
+        raise RuntimeError(f"Поиск Checko недоступен: {meta}")
     rows = records(data.get("data"))
-    if not rows:
-        print(f"По «{query}» ничего не найдено в Checko.")
-        return
     # сначала действующие: ликвидированные «тёзки» — частая причина ошибки при выборе компании
     rows.sort(key=lambda r: "не действ" in str(name_of(r.get("Статус"))).lower())
-    for i, r in enumerate(rows[:10], 1):
-        parts = [r.get("НаимСокр") or r.get("НаимПолн"), f"ИНН {r.get('ИНН')}", f"ОГРН {r.get('ОГРН')}",
-                 name_of(r.get("Регион")) or g(r, "ЮрАдрес", "НасПункт"), name_of(r.get("Статус"))]
-        print(f"{i} — " + " · ".join(str(x) for x in parts if x))
+    return [{"name": r.get("НаимСокр") or r.get("НаимПолн"), "inn": r.get("ИНН"), "ogrn": r.get("ОГРН"),
+             "region": name_of(r.get("Регион")) or g(r, "ЮрАдрес", "НасПункт") or "",
+             "status": name_of(r.get("Статус")) or ""} for r in rows]
 
+
+def cmd_find(*words):
+    """Поиск компании по названию → ИНН, ОГРН, регион, статус. Если метод недоступен — агент ищет через onec.py find."""
+    query = " ".join(words)
+    try:
+        rows = search(query)
+    except RuntimeError as e:
+        sys.exit(str(e))
+    if not rows:
+        print(f"По «{query}» ничего не найдено в Checko.")
+    for i, r in enumerate(rows[:10], 1):
+        parts = [r["name"], f"ИНН {r['inn']}", f"ОГРН {r['ogrn']}", r["region"], r["status"]]
+        print(f"{i} — " + " · ".join(str(x) for x in parts if x))
 
 if __name__ == "__main__":
     cmds = {"raw": (cmd_raw, 2), "fin": (cmd_fin, 2), "risk": (cmd_risk, 1), "profile": (cmd_profile, 1), "compare": (cmd_compare, 2), "find": (cmd_find, 1)}
