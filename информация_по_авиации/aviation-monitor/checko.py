@@ -370,9 +370,12 @@ def cmd_find(*words):
     if not rows:
         print(f"По «{query}» ничего не найдено в Checko.")
         return
+    # сначала действующие: ликвидированные «тёзки» — частая причина ошибки при выборе компании
+    rows.sort(key=lambda r: "не действ" in str(name_of(r.get("Статус"))).lower())
     for i, r in enumerate(rows[:10], 1):
-        print(f"{i} — {r.get('НаимСокр') or r.get('НаимПолн')} · ИНН {r.get('ИНН')} · ОГРН {r.get('ОГРН')} · "
-              f"{name_of(r.get('Регион'))} · {name_of(r.get('Статус'))}")
+        parts = [r.get("НаимСокр") or r.get("НаимПолн"), f"ИНН {r.get('ИНН')}", f"ОГРН {r.get('ОГРН')}",
+                 name_of(r.get("Регион")) or g(r, "ЮрАдрес", "НасПункт"), name_of(r.get("Статус"))]
+        print(f"{i} — " + " · ".join(str(x) for x in parts if x))
 
 
 if __name__ == "__main__":
