@@ -9,6 +9,7 @@
 
 Логин и пароль — в ~/.secrets/1cont (строка 1 — логин, строка 2 — пароль, права 600). В чат их не присылай.
 """
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -158,17 +159,26 @@ REPORT = [("Скоринг", "Скоринг"), ("Руководители и у
           ("Арбитраж", "Арбитражные суды"), ("Приставы", "Исполнительные производства"),
           ("Налоги и взносы", "Налоги и взносы"), ("Залоги", "Залоги"), ("Лизинги", "Лизинги"),
           ("Связи", "Связанные компании"), ("Госконтракты", "Госконтракты")]
-MENU_END = ("Дополнительные проверки", "Товарные знаки")
+MENU_END = ("Льготы", "Дополнительные проверки", "Товарные знаки")  # последние пункты левого меню сайта
+NUM = re.compile(r"^[\d\s.,%+−-]+(?:₽|руб\.?|млн|млрд|тыс\.?)?$")
 
 
 def content(text):
-    """Текст страницы без левого меню сайта (оно одинаковое на всех страницах компании)."""
-    lines = text.splitlines()
+    """Текст страницы без левого меню сайта; числа, стоящие отдельной строкой, — к подписи: «Действующие: 8»."""
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
     for marker in MENU_END:
-        idx = [i for i, l in enumerate(lines) if l.strip().startswith(marker)]
+        idx = [i for i, l in enumerate(lines) if l.startswith(marker)]
         if idx:
-            return "\n".join(l for l in lines[idx[0] + 1:] if l.strip())
-    return "\n".join(l for l in lines if l.strip())
+            lines = lines[idx[0] + 1:]
+            break
+    out, free = [], False  # free — последняя строка — подпись, ещё без числа (годы «2025» тоже подписи)
+    for l in lines:
+        if free and NUM.match(l) and len(out[-1]) < 80:
+            out[-1], free = f"{out[-1]}: {l}", False
+        else:
+            out.append(l)
+            free = True
+    return "\n".join(out)
 
 
 def cmd_report(ogrn, limit="4000"):
