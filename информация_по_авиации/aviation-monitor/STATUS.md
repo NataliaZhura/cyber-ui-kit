@@ -28,8 +28,11 @@
    (справка по компании → сравнение и стресс-тест демо-модели `demo/demo_model.xlsx` → вопросы для отзыва),
    итоги недели 17.10 09:00. Отзыв — `saved_tester/feedback.md`. Отключить 17.10: `python3 tester/connect.py <ID> --off`
    и удалить расписания «Тест: …».
-10. Встроенные задачи OpenClaw `skill-collection-review-main/-tester` раз в 7 дней сами переписывают навыки.
-    Копия навыков: `bak/skills-2026-10-14/`. Решить: выключить (`openclaw automations disable <id>`) или оставить.
+10. Встроенные задачи OpenClaw `skill-collection-review-main/-tester` (раз в 7 дней) — системные, через
+    `automations disable` не выключаются. Мастерская навыков встроена в OpenClaw (`skills.workshop`, команды
+    `openclaw skills workshop list/inspect/apply/reject`), работает через предложения. Решение владельца 14.10:
+    на время теста не трогать. После теста: `openclaw skills workshop list --agent main|tester`, при необходимости
+    `skills.workshop.approvalPolicy pending` (отмена — `config unset`). Копия навыков: `bak/skills-2026-10-14/`.
 4. Дозаполнить ИНН в `companies.csv` (ещё 45 + разобрать 9 «проверить»).
 5. Пороги баллов для классов A–E — утвердить владельцу (сейчас класс присваивается по блокам и стоп-факторам).
 6. Порог DCR банка и стресс-сценарии — уточнить у владельца (сейчас 1,2 и стандартный набор).
