@@ -47,12 +47,28 @@ def describe(page):
 
 
 def open_login(page):
-    """Стартовая страница — публичный поиск; форма входа открывается кнопкой «Вход и регистрация»."""
+    """Стартовая страница — публичный поиск. Сначала закрываем плашку cookie («ОК»), потом жмём
+    «Вход и регистрация». Форма может открыться в этой же вкладке, в новой вкладке или на сайте входа 1С."""
     page.goto(START, wait_until="networkidle", timeout=60000)
-    if not page.query_selector("input[type=password]"):
-        page.get_by_text("Вход и регистрация", exact=False).first.click()
-        page.wait_for_load_state("networkidle", timeout=60000)
-        page.wait_for_timeout(2000)
+    if page.query_selector("input[type=password]"):
+        return page
+    ok = page.get_by_role("button", name="ОК")
+    if ok.count():
+        ok.first.click()
+        page.wait_for_timeout(500)
+    ctx = page.context
+    before = len(ctx.pages)
+    btn = page.get_by_role("button", name="Вход и регистрация")
+    if not btn.count():
+        btn = page.get_by_text("Вход и регистрация", exact=False)
+    btn.first.click()
+    for _ in range(20):  # до 10 секунд ждём форму, новую вкладку или переход на другой адрес
+        page.wait_for_timeout(500)
+        if len(ctx.pages) > before or page.url.rstrip("/") != START.rstrip("/") or page.query_selector("input[type=password]"):
+            break
+    page = ctx.pages[-1]
+    page.wait_for_load_state("networkidle", timeout=60000)
+    page.wait_for_timeout(1500)
     return page
 
 
@@ -63,7 +79,7 @@ def cmd_probe():
         page.goto(START, wait_until="networkidle", timeout=60000)
         print("— стартовая страница —")
         describe(page)
-        open_login(page)
+        page = open_login(page)
         print("\n— после «Вход и регистрация» —")
         describe(page)
         text = " ".join(page.inner_text("body").split())

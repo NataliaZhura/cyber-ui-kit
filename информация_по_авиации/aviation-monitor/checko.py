@@ -59,7 +59,8 @@ def call(endpoint, ident):
     data["_выгружено"] = datetime.now().strftime("%Y-%m-%d %H:%M МСК")
     path.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     left = {k: v for k, v in meta.items() if k != "status"}
-    print(f"{endpoint}: сохранено {path.relative_to(BASE)}" + (f" · лимит/баланс: {left}" if left else ""))
+    print(f"{endpoint}: сохранено {path.relative_to(BASE)}" + (f" · лимит/баланс: {left}" if left else ""),
+          file=sys.stderr)
     return data.get("data")
 
 
@@ -103,8 +104,8 @@ def cmd_fin(ident, company):
         for field, codes in CODES.items():
             vals = [lines.get(c) for c in codes]
             vals = [float(v) for v in vals if isinstance(v, (int, float, str)) and str(v).lstrip("-").replace(".", "").isdigit()]
-            # тыс. ₽ в отчётности → млрд ₽; нет строки — пусто («н/д»), не ноль
-            row[field] = f"{sum(vals) / 1e6:.2f}".replace(".", ",") if vals else ""
+            # рубли → млрд ₽; нет строки — пусто («н/д»), не ноль
+            row[field] = f"{sum(vals) / 1e9:.2f}".replace(".", ",") if vals else ""
         new.append(row)
     path = BASE / "finance.csv"
     with path.open(encoding="utf-8-sig", newline="") as f:
@@ -120,7 +121,7 @@ def cmd_fin(ident, company):
           f"(заменено строк: {len(old) - len(kept)}). EBITDA не заполняется: амортизации нет в формах — н/д.")
     for r in new:
         print("  " + " · ".join(f"{k}={r[k] or 'н/д'}" for k in ("период", "выручка", "чистая_прибыль", "активы", "долг")))
-    print("Единицы: предполагается, что Checko отдаёт тыс. ₽ (как в бухотчётности). Сверь один год с карточкой на checko.ru.")
+    print("Единицы: Checko отдаёт отчётность в рублях, здесь — млрд ₽. Сверь один год с карточкой на checko.ru.")
 
 
 def cmd_risk(ident):
@@ -142,7 +143,7 @@ def cached(endpoint, ident):
     try:
         return call(endpoint, ident)
     except SystemExit as e:
-        print(f"  {endpoint}: нет данных ({e})")
+        print(f"  {endpoint}: нет данных ({e})", file=sys.stderr)
         return None
 
 
@@ -156,8 +157,8 @@ def name_of(x):
     return x if isinstance(x, str) else g(x, "Наим") or g(x, "НаимПолн") or g(x, "НаимСокр") or g(x, "ФИО") or ""
 
 
-def money(v, unit=1e3):
-    """Рубли в «млн ₽» / «млрд ₽» по-русски. unit — во что выражено v (по умолчанию тыс. ₽ из отчётности)."""
+def money(v, unit=1):
+    """Рубли в «млн ₽» / «млрд ₽» по-русски. Checko отдаёт суммы, включая отчётность, в рублях."""
     try:
         r = float(v) * unit
     except (TypeError, ValueError):
@@ -184,7 +185,7 @@ def founders(c):
         for group in u.values():
             for f in lst(group):
                 share = g(f, "Доля", "Процент")
-                out.append(f"{name_of(f)}" + (f" — {share}%" if share is not None else ""))
+                out.append(f"{name_of(f)}" + (f" — {float(share):g}%" if share is not None else ""))
     elif isinstance(u, list):
         out = [name_of(f) for f in u]
     return [x for x in out if x]
@@ -248,7 +249,7 @@ def cmd_profile(ident):
         lines += section("Исполнительные производства",
                          [f"Всего: {enf.get('ЗапВсего', len(lst(enf.get('Записи'))))}, "
                           f"сумма: {money(enf.get('ОбщСумДолг') or enf.get('СуммДолг'), 1)}"])
-    lines.append("\nИсточник: Checko. Цифры отчётности — в тыс. ₽ из ГИР БО, пересчитаны в млн/млрд ₽.")
+    lines.append("\nИсточник: Checko (данные ФНС, ГИР БО, картотеки судов и ФССП).")
     text = "\n".join(lines)
     OUT.mkdir(exist_ok=True)
     (OUT / f"{ident}_профиль.txt").write_text(text, encoding="utf-8")
