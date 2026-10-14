@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Справка → PDF и Word → в чат, на почту или в Telegram другому человеку.
 
+  ~/pw/bin/python share.py save saved/2026-10-14_ГазпромАвиа.md        Word + PDF и оба файла владельцу в чат
   ~/pw/bin/python share.py convert saved/2026-10-14_ГазпромАвиа.md     → .docx и .pdf рядом с файлом
   python3 share.py tg <telegram_id> <файл> [<файл> …]                    файлы в Telegram (себе или получателю)
   python3 share.py email <адрес> "<тема>" <файл> [<файл> …] [--new]      письмо с вложениями
@@ -82,7 +83,20 @@ def tg_token():
     return menu.token()
 
 
+def owner_id():
+    """Telegram ID владельца — первый из разрешённых в настройке OpenClaw channels.telegram.allowFrom."""
+    out = subprocess.run(["openclaw", "config", "get", "channels.telegram.allowFrom"],
+                         capture_output=True, text=True, timeout=60).stdout
+    start = out.find("[")
+    ids = json.loads(out[start:out.rfind("]") + 1]) if start >= 0 else []
+    if not ids:
+        sys.exit("Не нашёл Telegram ID владельца в channels.telegram.allowFrom")
+    return str(ids[0]).replace("tg:", "").replace("telegram:", "")
+
+
 def cmd_tg(chat_id, *files):
+    if chat_id == "owner":
+        chat_id = owner_id()
     tok = tg_token()
     for f in files:
         path = Path(f).expanduser()
@@ -126,6 +140,14 @@ def cmd_email(to, subject, *files):
     print(f"Письмо отправлено: {to} · вложений {len(files)}")
 
 
+def cmd_save(src):
+    """Одной командой: .md → Word и PDF → оба файла владельцу в чат вложениями."""
+    src = Path(src).expanduser().resolve()
+    cmd_convert(src)
+    cmd_tg("owner", str(src.with_suffix(".pdf")), str(src.with_suffix(".docx")))
+    print(f"Сохранено: {src.with_suffix('')} (.md, .docx, .pdf)")
+
+
 def cmd_book():
     rows = book()
     if not rows:
@@ -135,7 +157,7 @@ def cmd_book():
 
 
 if __name__ == "__main__":
-    cmds = {"convert": cmd_convert, "tg": cmd_tg, "email": cmd_email, "book": cmd_book}
+    cmds = {"save": cmd_save, "convert": cmd_convert, "tg": cmd_tg, "email": cmd_email, "book": cmd_book}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print(__doc__)
         sys.exit(1)
