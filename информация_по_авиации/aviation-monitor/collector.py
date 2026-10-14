@@ -49,6 +49,19 @@ def load_config():
                 regions = [r.strip() for r in (row.get("регион") or "").split(",") if r.strip()]
                 subsidy = (row.get("зависит_от_субсидий") or "").strip().lower() in ("да", "yes", "1", "+")
                 watch.append({"name": name, "aliases": [name] + aliases, "regions": regions, "subsidy": subsidy})
+    # companies.csv — все компании из материалов владельца: узнаём их в новостях, но отдельный поиск
+    # по каждой не запускаем (иначе +75 запросов за сбор на слабом сервере); поиск — только для watchlist
+    known = {a.lower() for w in watch for a in w["aliases"]}
+    cl = BASE / "companies.csv"
+    if cl.exists():
+        with cl.open(encoding="utf-8-sig", newline="") as f:
+            for row in csv.DictReader(f, delimiter=";"):
+                name = (row.get("компания") or "").strip()
+                aliases = [a.strip() for a in (row.get("синонимы") or "").split(",") if len(a.strip()) > 3]
+                if not name or any(x.lower() in known for x in [name] + aliases):
+                    continue  # уже есть в watchlist (там же и поиск по ней)
+                watch.append({"name": name, "aliases": [name] + aliases, "regions": [], "subsidy": False,
+                              "search": False})
     return cfg, watch
 
 
@@ -217,6 +230,8 @@ def feeds(cfg, watch):
     for q in cfg.get("search_topics", []):
         yield f"Поиск: {q}", GNEWS.format(q=urllib.parse.quote(q))
     for w in watch:
+        if not w.get("search", True):
+            continue
         q = " OR ".join(f'"{a}"' for a in w["aliases"][:4])
         yield f"Поиск: {w['name']}", GNEWS.format(q=urllib.parse.quote(q))
     regions = {r for w in watch if w.get("subsidy") for r in w["regions"]}
