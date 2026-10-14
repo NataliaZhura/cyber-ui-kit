@@ -18,5 +18,6 @@ cat "$SRC/AGENTS.md" >> "$DST/AGENTS.md"
 for s in fin-assessment company-picker excel model-stress; do
   [ -d "$SRC/skills/$s" ] && cp -r "$SRC/skills/$s" "$DST/skills/"
 done
-printf '# Память тестового пользователя\n\n## Предпочтения\n\n## Факты\n' > "$DST/MEMORY.md"
+# память не затираем при повторном запуске
+[ -f "$DST/MEMORY.md" ] || printf '# Память тестового пользователя\n\n## Предпочтения\n\n## Факты\n' > "$DST/MEMORY.md"
 echo "Готово: $DST (правила $(wc -l < "$DST/AGENTS.md") строк, навыки: $(ls "$DST/skills" | tr '\n' ' '))"

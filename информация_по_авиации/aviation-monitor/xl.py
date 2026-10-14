@@ -89,6 +89,14 @@ def cmd_check(path):
                         issues.append(f"{ws.title}!{c.coordinate}: в формуле зашито число {', '.join(nums[:3])} → {v[:60]}")
                     if "[" in v and "]" in v:
                         issues.append(f"{ws.title}!{c.coordinate}: ссылка на другой файл → {v[:60]}")
+            # число вбито руками посреди строки формул (слева и справа — формулы): расчёт «перебит» вручную
+            cells = list(row)
+            for i in range(1, len(cells) - 1):
+                left, mid, right = cells[i - 1].value, cells[i].value, cells[i + 1].value
+                if (isinstance(mid, (int, float)) and not isinstance(mid, bool)
+                        and all(isinstance(x, str) and x.startswith("=") for x in (left, right))):
+                    issues.append(f"{ws.title}!{cells[i].coordinate}: число {mid} вместо формулы "
+                                  f"(соседние ячейки считаются формулами) — проверить, не перебит ли расчёт")
     if external_links(path):
         issues.append("в книге есть связи с внешними файлами — значения могли не обновиться")
     print(f"Проверка {Path(path).name}: замечаний {len(issues)}")
