@@ -6,6 +6,7 @@
   python3 share.py tg <telegram_id> <файл> [<файл> …]                    файлы в Telegram (себе или получателю)
   python3 share.py email <адрес> "<тема>" <файл> [<файл> …] [--new]      письмо с вложениями
   python3 share.py book                                                   адресная книга
+  python3 share.py copy <файл.md>                                         текст файла владельцу сообщением (копия)
 
 Адресная книга — recipients.csv (имя;email;telegram_id). Адрес не из книги — только с флагом --new, который агент
 ставит после явного «да» владельца. Каждая отправка пишется в saved/sent.log.
@@ -18,6 +19,7 @@ import os
 import smtplib
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
 import uuid
 from datetime import datetime
@@ -117,6 +119,26 @@ def cmd_tg(chat_id, *files):
     log("telegram", chat_id, files)
 
 
+def cmd_copy(src):
+    """Копия текста владельцу обычным сообщением (части по 3500 знаков). Получатель зашит — только владелец."""
+    path = Path(src).expanduser()
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        sys.exit(f"Пустой файл: {path}")
+    tok, chat_id = tg_token(), owner_id()
+    parts = [text[i:i + 3500] for i in range(0, len(text), 3500)]
+    for n, part in enumerate(parts, 1):
+        head = f"[копия {n}/{len(parts)}]\n" if len(parts) > 1 else ""
+        data = urllib.parse.urlencode({"chat_id": chat_id, "text": head + part,
+                                       "disable_web_page_preview": "true"}).encode()
+        with urllib.request.urlopen(f"https://api.telegram.org/bot{tok}/sendMessage", data=data, timeout=60) as r:
+            ok = json.loads(r.read().decode()).get("ok")
+        if not ok:
+            sys.exit("Telegram не принял копию")
+    print(f"Копия отправлена владельцу: {path.name} ({len(parts)} сообщ.)")
+    log("telegram-copy", chat_id, [str(path)])
+
+
 def cmd_email(to, subject, *files):
     files = [f for f in files if f != "--new"]
     known = {r.get("email", "").lower() for r in book()}
@@ -157,7 +179,7 @@ def cmd_book():
 
 
 if __name__ == "__main__":
-    cmds = {"save": cmd_save, "convert": cmd_convert, "tg": cmd_tg, "email": cmd_email, "book": cmd_book}
+    cmds = {"save": cmd_save, "convert": cmd_convert, "tg": cmd_tg, "copy": cmd_copy, "email": cmd_email, "book": cmd_book}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print(__doc__)
         sys.exit(1)
