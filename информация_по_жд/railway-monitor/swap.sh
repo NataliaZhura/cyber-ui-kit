@@ -24,6 +24,7 @@ echo "== 4. Рассылки «Тест: …» — адресат Владисл
 for id in $(openclaw automations list 2>/dev/null | grep "Тест" | awk '{print $1}'); do
   openclaw automations edit "$id" --to "$V" >/dev/null && echo "перенаправлено: $id"
 done
+python3 ~/railway-monitor/rename.py apply   # имя Анастасии в рассылках → Владислав
 
 echo "== 5. Анастасия → ЖДуша (гость)"
 cd ~/railway-monitor && python3 zguest.py apply $A zguest
