@@ -15,7 +15,7 @@ sed "s/TESTER_ID/$ID/g" "$AM/tester/HEADER.md" > "$DST/AGENTS.md"
 cat "$SRC/AGENTS.md" >> "$DST/AGENTS.md"
 [ -f "$SRC/SOUL.md" ] && cp "$SRC/SOUL.md" "$DST/"
 # навыки, нужные для справок и моделей (методика — для расчёта класса; текст наружу не выдаётся по правилам)
-for s in fin-assessment company-picker excel model-stress; do
+for s in fin-assessment company-picker excel model-stress pdf-read; do
   [ -d "$SRC/skills/$s" ] && cp -r "$SRC/skills/$s" "$DST/skills/"
 done
 # память не затираем при повторном запуске
