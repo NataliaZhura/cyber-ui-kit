@@ -1,0 +1,7 @@
+__pycache__/
+companies.csv
+company_sources.json
+links.csv
+links_check.csv
+pick_last.json
+recipients.csv

@@ -3,7 +3,7 @@
 
 Только стандартная библиотека Python 3.10+. Команды:
   check                         проверить, открывается ли каждый источник
-  collect [--days N]            собрать свежие новости в архив
+  collect [--days N] [--all]    собрать свежие новости в архив (сайты и каналы компаний — раз в 3 часа или с --all)
   export --from D --to D        выгрузить новости за период, дубли склеены в один сюжет
   company "Ютэйр, UTair"        всё о компании или производителе за год (досбор + выгрузка)
   card "Аэрофлот" --from D --to D  карточка для инвестора: вывод, финансы, долг, имущество, суды
@@ -62,6 +62,15 @@ def load_config():
                     continue  # уже есть в watchlist (там же и поиск по ней)
                 watch.append({"name": name, "aliases": [name] + aliases, "regions": [], "subsidy": False,
                               "search": False})
+    # официальные сайты и Telegram-каналы компаний (links.py apply) — свои посты компании
+    cs = BASE / "company_sources.json"
+    cfg["company_sources"] = json.loads(cs.read_text(encoding="utf-8")) if cs.exists() else []
+    cfg["_own"] = {}
+    for s in cfg["company_sources"]:
+        if s.get("telegram"):
+            cfg["_own"][f"TG @{s['telegram']}"] = s["company"]
+        if s.get("rss") or s.get("site"):
+            cfg["_own"][f"Сайт {s['company']}"] = s["company"]
     return cfg, watch
 
 
@@ -221,10 +230,28 @@ def tag_item(title, summ, cfg, watch, source=""):
                     or any(a.lower() in head for w in watch for a in w["aliases"])
                     or any(x in head for x in cfg.get("civil_override", [])))
     score = 1 + 3 * len(ents) + 3 * len(risks) + len(assets) if aviation else 0
+    own = cfg.get("_own", {}).get(source)
+    if own:
+        # пост в канале / на сайте самой компании: компания — его герой, даже если не названа.
+        # Балл без «+3 за компанию»: акции и реклама не проходят порог справки, суды/допуск/простой — проходят
+        ents = [own] + [x for x in ents if x != own]
+        score = 1 + 3 * len(risks) + len(assets)
     return ents, assets, risks, score
 
 
-def feeds(cfg, watch):
+def domain(url):
+    return urllib.parse.urlparse(url if "//" in url else "https://" + url).netloc.removeprefix("www.")
+
+
+def feeds(cfg, watch, companies=True):
+    if companies:  # сайты и каналы компаний — раз в 3 часа (см. cmd_collect), чтобы не грузить слабый сервер
+        for s in cfg.get("company_sources", []):
+            if s.get("telegram"):
+                yield f"TG @{s['telegram']}", f"https://t.me/s/{s['telegram']}"
+            if s.get("rss"):
+                yield f"Сайт {s['company']}", s["rss"]
+            elif s.get("site"):
+                yield f"Сайт {s['company']}", GNEWS.format(q=urllib.parse.quote(f"site:{domain(s['site'])}"))
     for s in cfg["feeds"]:
         yield s["name"], s["url"]
     for q in cfg.get("search_topics", []):
@@ -286,7 +313,8 @@ def cmd_collect(a):
     con = db()
     since = datetime.now(MSK) - timedelta(days=a.days)
     added = errors = 0
-    for name, url in feeds(cfg, watch):
+    companies = datetime.now(MSK).hour % 3 == 0 or getattr(a, "all", False)
+    for name, url in feeds(cfg, watch, companies):
         try:
             items = fetch_items(url)
         except Exception as e:  # noqa: BLE001
@@ -640,6 +668,7 @@ def main():
     sub.add_parser("check").set_defaults(fn=cmd_check)
     c = sub.add_parser("collect")
     c.add_argument("--days", type=int, default=3)
+    c.add_argument("--all", action="store_true", help="опросить и сайты/каналы компаний вне 3-часового окна")
     c.set_defaults(fn=cmd_collect)
     e = sub.add_parser("export")
     e.add_argument("--from", dest="date_from", required=True, help="ГГГГ-ММ-ДД")
