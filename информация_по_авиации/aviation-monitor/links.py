@@ -198,12 +198,19 @@ def cmd_inn1c():
 def file_text(path):
     """Текст файла для поиска реквизитов: PDF (текстовый слой), Excel, CSV/TXT. Первые страницы/листы — там шапка."""
     suf = path.suffix.lower()
+    if path.stat().st_size > 25 * 1024 * 1024:  # большие файлы не открываем: реквизиты есть и в маленьких
+        raise ValueError("файл больше 25 МБ — пропущен, чтобы не занимать память сервера")
     if suf == ".pdf":
         import logging
         import pdfplumber
         logging.getLogger("pdfminer").setLevel(logging.ERROR)
         with pdfplumber.open(path) as pdf:
-            return "\n".join((pg.extract_text() or "") for pg in pdf.pages[:3])
+            # только первые 2 страницы: ИНН и название — в шапке; страница освобождается сразу после чтения
+            out = []
+            for pg in pdf.pages[:2]:
+                out.append(pg.extract_text() or "")
+                pg.flush_cache()
+            return "\n".join(out)
     if suf in (".xlsx", ".xlsm"):
         from openpyxl import load_workbook
         wb = load_workbook(path, read_only=True, data_only=True)
@@ -231,7 +238,7 @@ def cmd_fromfiles(folder, *rest):
         try:
             text = file_text(f)
         except Exception as e:  # noqa: BLE001 — битый файл не останавливает остальные
-            skipped.append(f"{f.name}: не прочитан ({type(e).__name__})")
+            skipped.append(f"{f.name}: не прочитан ({e if isinstance(e, ValueError) else type(e).__name__})")
             continue
         if not text.strip():
             skipped.append(f"{f.name}: нет текста (скан или неподдерживаемый формат)")
