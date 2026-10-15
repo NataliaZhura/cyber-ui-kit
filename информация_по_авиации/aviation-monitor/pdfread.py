@@ -104,7 +104,9 @@ def extract_tables(path, spec=None):
                 tabs = []
                 for t in pdf.pages[i].extract_tables(st):
                     rows = [[to_num(c) for c in merge_groups(r) if c != ""] for r in t if any(c not in (None, "") for c in r)]
-                    if rows:
+                    numeric = sum(any(isinstance(c, (int, float)) for c in r) for r in rows)
+                    # «по тексту» обычный абзац тоже режется на колонки — такую «таблицу» без чисел не берём
+                    if rows and (not st or numeric >= max(2, len(rows) // 2)):
                         tabs.append(rows)
                 s = sum(isinstance(c, (int, float)) for rows in tabs for r in rows for c in r)
                 if s > score:
