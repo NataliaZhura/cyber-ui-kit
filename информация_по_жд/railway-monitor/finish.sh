@@ -39,7 +39,8 @@ add "ЖД: сверка прогноза" "0 9 * * 1" \
 
 echo "== 6. Проверка"
 [ -f watchlist.csv ] && echo "watchlist.csv: $(($(wc -l < watchlist.csv)-1)) компаний" || echo "!! нет watchlist.csv"
-echo "выпусков Argus: $(ls private/argus 2>/dev/null | wc -l)"
+echo "выпусков Argus: $(ls private/argus/*.pdf 2>/dev/null | wc -l)"
+ls private/argus/*.pdf >/dev/null 2>&1 && ~/pw/bin/python argus.py | tail -3
 python3 collector.py stats 2>/dev/null | tail -3
 openclaw automations list 2>/dev/null | grep -F "ЖД:" || true
 echo "== Готово. В @zhdusha_bot: /new, затем /start — должна появиться кнопка «Меню»."
