@@ -5,6 +5,7 @@
   ~/pw/bin/python links.py inn1c [--limit 40]  то же через 1С:Контрагент (без дневного лимита Checko; ОГРН из ссылки)
   python3 links.py check               спорные компании с вариантами (нумерованный список)
   python3 links.py pick 3 2801118992   записать ИНН для компании №3 из списка check
+  python3 links.py set 2801118992 Амурская   записать ИНН по слову из названия (надёжнее номера)
   python3 links.py find [--limit 40]   сайт (Checko) → на сайте ищем ссылку на Telegram и RSS → links.csv
   python3 links.py show                таблица links.csv коротко (для владельца)
   python3 links.py apply               одобренные строки links.csv → company_sources.json (его читает collector.py)
@@ -200,6 +201,21 @@ def cmd_check():
         print("\nВыбор: python3 links.py pick <номер> <ИНН> (ИНН из вариантов или свой); пропустить — не отвечать.")
 
 
+def cmd_set(inn, *words):
+    """ИНН по слову из названия: links.py set 2801118992 Амурская — без номеров и кавычек."""
+    if not inn.isdigit() or len(inn) not in (10, 12) or not words:
+        sys.exit("Нужно: ИНН (10 или 12 цифр) и слово из названия компании.")
+    comp, fields = read_csv(COMPANIES)
+    key = " ".join(words).lower().replace("ё", "е")
+    hit = [r for r in comp if key in (r.get("компания") or "").lower().replace("ё", "е")]
+    if len(hit) != 1:
+        sys.exit(f"По «{key}» найдено компаний: {len(hit)} — " + "; ".join(r["компания"] for r in hit[:5])
+                 + ". Нужно слово, которое есть только в одном названии.")
+    hit[0]["инн"] = inn
+    save_companies(comp, fields)
+    print(f"Записано: {hit[0]['компания']} → ИНН {inn}")
+
+
 def cmd_pick(num, inn):
     rows, _ = read_csv(CHECK)
     comp, fields = read_csv(COMPANIES)
@@ -207,7 +223,7 @@ def cmd_pick(num, inn):
     rows = [r for r in rows if r["компания"] not in have]
     n = int(num)
     if not 1 <= n <= len(rows) or not inn.isdigit() or len(inn) not in (10, 12):
-        sys.exit("Нужно: номер из списка и ИНН (10 или 12 цифр).")
+        sys.exit(f"Нужно: номер из списка (сейчас в нём {len(rows)}) и ИНН (10 или 12 цифр). Список: links.py check")
     name = rows[n - 1]["компания"]
     for r in comp:
         if (r.get("компания") or "").strip() == name:
@@ -352,7 +368,7 @@ def cmd_apply():
 
 
 if __name__ == "__main__":
-    cmds = {"inn": cmd_inn, "inn1c": cmd_inn1c, "check": cmd_check, "pick": cmd_pick, "find": cmd_find, "show": cmd_show, "apply": cmd_apply}
+    cmds = {"inn": cmd_inn, "inn1c": cmd_inn1c, "check": cmd_check, "pick": cmd_pick, "set": cmd_set, "find": cmd_find, "show": cmd_show, "apply": cmd_apply}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print(__doc__)
         sys.exit(1)
