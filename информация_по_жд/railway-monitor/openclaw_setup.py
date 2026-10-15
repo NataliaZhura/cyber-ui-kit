@@ -5,6 +5,7 @@
   python3 openclaw_setup.py apply    копия настроек → агент zhdusha → бот @zhdusha_bot → правило маршрута
   python3 openclaw_setup.py check    проверить результат (агенты, правила, каналы)
   python3 openclaw_setup.py undo     вернуть настройки из последней копии
+  python3 openclaw_setup.py sync     обновить правила ЖДуши в её папке + навыки (из папки Ави) + память, если нет
 
 Что меняется в ~/.openclaw/openclaw.json:
   - channels.telegram.tokenFile, allowFrom, меню «Ави» — НЕ трогаем (их читают menu.py и share.py «Ави»);
@@ -114,6 +115,26 @@ def cmd_apply():
     restart_hint()
 
 
+def cmd_sync():
+    """Правила из комплекта → папка агента; навыки — копии из папки Ави (у Ави ничего не меняется)."""
+    WS.mkdir(parents=True, exist_ok=True)
+    for f in ("AGENTS.md", "SOUL.md", "TEMPLATE.md"):
+        shutil.copy2(KIT / f, WS / f)
+    src = HOME / ".openclaw" / "workspace" / "skills"
+    got = []
+    for s in ("fin-assessment", "company-picker", "excel", "model-stress", "pdf-read"):
+        if (src / s).is_dir():
+            shutil.copytree(src / s, WS / "skills" / s, dirs_exist_ok=True)
+            got.append(s)
+    mem = WS / "MEMORY.md"
+    if not mem.exists():  # память не затираем
+        mem.write_text("# Память ЖДуши\n\n## Предпочтения владельца\n\n## Факты от владельца\n", encoding="utf-8")
+    for d in ("saved", "private/argus"):
+        (KIT / d).mkdir(parents=True, exist_ok=True)
+    print("Правила обновлены в", WS, "· навыки:", ", ".join(got) or "не найдены в " + str(src))
+    print("Чтобы ЖДуша прочла новые правила — /new в чате с @zhdusha_bot.")
+
+
 def cmd_check():
     for c in (["openclaw", "agents", "list", "--bindings"], ["openclaw", "channels", "status", "--probe"],
               ["openclaw", "doctor"]):
@@ -131,7 +152,7 @@ def cmd_undo():
 
 
 if __name__ == "__main__":
-    cmds = {"plan": cmd_plan, "apply": cmd_apply, "check": cmd_check, "undo": cmd_undo}
+    cmds = {"plan": cmd_plan, "apply": cmd_apply, "check": cmd_check, "undo": cmd_undo, "sync": cmd_sync}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         sys.exit(__doc__)
     cmds[sys.argv[1]]()

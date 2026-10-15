@@ -14,7 +14,8 @@
 - `sources.json` — ленты, 9 Telegram-каналов, ЖД-слова, разделы справки
 - `AGENTS.md`, `SOUL.md`, `TEMPLATE.md` — правила, тон и шаблон справки
 - `send.py` — отправка файлов владельцу через бота ЖДуши
-- `openclaw_setup.py` — подключение второго агента и бота (plan / apply / check / undo)
+- `openclaw_setup.py` — подключение второго агента и бота (plan / apply / check / undo / sync)
+- `zmenu.py` — меню и описание @zhdusha_bot
 - `watchlist_template.csv` — формат списка компаний (реальный список — только на сервере)
 
 **Не коммитить** (репозиторий публичный): `watchlist.csv`, выпуски Argus и цифры из них (`private/`), токены.
