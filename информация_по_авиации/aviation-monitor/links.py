@@ -6,6 +6,7 @@
   python3 links.py check               спорные компании с вариантами (нумерованный список)
   python3 links.py pick 3 2801118992   записать ИНН для компании №3 из списка check
   python3 links.py set 2801118992 Амурская   записать ИНН по слову из названия (надёжнее номера)
+  ~/pw/bin/python links.py fromfiles pdf/balances [--apply]   ИНН из шапок балансов (PDF/Excel) владельца
   python3 links.py find [--limit 40]   сайт (Checko) → на сайте ищем ссылку на Telegram и RSS → links.csv
   python3 links.py show                таблица links.csv коротко (для владельца)
   python3 links.py apply               одобренные строки links.csv → company_sources.json (его читает collector.py)
@@ -194,6 +195,74 @@ def cmd_inn1c():
     cmd_check()
 
 
+def file_text(path):
+    """Текст файла для поиска реквизитов: PDF (текстовый слой), Excel, CSV/TXT. Первые страницы/листы — там шапка."""
+    suf = path.suffix.lower()
+    if suf == ".pdf":
+        import logging
+        import pdfplumber
+        logging.getLogger("pdfminer").setLevel(logging.ERROR)
+        with pdfplumber.open(path) as pdf:
+            return "\n".join((pg.extract_text() or "") for pg in pdf.pages[:3])
+    if suf in (".xlsx", ".xlsm"):
+        from openpyxl import load_workbook
+        wb = load_workbook(path, read_only=True, data_only=True)
+        out = []
+        for ws in wb.worksheets[:3]:
+            for row in ws.iter_rows(max_row=60, values_only=True):
+                out.append(" ".join(str(c) for c in row if c is not None))
+        return "\n".join(out)
+    if suf in (".csv", ".txt"):
+        return path.read_text(encoding="utf-8", errors="replace")[:20000]
+    return ""
+
+
+def cmd_fromfiles(folder, *rest):
+    """Балансы владельца → ИНН и название из шапки каждого файла → сопоставление со списком компаний.
+    Без --apply только показывает; с --apply записывает ИНН совпавшим однозначно (копия списка — в bak/)."""
+    apply = "--apply" in sys.argv
+    base = Path(folder).expanduser()
+    files = sorted(f for f in base.rglob("*") if f.is_file())
+    comp, fields = read_csv(COMPANIES)
+    todo = {norm(r.get("компания") or ""): r for r in comp if not (r.get("инн") or "").strip()}
+    have = {(r.get("инн") or "").strip() for r in comp}
+    found, written, skipped = [], 0, []
+    for f in files:
+        try:
+            text = file_text(f)
+        except Exception as e:  # noqa: BLE001 — битый файл не останавливает остальные
+            skipped.append(f"{f.name}: не прочитан ({type(e).__name__})")
+            continue
+        if not text.strip():
+            skipped.append(f"{f.name}: нет текста (скан или неподдерживаемый формат)")
+            continue
+        inns = list(dict.fromkeys(re.findall(r"ИНН\D{0,15}?(\d{10}|\d{12})\b", text)))
+        org = re.search(r"(?:Организация|Наименование(?: организации)?|Полное наименование)\s*[:|]?\s*([^\n]{3,120})", text)
+        name = (org.group(1).strip() if org else "") or f.stem
+        if not inns:
+            skipped.append(f"{f.name}: ИНН в шапке не найден")
+            continue
+        inn = inns[0]
+        key = norm(name)
+        hit = todo.get(key) or next((r for k, r in todo.items() if k and (k in key or key in k)), None)
+        status = ("уже есть в списке" if inn in have else
+                  f"→ {hit['компания']}" if hit else "в списке без ИНН не найдено")
+        found.append(f"{f.name}: {name[:60]} · ИНН {inn} {status}")
+        if apply and hit and inn not in have:
+            hit["инн"] = inn
+            have.add(inn)
+            todo.pop(norm(hit.get("компания") or ""), None)
+            written += 1
+    print(f"Файлов: {len(files)}; с ИНН: {len(found)}")
+    for line in found:
+        print("  " + line)
+    for line in skipped:
+        print("  · " + line)
+    if apply and written:
+        save_companies(comp, fields)
+    print(f"Записано ИНН: {written}" if apply else "Это просмотр. Записать совпавшие (→): добавь --apply")
+
+
 def cmd_check():
     rows, _ = read_csv(CHECK)
     have = {(r.get("компания") or "").strip() for r, in [(x,) for x in read_csv(COMPANIES)[0]]
@@ -372,7 +441,7 @@ def cmd_apply():
 
 
 if __name__ == "__main__":
-    cmds = {"inn": cmd_inn, "inn1c": cmd_inn1c, "check": cmd_check, "pick": cmd_pick, "set": cmd_set, "find": cmd_find, "show": cmd_show, "apply": cmd_apply}
+    cmds = {"inn": cmd_inn, "inn1c": cmd_inn1c, "check": cmd_check, "pick": cmd_pick, "set": cmd_set, "fromfiles": cmd_fromfiles, "find": cmd_find, "show": cmd_show, "apply": cmd_apply}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print(__doc__)
         sys.exit(1)
