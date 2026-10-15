@@ -224,33 +224,50 @@ def cmd_report(ogrn, limit="4000"):
     print(f"Отчёт: {path}")
 
 
+def open_search(p):
+    """Браузер и страница поиска 1С:Контрагент (под сохранённой сессией) — один раз на много запросов."""
+    b, ctx = browser(p)
+    page = ctx.new_page()
+    page.goto(START, wait_until="networkidle", timeout=60000)
+    ok = page.get_by_role("button", name="ОК")
+    if ok.count():
+        ok.first.click()
+    return b, page
+
+
+def search(page, query, limit=10):
+    """Название → [{ogrn, inn, name, status, text}] из выдачи поиска (ОГРН — из ссылки, ИНН — из текста карточки)."""
+    box = page.wait_for_selector("input[type=search]", timeout=30000)
+    box.fill(query)
+    box.press("Enter")
+    page.wait_for_load_state("networkidle", timeout=60000)
+    page.wait_for_timeout(2500)
+    seen, out = set(), []
+    for a in page.query_selector_all("a[href*='/contragent/']"):
+        m = re.search(r"/contragent/(\d{13,15})", a.get_attribute("href") or "")
+        if not m or m.group(1) in seen:
+            continue
+        seen.add(m.group(1))
+        card = " ".join((a.evaluate("e => (e.closest('li,tr,article,section,div') || e).innerText") or "").split())
+        inn = re.search(r"ИНН\s*:?\s*(\d{10}|\d{12})\b", card)
+        name = re.split(r"\bИНН\b|\bОГРН\b", card)[0].strip() or (a.inner_text() or "").strip()
+        status = "не действует" if re.search(r"ликвидир|прекрат|не действ", card, re.I) else "Действует"
+        out.append({"ogrn": m.group(1), "inn": inn.group(1) if inn else "", "name": name[:150],
+                    "status": status, "region": "", "text": card[:220]})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def cmd_find(*words):
     """Поиск на fd.1cont.ru (публичная строка поиска): название → варианты с ОГРН (он есть в ссылке на карточку)."""
     query = " ".join(words)
     with sync_playwright() as p:
-        b, ctx = browser(p)
-        page = ctx.new_page()
-        page.goto(START, wait_until="networkidle", timeout=60000)
-        ok = page.get_by_role("button", name="ОК")
-        if ok.count():
-            ok.first.click()
-        box = page.wait_for_selector("input[type=search]", timeout=30000)
-        box.fill(query)
-        box.press("Enter")
-        page.wait_for_load_state("networkidle", timeout=60000)
-        page.wait_for_timeout(2500)
-        seen, n = set(), 0
-        for a in page.query_selector_all("a[href*='/contragent/']"):
-            m = re.search(r"/contragent/(\d{13,15})", a.get_attribute("href") or "")
-            if not m or m.group(1) in seen:
-                continue
-            seen.add(m.group(1))
-            card = a.evaluate("e => (e.closest('li,tr,article,section,div') || e).innerText") or ""
-            n += 1
-            print(f"{n} — ОГРН {m.group(1)} · {' '.join(card.split())[:220]}")
-            if n >= 10:
-                break
-        if not n:
+        b, page = open_search(p)
+        rows = search(page, query)
+        for n, r in enumerate(rows, 1):
+            print(f"{n} — ОГРН {r['ogrn']}" + (f" · ИНН {r['inn']}" if r["inn"] else "") + f" · {r['text']}")
+        if not rows:
             print(f"По «{query}» ничего не найдено на 1С:Контрагент.")
         b.close()
 

@@ -2,6 +2,7 @@
 """ИНН, официальные сайты и Telegram-каналы компаний из companies.csv → источники новостей для сборщика.
 
   python3 links.py inn  [--limit 40]   дописать недостающие ИНН/ОГРН (поиск Checko); спорные → links_check.csv
+  ~/pw/bin/python links.py inn1c [--limit 40]  то же через 1С:Контрагент (без дневного лимита Checko; ОГРН из ссылки)
   python3 links.py check               спорные компании с вариантами (нумерованный список)
   python3 links.py pick 3 2801118992   записать ИНН для компании №3 из списка check
   python3 links.py find [--limit 40]   сайт (Checko) → на сайте ищем ссылку на Telegram и RSS → links.csv
@@ -74,6 +75,10 @@ def match(name, found):
     core = norm(name)
     active = [x for x in found if "не действ" not in x["status"].lower() and "ликвид" not in x["status"].lower()]
     same = [x for x in active if norm(x["name"] or "") == core]
+    # тёзки с тем же «ядром» («ООО Ангара» и «АО Авиакомпания Ангара») — оставляем авиационных, если они есть
+    avia_same = [x for x in same if AVIA.search(x["name"] or "")]
+    if avia_same:
+        return avia_same
     if same:
         return same
     return [x for x in active if core and core in norm(x["name"] or "") and AVIA.search(x["name"] or "")]
@@ -132,6 +137,55 @@ def cmd_inn():
         write_csv(CHECK, [o for o in old if o["компания"] not in names] + check, ["компания", "варианты"])
     left = sum(1 for r in rows if not (r.get("инн") or "").strip())
     print(f"ИНН дописано: {filled}; выбрать вручную: {len(check)}; без ИНН осталось: {left}")
+    cmd_check()
+
+
+def cmd_inn1c():
+    """Недостающие ИНН через поиск 1С:Контрагент — одно окно браузера на весь список (сервер слабый)."""
+    import onec
+    rows, fields = read_csv(COMPANIES)
+    todo = [r for r in rows if not (r.get("инн") or "").strip()]
+    budget, filled, check = limit_arg(), 0, []
+    with onec.sync_playwright() as p:
+        b, page = onec.open_search(p)
+        for r in todo:
+            if budget <= 0:
+                break
+            name = (r.get("компания") or "").strip()
+            cands, seen = [], []
+            for q in dict.fromkeys([norm(name), name]):
+                if budget <= 0 or not q:
+                    break
+                try:
+                    found = onec.search(page, q, limit=15)
+                except Exception as e:  # noqa: BLE001 — сайт не ответил: сохраняем сделанное
+                    print(f"Стоп на «{name}»: {type(e).__name__}: {e}")
+                    budget = 0
+                    break
+                budget -= 1
+                seen += found
+                cands = match(name, found)
+                if cands:
+                    break
+            uniq = {c["ogrn"]: c for c in cands}
+            if len(uniq) == 1 and next(iter(uniq.values()))["inn"]:
+                pick = next(iter(uniq.values()))
+                r["инн"], r["огрн"] = pick["inn"], pick["ogrn"]
+                filled += 1
+                print(f"  + {name} → {pick['name'][:80]} ИНН {pick['inn']}")
+            else:
+                show = list(uniq.values()) or [x for x in seen if AVIA.search(x["name"])] or seen
+                check.append({"компания": name, "варианты": " | ".join(
+                    f"{x['name'][:70]} ИНН {x['inn'] or '?'} ОГРН {x['ogrn']}" for x in show[:4]) or "не найдено"})
+        b.close()
+    if filled:
+        save_companies(rows, fields)
+    if check:
+        old, _ = read_csv(CHECK)
+        names = {c["компания"] for c in check}
+        write_csv(CHECK, [o for o in old if o["компания"] not in names] + check, ["компания", "варианты"])
+    left = sum(1 for r in rows if not (r.get("инн") or "").strip())
+    print(f"1С:Контрагент — ИНН дописано: {filled}; выбрать вручную: {len(check)}; без ИНН осталось: {left}")
     cmd_check()
 
 
@@ -298,7 +352,7 @@ def cmd_apply():
 
 
 if __name__ == "__main__":
-    cmds = {"inn": cmd_inn, "check": cmd_check, "pick": cmd_pick, "find": cmd_find, "show": cmd_show, "apply": cmd_apply}
+    cmds = {"inn": cmd_inn, "inn1c": cmd_inn1c, "check": cmd_check, "pick": cmd_pick, "find": cmd_find, "show": cmd_show, "apply": cmd_apply}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print(__doc__)
         sys.exit(1)
