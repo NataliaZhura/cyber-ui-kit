@@ -5,6 +5,7 @@
   python3 openclaw_setup.py apply    копия настроек → агент zhdusha → бот @zhdusha_bot → правило маршрута
   python3 openclaw_setup.py check    проверить результат (агенты, правила, каналы)
   python3 openclaw_setup.py undo     вернуть настройки из последней копии
+  python3 openclaw_setup.py menu     меню ЖДуши (/start, /new первыми) ставить само после каждого запуска OpenClaw
   python3 openclaw_setup.py sync     обновить правила ЖДуши в её папке + навыки (из папки Ави) + память, если нет
 
 Что меняется в ~/.openclaw/openclaw.json:
@@ -135,6 +136,33 @@ def cmd_sync():
     print("Чтобы ЖДуша прочла новые правила — /new в чате с @zhdusha_bot.")
 
 
+def claw_units():
+    """Службы OpenClaw: [(имя, user?)] — у «Ави» служба пользовательская (loginctl enable-linger root)."""
+    found = []
+    for user in (False, True):
+        cmd = ["systemctl"] + (["--user"] if user else []) + ["list-units", "--type=service", "--all", "--no-legend", "--plain"]
+        out = subprocess.run(cmd, capture_output=True, text=True).stdout
+        found += [(line.split()[0], user) for line in out.splitlines() if "claw" in line.lower()]
+    return found
+
+
+def cmd_menu():
+    """Дописка к службе OpenClaw: через 75 с после запуска — zmenu.py (Ави ставит своё меню через 60 с)."""
+    units = claw_units()
+    if len(units) != 1:
+        sys.exit(f"Нашла служб OpenClaw: {units or 'ни одной'} — пришли вывод `systemctl --user list-units | grep -i claw`")
+    unit, user = units[0]
+    base = (HOME / ".config/systemd/user") if user else Path("/etc/systemd/system")
+    drop = base / f"{unit}.d" / "zhdusha-menu.conf"
+    drop.parent.mkdir(parents=True, exist_ok=True)
+    drop.write_text("[Service]\n"
+                    f'ExecStartPost=-/bin/sh -c "(sleep 75; python3 {KIT / "zmenu.py"}) &"\n', encoding="utf-8")
+    subprocess.run(["systemctl"] + (["--user"] if user else []) + ["daemon-reload"], check=True)
+    print("Записано:", drop)
+    print("Меню ЖДуши теперь ставится само через 75 секунд после каждого запуска OpenClaw.")
+    print("Сейчас поставить сразу: python3 zmenu.py")
+
+
 def cmd_check():
     for c in (["openclaw", "agents", "list", "--bindings"], ["openclaw", "channels", "status", "--probe"],
               ["openclaw", "doctor"]):
@@ -152,7 +180,7 @@ def cmd_undo():
 
 
 if __name__ == "__main__":
-    cmds = {"plan": cmd_plan, "apply": cmd_apply, "check": cmd_check, "undo": cmd_undo, "sync": cmd_sync}
+    cmds = {"plan": cmd_plan, "apply": cmd_apply, "check": cmd_check, "undo": cmd_undo, "sync": cmd_sync, "menu": cmd_menu}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         sys.exit(__doc__)
     cmds[sys.argv[1]]()
