@@ -29,7 +29,7 @@ add() {  # add "<название>" <аргументы openclaw automations cre
        || echo "!! не создано: $name"; fi
 }
 AGENT=(--agent zhdusha --session isolated --announce --channel telegram --account zhdusha --to "$OWNER")
-add "ЖД: сбор" "20 */3 * * *" --command "python3 collector.py collect --days 3" --command-cwd "$KIT"
+add "ЖД: сбор" "20 */3 * * *" --command "python3 collector.py collect --days 3" --command-cwd "$KIT" --no-deliver
 add "ЖД: утренние новости" "45 8 * * *" \
   "Подготовь утренние новости за вчера строго по TEMPLATE.md и правилам AGENTS.md (каждое событие — один раз). Сначала запусти: python3 ~/railway-monitor/collector.py collect --days 2" "${AGENT[@]}"
 add "ЖД: прогноз на неделю" "0 17 * * 5" \
