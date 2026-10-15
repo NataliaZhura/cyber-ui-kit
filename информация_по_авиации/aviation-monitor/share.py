@@ -3,6 +3,10 @@
 
   ~/pw/bin/python share.py save saved/2026-10-14_ГазпромАвиа.md        Word + PDF и оба файла владельцу в чат
   ~/pw/bin/python share.py convert saved/2026-10-14_ГазпромАвиа.md     → .docx и .pdf рядом с файлом
+  ~/pw/bin/python share.py report saved/2026-10-14_ГазпромАвиа.md owner  справка по компании: только PDF → в чат
+                                                                          (owner или Telegram ID)
+  Разметка для красивого PDF (в .md): {{класс:B}} — цветная плашка класса; блок ```cards``` — карточки цифр
+  (строки «Выручка | 905 млрд ₽ | +11%»); блок ```chart``` — графики (строки «Выручка, млрд ₽ | 2024: 812 | 2025: 905»).
   python3 share.py tg <telegram_id> <файл> [<файл> …]                    файлы в Telegram (себе или получателю)
   python3 share.py email <адрес> "<тема>" <файл> [<файл> …] [--new]      письмо с вложениями
   python3 share.py book                                                   адресная книга
@@ -13,9 +17,11 @@
 Почта бота — ~/.secrets/smtp (4 строки: сервер, порт, логин, пароль приложения). Пароль не печатается.
 """
 import csv
+import html as html_lib
 import json
 import mimetypes
 import os
+import re
 import smtplib
 import subprocess
 import sys
@@ -31,10 +37,22 @@ BOOK = BASE / "recipients.csv"
 LOG = BASE / "saved" / "sent.log"
 SMTP = Path.home() / ".secrets" / "smtp"
 FOOTER = "Подготовлено по открытым источникам. Не является инвестиционной или кредитной рекомендацией."
-CSS = """body{font-family:'DejaVu Sans',Arial,sans-serif;font-size:11pt;line-height:1.4;margin:18mm 16mm;color:#111}
-h1{font-size:16pt}h2{font-size:13pt;margin-top:14pt}table{border-collapse:collapse;margin:6pt 0}
-td,th{border:1px solid #999;padding:3pt 6pt;font-size:10pt}pre,code{font-family:'DejaVu Sans Mono',monospace;font-size:9.5pt}
-pre{background:#f4f4f4;padding:6pt}.foot{margin-top:18pt;font-size:9pt;color:#555}"""
+CSS = """body{font-family:'DejaVu Sans',Arial,sans-serif;font-size:10.5pt;line-height:1.45;margin:0!important;
+max-width:none!important;padding:0!important;color:#1d2433}
+h1{font-size:19pt;margin:0 0 4pt;color:#0b2a4a}h2{font-size:12.5pt;margin:16pt 0 6pt;color:#0b2a4a;
+border-bottom:2px solid #d6e2f0;padding-bottom:3pt}h3{font-size:11pt;margin:10pt 0 4pt}
+table{border-collapse:collapse;margin:6pt 0;width:100%}td,th{border-bottom:1px solid #dde3ea;padding:4pt 6pt;
+font-size:9.5pt;text-align:left}th{background:#eef3f8;color:#0b2a4a}tr:nth-child(even) td{background:#fafbfc}
+pre,code{font-family:'DejaVu Sans Mono',monospace;font-size:9pt}pre{background:#f4f6f8;padding:6pt;border-radius:4pt}
+a{color:#0b62c4;text-decoration:none;font-weight:bold}blockquote{margin:6pt 0;padding:4pt 10pt;border-left:3px solid #0b62c4;
+background:#f2f7fd}.foot{margin-top:18pt;font-size:8.5pt;color:#667}
+.badge{display:inline-block;padding:3pt 12pt;border-radius:12pt;color:#fff;font-weight:bold;font-size:12pt}
+.cA{background:#1e8e3e}.cB{background:#7cb342}.cC{background:#f9a825}.cD{background:#ef6c00}.cE{background:#c62828}
+.cards{display:flex;flex-wrap:wrap;gap:8pt;margin:8pt 0}.card{flex:1 1 28%;break-inside:avoid;border:1px solid #dde3ea;border-radius:6pt;
+padding:6pt 9pt;background:#f8fafc}.card .k{font-size:8.5pt;color:#556}.card .v{font-size:14pt;font-weight:bold;color:#0b2a4a}
+.card .d{font-size:9pt;color:#556}.warn{color:#c62828}
+.charts{display:flex;flex-wrap:wrap;gap:10pt;margin:8pt 0}.chart{flex:1 1 40%;break-inside:avoid;border:1px solid #dde3ea;border-radius:6pt;
+padding:6pt}.chart .t{font-size:9pt;font-weight:bold;color:#0b2a4a;margin-bottom:2pt}"""
 
 
 def log(kind, to, files):
@@ -50,16 +68,121 @@ def book():
         return [{k: (v or "").strip() for k, v in r.items()} for r in csv.DictReader(f, delimiter=";")]
 
 
+
+def _num(s):
+    s = s.replace("\u2212", "-").replace(" ", "").replace("\xa0", "").replace(",", ".")
+    m = re.search(r"-?\d+(?:\.\d+)?", s)
+    return float(m.group()) if m else None
+
+
+def _svg(title, pairs):
+    """Столбики по годам; отрицательные — красным вниз от нуля."""
+    vals = [v for _, v in pairs if v is not None]
+    if not vals:
+        return ""
+    w, h, top, bottom = 300, 160, 18, 34
+    hi, lo = max(max(vals), 0), min(min(vals), 0)
+    span = (hi - lo) or 1
+    zero = top + (h - top - bottom) * hi / span
+    bw = min(60, (w - 20) / len(pairs) - 14)
+    out = [f'<svg width="100%" viewBox="0 0 {w} {h}">',
+           f'<line x1="6" x2="{w - 6}" y1="{zero:.1f}" y2="{zero:.1f}" stroke="#99a" stroke-width="1"/>']
+    for i, (label, v) in enumerate(pairs):
+        x = 16 + i * (bw + 14)
+        if v is None:
+            continue
+        bh = (h - top - bottom) * abs(v) / span
+        y = zero - bh if v >= 0 else zero
+        col = "#0b62c4" if v >= 0 else "#c62828"
+        txt = f"{v:,.1f}".replace(",", " ").replace(".", ",").replace(",0", "")
+        ty = y - 4 if v >= 0 else y + bh + 11
+        out += [f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{max(bh, 1):.1f}" rx="3" fill="{col}"/>',
+                f'<text x="{x + bw / 2:.1f}" y="{ty:.1f}" font-size="10" text-anchor="middle" fill="#1d2433">{html_lib.escape(txt)}</text>',
+                f'<text x="{x + bw / 2:.1f}" y="{h - 6}" font-size="10" text-anchor="middle" fill="#556">{html_lib.escape(label)}</text>']
+    out.append("</svg>")
+    return f'<div class="chart"><div class="t">{html_lib.escape(title)}</div>{"".join(out)}</div>'
+
+
+def _rich(md):
+    """Разметка Ави → HTML-вставки: плашка класса, карточки цифр, графики."""
+    def badge(m):
+        c = m.group(1).upper().translate(str.maketrans("АВСЕ", "ABCE"))
+        return f'<span class="badge c{c}">Класс {c}</span>'
+    md = re.sub(r"\{\{\s*класс\s*:\s*([A-EА-Еa-e])\s*\}\}", badge, md, flags=re.I)
+
+    def cards(m):
+        items = []
+        for line in m.group(1).strip().splitlines():
+            parts = [x.strip() for x in line.split("|")]
+            if len(parts) < 2:
+                continue
+            d = parts[2] if len(parts) > 2 else ""
+            cls = "warn" if d.strip().startswith("⚠") else ""  # красным — только то, что Ави пометил как риск
+            items.append(f'<div class="card"><div class="k">{html_lib.escape(parts[0])}</div>'
+                         f'<div class="v">{html_lib.escape(parts[1])}</div><div class="d {cls}">{html_lib.escape(d)}</div></div>')
+        return '\n<div class="cards">' + "".join(items) + "</div>\n"
+    md = re.sub(r"```cards\s*\n(.*?)```", cards, md, flags=re.S)
+
+    def charts(m):
+        out = []
+        for line in m.group(1).strip().splitlines():
+            parts = [x.strip() for x in line.split("|")]
+            pairs = []
+            for p in parts[1:]:
+                if ":" in p:
+                    k, v = p.split(":", 1)
+                    pairs.append((k.strip(), _num(v)))
+            if pairs:
+                out.append(_svg(parts[0], pairs))
+        return '\n<div class="charts">' + "".join(out) + "</div>\n"
+    return re.sub(r"```chart\s*\n(.*?)```", charts, md, flags=re.S)
+
+
+def _pdf(html, pdf, title):
+    from playwright.sync_api import sync_playwright
+    foot = (f'<div style="font-size:7pt;color:#778;width:100%;padding:0 14mm;display:flex;justify-content:space-between">'
+            f'<span>{html_lib.escape(FOOTER)}</span><span><span class="pageNumber"></span>/<span class="totalPages"></span></span></div>')
+    with sync_playwright() as p:
+        b = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"],
+                              executable_path=os.environ.get("PW_CHROMIUM") or None)
+        pg = b.new_page()
+        pg.goto(html.as_uri())
+        pg.pdf(path=str(pdf), format="A4", print_background=True, display_header_footer=True,
+               header_template="<span></span>", footer_template=foot,
+               margin={"top": "14mm", "bottom": "16mm", "left": "14mm", "right": "14mm"})
+        b.close()
+
+
+def cmd_report(src, to="owner"):
+    """Справка по компании → только PDF (с плашкой класса, карточками и графиками) → в Telegram."""
+    src = Path(src).expanduser().resolve()
+    pdf, html = src.with_suffix(".pdf"), src.with_suffix(".html")
+    tmp = src.with_name(src.stem + "_tmp.md")
+    tmp.write_text(_rich(src.read_text(encoding="utf-8")), encoding="utf-8")
+    try:
+        subprocess.run(["pandoc", str(tmp), "-f", "markdown+raw_html", "-s", "--metadata", f"pagetitle={src.stem}",
+                        "-o", str(html)], check=True)
+    except FileNotFoundError:
+        sys.exit("Нет pandoc: установи командой  apt install -y pandoc fonts-dejavu")
+    finally:
+        tmp.unlink(missing_ok=True)
+    html.write_text(html.read_text(encoding="utf-8").replace("</head>", f"<style>{CSS}</style></head>"), encoding="utf-8")
+    _pdf(html, pdf, src.stem)
+    html.unlink(missing_ok=True)
+    print(f"PDF: {pdf}")
+    cmd_tg(to, str(pdf))
+
+
 def cmd_convert(src):
     """Markdown → Word (pandoc) и PDF (pandoc → HTML → Chromium). Без pandoc — понятная ошибка, а не пустой файл."""
     src = Path(src).expanduser().resolve()
     docx, pdf, html = src.with_suffix(".docx"), src.with_suffix(".pdf"), src.with_suffix(".html")
-    md = src.read_text(encoding="utf-8") + f"\n\n---\n\n*{FOOTER}*\n"
+    md = _rich(src.read_text(encoding="utf-8"))
     tmp = src.with_name(src.stem + "_tmp.md")
     tmp.write_text(md, encoding="utf-8")
     try:
         subprocess.run(["pandoc", str(tmp), "-o", str(docx)], check=True)
-        subprocess.run(["pandoc", str(tmp), "-s", "--metadata", f"pagetitle={src.stem}",
+        subprocess.run(["pandoc", str(tmp), "-f", "markdown+raw_html", "-s", "--metadata", f"pagetitle={src.stem}",
                         "-o", str(html)], check=True)
     except FileNotFoundError:
         sys.exit("Нет pandoc: установи командой  apt install -y pandoc fonts-dejavu")
@@ -67,14 +190,7 @@ def cmd_convert(src):
         tmp.unlink(missing_ok=True)
     page = html.read_text(encoding="utf-8").replace("</head>", f"<style>{CSS}</style></head>")
     html.write_text(page, encoding="utf-8")
-    from playwright.sync_api import sync_playwright
-    with sync_playwright() as p:
-        b = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"],
-                              executable_path=os.environ.get("PW_CHROMIUM") or None)
-        pg = b.new_page()
-        pg.goto(html.as_uri())
-        pg.pdf(path=str(pdf), format="A4", print_background=True)
-        b.close()
+    _pdf(html, pdf, src.stem)
     html.unlink(missing_ok=True)
     print(f"Готово:\n  {docx}\n  {pdf}")
 
@@ -179,7 +295,7 @@ def cmd_book():
 
 
 if __name__ == "__main__":
-    cmds = {"save": cmd_save, "convert": cmd_convert, "tg": cmd_tg, "copy": cmd_copy, "email": cmd_email, "book": cmd_book}
+    cmds = {"save": cmd_save, "convert": cmd_convert, "tg": cmd_tg, "report": cmd_report, "copy": cmd_copy, "email": cmd_email, "book": cmd_book}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print(__doc__)
         sys.exit(1)

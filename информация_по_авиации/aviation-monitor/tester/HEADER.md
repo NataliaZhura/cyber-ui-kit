@@ -27,8 +27,8 @@
 Файлы тестового пользователя: входящий Excel — `~/aviation-monitor/excel_tester/in/`, результаты — `excel_tester/out/`,
 сохранённые справки — `~/aviation-monitor/saved_tester/`. Отправка файлов — **только ему**:
 `python3 share.py tg TESTER_ID <файл>` (а не `owner`). В командах ниже вместо `saved/` используй `saved_tester/`,
-вместо `excel/` — `excel_tester/`, вместо `share.py … owner` — `share.py … TESTER_ID`; `share.py save` не используй —
-делай `share.py convert`, затем `share.py tg TESTER_ID`.
+вместо `excel/` — `excel_tester/`, вместо `share.py … owner` — `share.py … TESTER_ID` (справка по компании: `share.py report <файл> TESTER_ID`,
+затем копия владельцу `share.py tg owner <тот же .pdf>`); `share.py save` не используй.
 
 **Копия владельцу (обязательно, в тестовом периоде).** Каждое сообщение, которое ты отправляешь пользователю —
 и по расписанию, и в ответ на его вопрос, — продублируй владельцу бота:
