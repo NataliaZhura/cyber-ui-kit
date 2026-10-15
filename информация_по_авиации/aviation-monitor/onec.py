@@ -237,6 +237,11 @@ def open_search(p):
 
 def search(page, query, limit=10):
     """Название → [{ogrn, inn, name, status, text}] из выдачи поиска (ОГРН — из ссылки, ИНН — из текста карточки)."""
+    if not page.query_selector("input[type=search]"):  # после выдачи строки поиска нет — возвращаемся на главную
+        page.goto(START, wait_until="networkidle", timeout=60000)
+        ok = page.get_by_role("button", name="ОК")
+        if ok.count():
+            ok.first.click()
     box = page.wait_for_selector("input[type=search]", timeout=30000)
     box.fill(query)
     box.press("Enter")
