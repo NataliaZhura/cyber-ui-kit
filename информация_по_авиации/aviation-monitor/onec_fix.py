@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Правка входа в 1С:Контрагент: поле логина — первое видимое и доступное (а не первое попавшееся).
+"""Правка входа в 1С:Контрагент: поле логина — первое видимое и доступное; логин уже подставлен — только пароль.
   python3 onec_fix.py      копия onec.py.bak-<дата>; повторный запуск ничего не дублирует
 """
 import shutil
@@ -9,8 +9,25 @@ from pathlib import Path
 
 P = Path(__file__).resolve().parent / "onec.py"
 s = P.read_text(encoding="utf-8")
+FIX2_OLD = '''        if not user:
+            sys.exit("Не нашёл поле логина — запусти probe и пришли вывод.")
+        user.fill(login)
+'''
+FIX2_NEW = '''        if user:
+            user.fill(login)
+        elif not cands:  # логин уже подставлен сайтом (поле неактивно, рядом «Сменить») — вводим только пароль
+            sys.exit("Не нашёл поле логина — запусти probe и пришли вывод.")
+'''
+FIX3_OLD = '''            if page.is_closed() or "logon" not in page.url:
+'''
+FIX3_NEW = '''            if page.is_closed() or not any(k in page.url for k in ("logon", "validatepassword")):
+'''
 if "_visible_enabled" in s:
-    sys.exit("Уже исправлено")
+    if FIX2_OLD not in s:
+        sys.exit("Уже исправлено")
+    shutil.copy2(P, P.with_name(f"onec.py.bak-{datetime.now():%Y%m%d-%H%M%S}"))
+    P.write_text(s.replace(FIX2_OLD, FIX2_NEW, 1).replace(FIX3_OLD, FIX3_NEW, 1), encoding="utf-8")
+    sys.exit("Готово: если логин уже подставлен сайтом, вводится только пароль")
 OLD = '''        user = page.query_selector("input[name=login], input[type=email], input[name*=user i], "
                                    "input[name*=mail i], input[type=text], input:not([type])")
 '''
@@ -21,5 +38,5 @@ NEW = '''        cands = page.query_selector_all("input[name=login], input[type=
 if OLD not in s:
     sys.exit("СТОП: onec.py на сервере отличается от ожидаемого — ничего не изменено")
 shutil.copy2(P, P.with_name(f"onec.py.bak-{datetime.now():%Y%m%d-%H%M%S}"))
-P.write_text(s.replace(OLD, NEW, 1), encoding="utf-8")
+P.write_text(s.replace(OLD, NEW, 1).replace(FIX2_OLD, FIX2_NEW, 1).replace(FIX3_OLD, FIX3_NEW, 1), encoding="utf-8")
 print("Готово: вход 1С берёт видимое доступное поле логина")
