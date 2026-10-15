@@ -19,7 +19,7 @@ cd ~ && git clone --depth 1 --branch claude/zhdusha-railway --filter=blob:none -
   ```bash
   openclaw config get channels.telegram.allowFrom
   ```
-  Число из ответа (без `tg:`) записать: `echo 123456789 > ~/.secrets/zhdusha_owner && chmod 600 ~/.secrets/zhdusha_owner`
+  Первое число из ответа (без `tg:`) записать: `echo <число> > ~/.secrets/zhdusha_owner && chmod 600 ~/.secrets/zhdusha_owner`
 
 ## 3. Закрытые файлы
 
@@ -41,10 +41,15 @@ python3 collector.py stats
 
 ## 5. Второй агент и второй бот в OpenClaw
 
-Команды — после проверки текущих настроек «Ави» (`openclaw agents list --bindings`, раздел `channels.telegram`).
-Причина: при двух ботах токен «Ави» переезжает в `channels.telegram.accounts`, а `menu.py` и `share.py` «Ави»
-читают `channels.telegram.tokenFile` — их нужно перенастроить одновременно, иначе «Ави» потеряет меню и отправку PDF.
-Перед правкой — копия настроек: `cp ~/.openclaw/openclaw.json ~/.openclaw/openclaw.json.bak-$(date +%F)`.
+```bash
+cd ~/railway-monitor
+python3 openclaw_setup.py plan     # только показывает изменения
+python3 openclaw_setup.py apply    # копия настроек → агент zhdusha → бот → правило; в конце — команда перезапуска
+# выполнить подсказанную команду перезапуска, подождать 30 секунд
+python3 openclaw_setup.py check    # агенты, правила, состояние ботов
+```
+Проверка: `/start` в @zhdusha_bot → отвечает ЖДуша; `/start` в @marketMi_bot → по-прежнему Ави.
+Если что-то не так: `python3 openclaw_setup.py undo` и перезапуск — всё как было.
 
 ## 6. Расписания (агент ЖДуши, доставка через @zhdusha_bot)
 
