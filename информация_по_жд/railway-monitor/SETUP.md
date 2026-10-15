@@ -53,9 +53,22 @@ python3 openclaw_setup.py check    # агенты, правила, состоя�
 
 ## 6. Расписания (агент ЖДуши, доставка через @zhdusha_bot)
 
-- 08:45 ежедневно — утренняя справка
-- после сбора — сигналы 🔴
-- понедельник 09:00 — итоги недели
+Сначала проверить, какие параметры есть у команды в этой версии OpenClaw:
+```bash
+openclaw automations create --help | grep -i -E "agent|account|channel|command"
+```
+Затем (параметры `--agent` и `--account` — по выводу выше):
+```bash
+# сбор новостей каждые 3 часа
+openclaw automations create "20 */3 * * *" --name "ЖД: сбор" --tz "Europe/Moscow" \
+  --command "python3 collector.py collect --days 3" --command-cwd "$HOME/railway-monitor"
+# утренние новости 08:45
+openclaw automations create "45 8 * * *" \
+  "Подготовь утренние новости за вчера по AGENTS.md и TEMPLATE.md. Сначала: python3 ~/railway-monitor/collector.py collect --days 2" \
+  --name "ЖД: утренние новости" --tz "Europe/Moscow" --agent zhdusha \
+  --session isolated --announce --channel telegram --account zhdusha --to "<ID владельца>"
+# прогноз на неделю — пятница 17:00; сверка — понедельник 09:00 (тот же вид команды, свой текст задания)
+```
 
 ## Проверка готовности
 
