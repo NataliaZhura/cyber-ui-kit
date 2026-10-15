@@ -8,20 +8,8 @@ ID=328083444; AM=~/aviation-monitor
 cd "$AM" || exit 1
 
 echo "== 1. Выключаю старые демо-рассылки"
-openclaw automations list --json 2>/dev/null | python3 -c '
-import json, re, sys
-t = sys.stdin.read(); s = [i for i in (t.find("{"), t.find("[")) if i >= 0]
-def walk(o):
-    if isinstance(o, dict):
-        if "id" in o and "name" in o: yield o
-        for v in o.values(): yield from walk(v)
-    elif isinstance(o, list):
-        for v in o: yield from walk(v)
-for j in walk(json.loads(t[min(s):]) if s else []):
-    if j["name"].startswith("Тест:") and re.search("экскурс|возможност|напомин|итог", j["name"], re.I):
-        print(j["id"] + "\t" + j["name"])' | while IFS=$'\t' read -r jid name; do
-  openclaw automations disable "$jid" >/dev/null && echo "выключена: $name"
-done
+openclaw automations list 2>/dev/null | grep "Тест:" | grep -E "экскурс|возможност|напомин|итог" | awk '{print $1}' |
+while read -r jid; do openclaw automations disable "$jid" && echo "выключена: $jid"; done
 
 echo "== 2. Файлы для экскурсии"
 mkdir -p excel_tester/in excel_tester/out saved_tester/copy
