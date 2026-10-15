@@ -2,7 +2,7 @@
 """Выбор компании для бота: готовый текст вопроса со списком — агенту остаётся переслать его как есть.
 
   python3 pick.py letter М        компании из своего списка на «М» (или на «Мо» — сколько букв ввели)
-  python3 pick.py name ЮТэйр      похожие по названию: сначала свой список, потом Checko; у каждой ИНН
+  python3 pick.py name ЮТэйр      похожие по названию: сначала свой список, потом Checko (лимит — 1С:Контрагент); у каждой ИНН
   python3 pick.py choose 3        что выбрал пользователь в последнем списке → название, ИНН, ОГРН
 
 Свой список — watchlist.csv и, если есть, companies.csv (компания;инн;огрн — из твоих материалов).
@@ -74,6 +74,24 @@ def cmd_letter(prefix):
     show(f"Компании на «{prefix}» из вашего списка{more}. Выберите цифрой:", items)
 
 
+def onec_search(query):
+    """Запасной поиск — 1С:Контрагент (onec.py find, браузер без экрана, до 2 минут). Ошибка → пустой список."""
+    import subprocess
+    py = Path.home() / "pw" / "bin" / "python"
+    try:
+        out = subprocess.run([str(py), str(BASE / "onec.py"), "find", query], capture_output=True, text=True,
+                             timeout=150).stdout
+    except Exception:  # noqa: BLE001
+        return []
+    items = []
+    for ln in out.splitlines():
+        m = re.match(r"\d+ — ОГРН (\d{13,15})(?: · ИНН (\d{10}|\d{12}))? · (.*)", ln.strip())
+        if m:
+            name = re.split(r"\bИНН\b|\bОГРН\b", m.group(3))[0].strip(" ,·") or m.group(3)[:80]
+            items.append({"name": name[:120], "inn": m.group(2) or "", "ogrn": m.group(1), "src": "1С:Контрагент"})
+    return items
+
+
 def cmd_name(*words):
     query = " ".join(words)
     q = norm(query)
@@ -90,8 +108,11 @@ def cmd_name(*words):
         import checko
         have = {c["inn"] for c in mine if c["inn"]}
         found = [dict(c, src="Checko") for c in checko.search(query) if c["inn"] not in have]
-    except (Exception, SystemExit) as e:  # noqa: BLE001 — без Checko всё равно показываем свой список
-        note = " (поиск по реестру сейчас недоступен — показан только ваш список)"
+    except (Exception, SystemExit) as e:  # noqa: BLE001 — Checko недоступен (чаще всего суточный лимит) → ищем в 1С
+        have = {c["inn"] for c in mine if c["inn"]}
+        found = [c for c in onec_search(query) if not c["inn"] or c["inn"] not in have]
+        if not found:
+            note = " (поиск по реестру сейчас недоступен — показан только ваш список)"
     items = mine + found
     if not items:
         show(f"По «{query}» ничего не найдено{note}.", [])
