@@ -159,9 +159,13 @@ def cmd_inn1c():
                     break
                 try:
                     found = onec.search(page, q, limit=15)
-                except Exception as e:  # noqa: BLE001 — сайт не ответил: сохраняем сделанное
-                    print(f"Стоп на «{name}»: {type(e).__name__}: {e}")
-                    budget = 0
+                    errors = 0
+                except Exception as e:  # noqa: BLE001 — сайт не ответил: пропускаем компанию, 3 сбоя подряд — стоп
+                    errors = locals().get("errors", 0) + 1
+                    print(f"  ! «{name}»: {type(e).__name__} — пропускаю")
+                    if errors >= 3:
+                        print("Стоп: 3 сбоя подряд — проверь вход: ~/pw/bin/python onec.py login")
+                        budget = 0
                     break
                 budget -= 1
                 seen += found

@@ -238,15 +238,16 @@ def open_search(p):
 def search(page, query, limit=10):
     """Название → [{ogrn, inn, name, status, text}] из выдачи поиска (ОГРН — из ссылки, ИНН — из текста карточки)."""
     if not page.query_selector("input[type=search]"):  # после выдачи строки поиска нет — возвращаемся на главную
-        page.goto(START, wait_until="networkidle", timeout=60000)
+        # «networkidle» на этом сайте после первого поиска не наступает (фоновые запросы) — ждём саму строку поиска
+        page.goto(START, wait_until="domcontentloaded", timeout=45000)
         ok = page.get_by_role("button", name="ОК")
         if ok.count():
             ok.first.click()
     box = page.wait_for_selector("input[type=search]", timeout=30000)
     box.fill(query)
     box.press("Enter")
-    page.wait_for_load_state("networkidle", timeout=60000)
-    page.wait_for_timeout(2500)
+    page.wait_for_load_state("domcontentloaded", timeout=45000)
+    page.wait_for_timeout(4000)
     seen, out = set(), []
     for a in page.query_selector_all("a[href*='/contragent/']"):
         m = re.search(r"/contragent/(\d{13,15})", a.get_attribute("href") or "")
