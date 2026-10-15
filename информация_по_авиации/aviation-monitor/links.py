@@ -2,6 +2,8 @@
 """ИНН, официальные сайты и Telegram-каналы компаний из companies.csv → источники новостей для сборщика.
 
   python3 links.py inn  [--limit 40]   дописать недостающие ИНН/ОГРН (поиск Checko); спорные → links_check.csv
+  python3 links.py check               спорные компании с вариантами (нумерованный список)
+  python3 links.py pick 3 2801118992   записать ИНН для компании №3 из списка check
   python3 links.py find [--limit 40]   сайт (Checko) → на сайте ищем ссылку на Telegram и RSS → links.csv
   python3 links.py show                таблица links.csv коротко (для владельца)
   python3 links.py apply               одобренные строки links.csv → company_sources.json (его читает collector.py)
@@ -63,6 +65,29 @@ def limit_arg(default=40):
     return default
 
 
+AVIA = re.compile(r"авиа|аэро|вертол|аэропорт|авиабаз|airlines|avia", re.I)
+
+
+def match(name, found):
+    """Кандидаты из поиска, которые похожи на нашу компанию: то же «ядро» названия, а при совпадении части —
+    только авиационные (иначе «Ямал» находит «Ямал СПГ»)."""
+    core = norm(name)
+    active = [x for x in found if "не действ" not in x["status"].lower() and "ликвид" not in x["status"].lower()]
+    same = [x for x in active if norm(x["name"] or "") == core]
+    if same:
+        return same
+    return [x for x in active if core and core in norm(x["name"] or "") and AVIA.search(x["name"] or "")]
+
+
+def save_companies(rows, fields):
+    bak = BASE / "bak"
+    bak.mkdir(exist_ok=True)
+    shutil.copy2(COMPANIES, bak / f"companies-{datetime.now():%Y-%m-%d-%H%M}.csv")
+    if "огрн" not in fields:
+        fields.append("огрн")
+    write_csv(COMPANIES, rows, fields)
+
+
 def cmd_inn():
     rows, fields = read_csv(COMPANIES)
     if not rows:
@@ -73,36 +98,68 @@ def cmd_inn():
         if budget <= 0:
             break
         name = (r.get("компания") or "").strip()
-        try:
-            found = checko.search(name, limit=10)
-        except RuntimeError as e:
-            print(f"Стоп: {e}")
-            break
-        budget -= 1
-        active = [x for x in found if "не действ" not in x["status"].lower()]
-        same = [x for x in active if norm(x["name"] or "") == norm(name)]
-        pick = same[0] if len(same) == 1 else (active[0] if len(active) == 1 else None)
-        if pick:
+        cands, seen = [], []
+        # сначала «ядро» названия без формы собственности («Ангара»), затем полное название
+        for q in dict.fromkeys([norm(name), name]):
+            if budget <= 0 or not q:
+                break
+            try:
+                found = checko.search(q, limit=20)
+            except RuntimeError as e:
+                print(f"Стоп: {e}")
+                budget = 0
+                break
+            budget -= 1
+            seen += found
+            cands = match(name, found)
+            if cands:
+                break
+        uniq = {c["inn"]: c for c in cands}
+        if len(uniq) == 1:
+            pick = next(iter(uniq.values()))
             r["инн"], r["огрн"] = pick["inn"] or "", pick["ogrn"] or ""
             filled += 1
+            print(f"  + {name} → {pick['name']} ИНН {pick['inn']}")
         else:
+            show = list(uniq.values()) or [x for x in seen if AVIA.search(x["name"] or "")] or seen
             check.append({"компания": name, "варианты": " | ".join(
-                f"{x['name']} ИНН {x['inn']} {x['region']} {x['status']}" for x in found[:5]) or "не найдено"})
+                f"{x['name']} ИНН {x['inn']} {x['region']}" for x in show[:4]) or "не найдено"})
     if filled:
-        bak = BASE / "bak"
-        bak.mkdir(exist_ok=True)
-        shutil.copy2(COMPANIES, bak / f"companies-{datetime.now():%Y-%m-%d-%H%M}.csv")
-        if "огрн" not in fields:
-            fields.append("огрн")
-        write_csv(COMPANIES, rows, fields)
+        save_companies(rows, fields)
     if check:
         old, _ = read_csv(CHECK)
-        seen = {c["компания"] for c in check}
-        write_csv(CHECK, [o for o in old if o["компания"] not in seen] + check, ["компания", "варианты"])
+        names = {c["компания"] for c in check}
+        write_csv(CHECK, [o for o in old if o["компания"] not in names] + check, ["компания", "варианты"])
     left = sum(1 for r in rows if not (r.get("инн") or "").strip())
-    print(f"ИНН дописано: {filled}; спорных (выбрать вручную, {CHECK.name}): {len(check)}; без ИНН осталось: {left}")
-    for c in check:
-        print(f"  ? {c['компания']}: {c['варианты'][:200]}")
+    print(f"ИНН дописано: {filled}; выбрать вручную: {len(check)}; без ИНН осталось: {left}")
+    cmd_check()
+
+
+def cmd_check():
+    rows, _ = read_csv(CHECK)
+    have = {(r.get("компания") or "").strip() for r, in [(x,) for x in read_csv(COMPANIES)[0]]
+            if (r.get("инн") or "").strip()}
+    rows = [r for r in rows if r["компания"] not in have]
+    for i, r in enumerate(rows, 1):
+        print(f"{i}. {r['компания']}\n   {r['варианты'][:300]}")
+    if rows:
+        print("\nВыбор: python3 links.py pick <номер> <ИНН> (ИНН из вариантов или свой); пропустить — не отвечать.")
+
+
+def cmd_pick(num, inn):
+    rows, _ = read_csv(CHECK)
+    comp, fields = read_csv(COMPANIES)
+    have = {(r.get("компания") or "").strip() for r in comp if (r.get("инн") or "").strip()}
+    rows = [r for r in rows if r["компания"] not in have]
+    n = int(num)
+    if not 1 <= n <= len(rows) or not inn.isdigit() or len(inn) not in (10, 12):
+        sys.exit("Нужно: номер из списка и ИНН (10 или 12 цифр).")
+    name = rows[n - 1]["компания"]
+    for r in comp:
+        if (r.get("компания") or "").strip() == name:
+            r["инн"] = inn
+    save_companies(comp, fields)
+    print(f"Записано: {name} → ИНН {inn}")
 
 
 def find_site(inn, budget):
@@ -241,8 +298,9 @@ def cmd_apply():
 
 
 if __name__ == "__main__":
-    cmds = {"inn": cmd_inn, "find": cmd_find, "show": cmd_show, "apply": cmd_apply}
+    cmds = {"inn": cmd_inn, "check": cmd_check, "pick": cmd_pick, "find": cmd_find, "show": cmd_show, "apply": cmd_apply}
     if len(sys.argv) < 2 or sys.argv[1] not in cmds:
         print(__doc__)
         sys.exit(1)
-    cmds[sys.argv[1]]()
+    args = [a for a in sys.argv[2:] if not a.startswith("--") and not (sys.argv.index(a) > 1 and sys.argv[sys.argv.index(a) - 1] == "--limit")]
+    cmds[sys.argv[1]](*args)
