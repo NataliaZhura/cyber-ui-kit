@@ -29,7 +29,18 @@ DESCRIPTION = ("Ави — аналитик авиарынка. Новости �
 SHORT = "Аналитик авиарынка: новости, справки по компаниям, финансовый анализ"
 
 
+_TOKEN = None
+
+
 def token():
+    """Токен читаем один раз: каждый вызов openclaw — несколько секунд, а при запуске службы время ограничено."""
+    global _TOKEN
+    if _TOKEN is None:
+        _TOKEN = _read_token()
+    return _TOKEN
+
+
+def _read_token():
     out = subprocess.run(["openclaw", "config", "get", "channels.telegram.tokenFile"],
                          capture_output=True, text=True, timeout=60).stdout
     # в выводе могут быть служебные строки; путь — последняя строка в кавычках или без
