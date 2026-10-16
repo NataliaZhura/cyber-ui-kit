@@ -1,12 +1,26 @@
 #!/usr/bin/env python3
 """Ищет в справочнике настроек OpenClaw всё про поиск по памяти (только читает).
-  openclaw config schema > /tmp/schema.json; python3 memcfg.py /tmp/schema.json
+  openclaw config schema > /tmp/schema.json; python3 memcfg.py /tmp/schema.json [memory.search]
 """
 import json
 import re
 import sys
 
 t = open(sys.argv[1] if len(sys.argv) > 1 else "/tmp/schema.json", encoding="utf-8").read()
+if len(sys.argv) > 2:  # подробно: python3 memcfg.py /tmp/schema.json memory.search
+    node = json.loads(t[t.find("{"):])
+    for part in sys.argv[2].split("."):
+        node = node["properties"][part]
+
+    def show(o, path, depth):
+        for k, v in (o.get("properties") or {}).items():
+            q = f"{path}.{k}"
+            print(q, "|", v.get("enum") or v.get("type") or "", "| по умолч.:", v.get("default", "—"), "|",
+                  (v.get("description") or "")[:110])
+            if depth < 3:
+                show(v, q, depth + 1)
+    show(node, sys.argv[2], 1)
+    sys.exit()
 print(f"размер справочника: {len(t)} знаков")
 KEY = re.compile(r"memorysearch|embedd|fts|vector", re.I)
 hits = []
