@@ -6,3 +6,6 @@ links_check.csv
 pick_last.json
 recipients.csv
 focus.csv
+relay.csv
+out/
+usage.log
