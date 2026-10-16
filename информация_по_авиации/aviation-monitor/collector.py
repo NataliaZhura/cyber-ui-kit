@@ -396,10 +396,11 @@ def section_of(title, summ, cfg):
     """Раздел справки: первый подходящий по приоритету (суды → финансы → сделки → имущество → …)."""
     low = f"{title} {summ}".lower()
     head = title.lower()
-    military = any(x in head for x in cfg.get("military_words", []))
+    military = any(x in head for x in cfg.get("military_words", [])) \
+        and not any(x in head for x in cfg.get("uav_civil_words", []))  # «запрет полётов ударил по агро» — гражданский рынок
     # атака дронов — это сбой перевозок, а не имущество в виде БПЛА
     pats = [(sec["name"], word_start(sec.get("words", []))) for sec in cfg["sections"]
-            if not (military and sec["name"] == "Вертолёты и БПЛА")]
+            if not (military and sec["name"] == "БПЛА и низковысотная авиация")]
     for name, pat in pats:
         if pat.search(head):
             return name
