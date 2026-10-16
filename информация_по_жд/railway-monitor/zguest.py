@@ -88,7 +88,7 @@ def cmd_apply(tid, agent):
     (ws / "skills").mkdir(parents=True, exist_ok=True)
     (ws / "AGENTS.md").write_text(HEADER.replace("GUEST_ID", tid).replace("AGENT", agent)
                                   + (KIT / "AGENTS.md").read_text(encoding="utf-8"), encoding="utf-8")
-    for f in ("SOUL.md", "TEMPLATE.md", "MARKET.md"):
+    for f in ("SOUL.md", "TEMPLATE.md", "MARKET.md", "COMPANY.md"):
         if (KIT / f).exists():
             shutil.copy2(KIT / f, ws / f)
     src = OC / "workspace-zhdusha" / "skills"

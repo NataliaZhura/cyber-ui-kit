@@ -119,7 +119,7 @@ def cmd_apply():
 def cmd_sync():
     """Правила из комплекта → папка агента; навыки — копии из папки Ави (у Ави ничего не меняется)."""
     WS.mkdir(parents=True, exist_ok=True)
-    for f in ("AGENTS.md", "SOUL.md", "TEMPLATE.md", "MARKET.md"):
+    for f in ("AGENTS.md", "SOUL.md", "TEMPLATE.md", "MARKET.md", "COMPANY.md"):
         shutil.copy2(KIT / f, WS / f)
     src = HOME / ".openclaw" / "workspace" / "skills"
     got = []
