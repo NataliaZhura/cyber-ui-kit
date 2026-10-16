@@ -14,7 +14,9 @@
 --limit — сколько запросов к Checko за запуск (дневной лимит тарифа). Повторный запуск продолжает с места остановки.
 links.csv: компания;инн;сайт;rss;telegram;откуда;статус;одобрено. «одобрено» = да/нет — правит владелец;
 по умолчанию «да» только если канал найден по ссылке на официальном сайте компании.
-Перед изменением companies.csv делается копия в bak/.
+Перед изменением списка делается копия в bak/.
+Если есть focus.csv (компания;инн;огрн) — все команды работают только с ним: остальные компании не тратят
+лимиты Checko и 1С:Контрагент.
 """
 import csv
 import json
@@ -29,7 +31,9 @@ from pathlib import Path
 import checko
 
 BASE = Path(__file__).resolve().parent
-COMPANIES = BASE / "companies.csv"
+# Рабочий список: если есть focus.csv (компании в тесте) — работаем только с ним, остальные не тратят лимиты Checko/1С
+FOCUS = BASE / "focus.csv"
+COMPANIES = FOCUS if FOCUS.exists() else BASE / "companies.csv"
 LINKS = BASE / "links.csv"
 CHECK = BASE / "links_check.csv"
 SOURCES = BASE / "company_sources.json"
@@ -89,7 +93,7 @@ def match(name, found):
 def save_companies(rows, fields):
     bak = BASE / "bak"
     bak.mkdir(exist_ok=True)
-    shutil.copy2(COMPANIES, bak / f"companies-{datetime.now():%Y-%m-%d-%H%M}.csv")
+    shutil.copy2(COMPANIES, bak / f"{COMPANIES.stem}-{datetime.now():%Y-%m-%d-%H%M}.csv")
     if "огрн" not in fields:
         fields.append("огрн")
     write_csv(COMPANIES, rows, fields)
