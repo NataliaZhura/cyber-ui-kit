@@ -155,9 +155,8 @@ def render(a, meta, sections, groups, fin_rows, summary, out):
         w(f"<h2>{e(title)} <span class='n'>· {total}</span></h2>")
         if title.startswith("5.") and its:
             claims = F.claims(its)
-            if claims and last_rev:
-                w(f"<div class='box'>Иски с известной суммой: <b>{fmt(claims)} млрд ₽</b> = "
-                  f"<b>{claims / last_rev * 100:.0f}% годовой выручки</b> ({fmt(last_rev)} млрд ₽).</div>")
+            if claims:  # по решению владельца иски с выручкой не сравниваем — только сумма
+                w(f"<div class='box'>Иски с известной суммой: <b>{fmt(claims)} млрд ₽</b>.</div>")
         if not its:
             w("<p class='empty'>Существенных новостей нет.</p>")
             continue
