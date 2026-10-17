@@ -3,6 +3,7 @@
 
   python3 patch_bas.py            показать, что изменится
   python3 patch_bas.py --apply    применить (копии прежних файлов — в bak/)
+  python3 patch_bas.py --agents ~/.openclaw/workspace-tester/AGENTS.md [--apply]   то же для тестера (Вячеслав)
 
 1. AGENTS.md: рабочий список компаний БАС (focus_bas.csv) наравне с focus.csv; вопросы о рынке БПЛА — сначала
    опорная справка guides/bpla-market.md.
@@ -15,7 +16,8 @@ from datetime import datetime
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
-AGENTS = Path.home() / ".openclaw" / "workspace" / "AGENTS.md"
+AGENTS = Path(sys.argv[sys.argv.index("--agents") + 1]).expanduser() if "--agents" in sys.argv \
+    else Path.home() / ".openclaw" / "workspace" / "AGENTS.md"
 GUIDE = BASE / "guides" / "company-report.md"
 
 FOCUS_OLD = "- Рабочий список — `~/aviation-monitor/focus.csv` (11 компаний в тесте). Для них — все источники ниже.\n"
@@ -82,7 +84,7 @@ def main():
         return
     (BASE / "bak").mkdir(exist_ok=True)
     for path, text, _ in changes:
-        shutil.copy2(path, BASE / "bak" / f"{path.stem}-before-bas-{stamp}{path.suffix}")
+        shutil.copy2(path, BASE / "bak" / f"{path.parent.name}-{path.stem}-before-bas-{stamp}{path.suffix}")
         path.write_text(text, encoding="utf-8")
     print(f"Готово. Копии прежних файлов: bak/*-before-bas-{stamp}.*")
 
