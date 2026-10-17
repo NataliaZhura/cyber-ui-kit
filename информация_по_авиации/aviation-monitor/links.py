@@ -434,6 +434,9 @@ def cmd_find():
 
 def cmd_show():
     rows, _ = read_csv(LINKS)
+    if FOCUS.exists():
+        focus = {(r.get("инн") or "").strip() for r in read_csv(FOCUS)[0]}
+        rows = [r for r in rows if r["инн"] in focus]
     for i, r in enumerate(rows, 1):
         print(f"{i}. {r['компания']} — {r['одобрено']}\n   сайт: {r['сайт'] or '—'}\n   TG: "
               f"{('@' + r['telegram']) if r['telegram'] else '—'} · RSS: {'есть' if r['rss'] else '—'}"
@@ -442,6 +445,9 @@ def cmd_show():
 
 def cmd_apply():
     rows, _ = read_csv(LINKS)
+    if FOCUS.exists():  # подключаем только компании рабочего списка, старые строки других компаний — нет
+        focus = {(r.get("инн") or "").strip() for r in read_csv(FOCUS)[0]}
+        rows = [r for r in rows if r["инн"] in focus]
     ok = [r for r in rows if (r.get("одобрено") or "").strip().lower() in ("да", "yes", "1", "+")]
     src = [{"company": r["компания"], "inn": r["инн"], "site": r["сайт"], "rss": r["rss"], "telegram": r["telegram"],
             "group": "БАС" if BAS else "авиа"} for r in ok if r["сайт"] or r["telegram"]]
