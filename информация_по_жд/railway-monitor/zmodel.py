@@ -316,9 +316,48 @@ def cmd_list():
     print("\nРекомендуемые наборы:", json.dumps(D["default"], ensure_ascii=False))
 
 
+PICK_W = {"1": "gon", "2": "inno", "3": "kr158", "4": "kr138", "5": "all"}
+PICK_Y = {"1": None, "2": 2026, "3": 2027, "4": 2028, "5": 2029, "6": 2030}
+PICK_S = {"1": "base", "2": "pess", "3": "base"}
+PICK_F = ["balance", "stroy", "mortgage", "park", "coal", "load", "turnover", "gdp", "housing", "key", "price",
+          "tariff", "turn", "gon_lag"]
+
+
+def cmd_menu():
+    """Меню выбора одним сообщением — бот присылает его дословно."""
+    D = load()
+    star = set(D["default"]["gon"] + D["default"]["kr"])
+    fs = " · ".join(f"{i} {'★ ' if f in star else ''}{D['factors'][f].get('short', D['factors'][f]['name'])}"
+                    for i, f in enumerate(PICK_F, 1))
+    print("Прогноз ставок аренды до 2030 — выберите и ответьте одной строкой, например: 5 1 1 0\n\n"
+          "① Тип вагона: 1 полувагон обычный · 2 инновационный · 3 крытый 158 м³ · 4 крытый 138 м³ · 5 все\n"
+          "② Период: 1 весь 2026–2030 · 2 — 2026 · 3 — 2027 · 4 — 2028 · 5 — 2029 · 6 — 2030\n"
+          "③ Сценарий: 1 базовый · 2 пессимистичный · 3 свой (после цифр напишите, что изменить, например «ВВП 2%, списания 40»)\n"
+          f"④ Показатели — до 3 через запятую, 0 — рекомендуемые ★:\n{fs}\n\n"
+          "Готовая презентация (PDF) — ответьте «П».")
+
+
+def apply_pick(a):
+    """--pick "5 1 2 1,2,3" → вагон, период, сценарий, показатели."""
+    parts = a.pick.replace(";", " ").split()
+    if len(parts) < 3:
+        sys.exit("Ответ — 3–4 числа: тип, период, сценарий, показатели (например: 5 1 1 0).")
+    w, y, sc = parts[0], parts[1], parts[2]
+    if w not in PICK_W or y not in PICK_Y or sc not in PICK_S:
+        sys.exit("Не поняла выбор: тип 1–5, период 1–6, сценарий 1–3.")
+    a.wagon, a.year, a.scenario = PICK_W[w], PICK_Y[y], PICK_S[sc]
+    f = "".join(parts[3:]) if len(parts) > 3 else "0"
+    if f not in ("", "0"):
+        try:
+            a.factors = ",".join(PICK_F[int(x) - 1] for x in f.split(",") if x)
+        except (ValueError, IndexError):
+            sys.exit(f"Показатели — номера от 1 до {len(PICK_F)} через запятую.")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["list", "run"])
+    ap.add_argument("cmd", choices=["list", "run", "menu"])
+    ap.add_argument("--pick", help="ответ на меню одной строкой: тип период сценарий показатели")
     ap.add_argument("--wagon", default="all", choices=["gon", "inno", "kr158", "kr138", "all"])
     ap.add_argument("--factors", default="")
     ap.add_argument("--scenario", default="base", choices=["base", "pess"])
@@ -329,5 +368,9 @@ if __name__ == "__main__":
     a = ap.parse_args()
     if a.cmd == "list":
         cmd_list()
+    elif a.cmd == "menu":
+        cmd_menu()
     else:
+        if a.pick:
+            apply_pick(a)
         run(a)
