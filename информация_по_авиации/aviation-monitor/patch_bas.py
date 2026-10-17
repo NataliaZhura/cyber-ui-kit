@@ -32,6 +32,11 @@ MARKET = """
 «БПЛА и низковысотная авиация» и скажи, что изменилось. Источники в ответе — словом «ссылка».
 """
 MARKET_BEFORE = "## Отраслевые материалы и оценка"
+IMPACT = ("\n**Влияние на компании.** Строку «⚠ влияет на: …» из выгрузки новостей переноси в справку дословно, а такие\n"
+          "новости ставь первыми в разделе БПЛА. Её ставит программа по карте влияния (`exposure.csv`, подтверждена\n"
+          "владельцем): какие виды работ и заказчики у компаний рабочего списка. Сам виды работ компаний не придумывай.\n")
+GUIDE_IMPACT = ("    Виды работ и заказчиков бери из `~/aviation-monitor/exposure.csv` (подтверждено владельцем); компании там нет —\n"
+                "    пиши «виды работ не подтверждены» и не оценивай долю под риском.\n")
 GUIDE_AFTER = "    рост выручки, диверсификация заказчиков, платёжная дисциплина — только подтверждённое данными).\n"
 GUIDE_ADD = ("    **Вертолётная компания — строка «Риск замещения беспилотниками»** (по `guides/bpla-market.md`, раздел 5):\n"
              "    облёт трубопроводов и ЛЭП, аэрофотосъёмка — высокий; авиахимработы, лесоохрана — средний; перевозки людей,\n"
@@ -58,22 +63,33 @@ def main():
             new = new.replace(MARKET_BEFORE, MARKET.lstrip("\n") + "\n" + MARKET_BEFORE, 1)
         else:
             new = new.rstrip("\n") + "\n" + MARKET
+        if "Влияние на компании." not in new:
+            new = new.replace(MARKET_BEFORE, IMPACT.lstrip("\n") + "\n" + MARKET_BEFORE, 1) if MARKET_BEFORE in new \
+                else new.rstrip("\n") + "\n" + IMPACT
         if new != t:
-            changes.append((AGENTS, new, "AGENTS.md: список компаний БАС + опорная справка о рынке БПЛА"))
+            changes.append((AGENTS, new, "AGENTS.md: список компаний БАС, справка о рынке БПЛА, влияние на компании"))
     else:
         print(f"Нет {AGENTS}")
     if GUIDE.exists():
         g = GUIDE.read_text(encoding="utf-8")
-        if "Риск замещения беспилотниками" in g:
-            print("guides/company-report.md: строка уже есть — пропускаю")
-        elif GUIDE_AFTER in g:
-            changes.append((GUIDE, g.replace(GUIDE_AFTER, GUIDE_AFTER + GUIDE_ADD), "guides/company-report.md: риск замещения"))
+        ng = g
+        if "Риск замещения беспилотниками" not in ng:
+            if GUIDE_AFTER in ng:
+                ng = ng.replace(GUIDE_AFTER, GUIDE_AFTER + GUIDE_ADD)
+            else:
+                print("guides/company-report.md: место для вставки не найдено — пропускаю")
+        if "Риск замещения беспилотниками" in ng and "exposure.csv" not in ng:
+            k = ng.index("Риск замещения беспилотниками")
+            end = ng.index("«выручка по видам работ».\n", k) + len("«выручка по видам работ».\n")
+            ng = ng[:end] + GUIDE_IMPACT + ng[end:]
+        if ng != g:
+            changes.append((GUIDE, ng, "guides/company-report.md: риск замещения по карте влияния"))
         else:
-            print("guides/company-report.md: место для вставки не найдено — пропускаю")
+            print("guides/company-report.md: уже обновлён — пропускаю")
     else:
         print("Нет guides/company-report.md — сначала python3 slim.py ~/.openclaw/workspace/AGENTS.md --relay --apply")
     if not (BASE / "guides" / "bpla-market.md").exists():
-        print("⚠ Нет guides/bpla-market.md — загрузи справку о рынке (команда scp в сообщении)")
+        print("⚠ Нет guides/bpla-market.md — скачай справку о рынке в guides/bpla-market.md (команда curl в сообщении)")
     if not changes:
         print("Менять нечего.")
         return

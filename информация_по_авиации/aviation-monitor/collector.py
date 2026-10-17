@@ -66,6 +66,12 @@ def load_config():
                               "search": search})
                 known.update(x.lower() for x in [name] + aliases)
     # официальные сайты и Telegram-каналы компаний (links.py apply) — свои посты компании
+    # карта влияния беспилотников (exposure.py set — подтверждено владельцем): кого задевает новость о БПЛА
+    try:
+        import exposure
+        cfg["exposure"] = exposure.load()
+    except Exception:  # noqa: BLE001 — нет файла или модуля: просто без пометок
+        cfg["exposure"] = []
     cs = BASE / "company_sources.json"
     cfg["company_sources"] = json.loads(cs.read_text(encoding="utf-8")) if cs.exists() else []
     cfg["_own"] = {}
@@ -454,6 +460,8 @@ def render_md(meta, sections, out):
                 p(f"### {si}.{ii}. {lv[1]} Сюжет «{g['thread']}» — {len(g['items'])} новостей, последняя:")
             p(f"{'' if g.get('thread') else f'### {si}.{ii}. {lv[1]} '}{title}" if not g.get("thread") else f"- {title}")
             p(f"- {fmt_dt(pub)} · {src} · приоритет: {lv[0]} ({score})")
+            if g.get("impact"):
+                p(f"- ⚠ влияет на: {'; '.join(g['impact'])}")
             for h in g.get("items", [])[1:6]:
                 p(f"  - ранее {fmt_dt(h['main'][0])}: {h['main'][2]} — {h['main'][4]}")
             if useful_summary(title, summ):
@@ -595,6 +603,15 @@ def build(a, cfg):
         state_path.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
     rows = [r[:9] for r in rows]
     groups = apply_threads(group_stories(rows), cfg)[:a.limit]
+    if cfg.get("exposure"):
+        import exposure
+        for g in groups:  # новость о беспилотниках → кого из компаний рабочего списка она задевает
+            rows_g = [g["main"]] + [h["main"] for h in g.get("items", [])] + list(g.get("also", []))
+            # в сюжете смотрим все новости о беспилотниках, а не только последнюю; по компании — одной строкой
+            text = " ".join(f"{r[2]} {r[3]}" for r in rows_g if "БПЛА" in (r[6] or ""))
+            hit = exposure.impact(text, cfg["exposure"]) if text else []
+            if hit:
+                g["impact"] = hit
     order = [s["name"] for s in cfg["sections_display"]]
     buckets = {n: [] for n in order}
     for g in groups:
