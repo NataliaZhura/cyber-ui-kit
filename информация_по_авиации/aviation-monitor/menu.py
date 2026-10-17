@@ -6,6 +6,9 @@ OpenClaw при запуске ставит меню сам и не даёт д�
 
   python3 menu.py          поставить меню
   python3 menu.py show     показать, какое меню стоит сейчас
+  python3 menu.py accounts                     боты в настройке OpenClaw (только имена, без токенов)
+  python3 menu.py add --account <имя> model "Описание"   добавить команду в меню ДРУГОГО бота (ЖДуша), его команды
+                                                         сохраняются; повторный запуск ничего не дублирует
   python3 menu.py check    проверить меню; если его нет или оно не наше — поставить заново (запускать после любых
                            изменений и раз в час по расписанию; модель не нужна)
 
@@ -20,6 +23,7 @@ from pathlib import Path
 
 MENU = [("start", "Знакомство: что умеет Ави"), ("new", "Новый разговор"), ("market", "Новости рынка за период"),
         ("bpla", "🆕 Беспилотники: новости, рынок, компании"),
+        ("model", "🆕 Анализ финмодели: NPV, IRR, стресс-тест"),
         ("company", "Новости авиакомпании за период"), ("compare", "Сравнить две компании"),
         ("profile", "Справка по компании целиком"), ("finance", "Оценка финансов компании"),
         ("courts", "Суды, приставы, налоги"), ("assets", "Имущество и лизинг"),
@@ -33,6 +37,7 @@ SHORT = "Аналитик авиарынка: новости, справки п�
 
 
 _TOKEN = None
+ACCOUNT = sys.argv[sys.argv.index("--account") + 1] if "--account" in sys.argv else None
 
 
 def token():
@@ -43,7 +48,30 @@ def token():
     return _TOKEN
 
 
+def _config(key):
+    out = subprocess.run(["openclaw", "config", "get", key], capture_output=True, text=True, timeout=60).stdout
+    i = min([k for k in (out.find("{"), out.find("[")) if k >= 0], default=-1)
+    try:
+        return json.loads(out[i:]) if i >= 0 else None
+    except json.JSONDecodeError:
+        return None
+
+
+def accounts():
+    acc = _config("channels.telegram.accounts") or {}
+    return acc if isinstance(acc, dict) else {}
+
+
 def _read_token():
+    if ACCOUNT:
+        a = accounts().get(ACCOUNT)
+        if not a:
+            sys.exit(f"Нет бота «{ACCOUNT}» в channels.telegram.accounts. Имена: python3 menu.py accounts")
+        if a.get("tokenFile"):
+            return Path(a["tokenFile"]).expanduser().read_text(encoding="utf-8").strip()
+        if a.get("botToken"):
+            return a["botToken"].strip()
+        sys.exit(f"У бота «{ACCOUNT}» нет tokenFile/botToken в настройке")
     out = subprocess.run(["openclaw", "config", "get", "channels.telegram.tokenFile"],
                          capture_output=True, text=True, timeout=60).stdout
     # в выводе могут быть служебные строки; путь — последняя строка в кавычках или без
@@ -94,7 +122,42 @@ def check():
     return ok
 
 
+def add(cmd, desc):
+    """Добавить команду в меню бота, сохранив его команды (для ботов, меню которых ставим не мы)."""
+    ok = True
+    for scope in SCOPES:
+        cur = current(scope)
+        if not cur and scope is not None:
+            continue                      # меню личных чатов не задано — действует общее
+        if any(c == cmd for c, _ in cur):
+            print(f"✅ /{cmd} уже в меню ({'по умолчанию' if scope is None else 'личные чаты'})")
+            continue
+        new = cur + [(cmd, desc)]
+        res = api("setMyCommands", commands=json.dumps([{"command": c, "description": d} for c, d in new],
+                                                       ensure_ascii=False), **({"scope": json.dumps(scope)} if scope else {}))
+        ok = ok and res.get("ok")
+        print(("✅ добавлено: /" + cmd) if res.get("ok") else f"❌ Ошибка Telegram: {res}")
+    api("setChatMenuButton", menu_button=json.dumps({"type": "commands"}))
+    return ok
+
+
 if __name__ == "__main__":
+    args = [a for i, a in enumerate(sys.argv[1:], 1) if a != "--account" and sys.argv[i - 1] != "--account"]
+    if args[:1] == ["accounts"]:
+        for name, a in accounts().items():
+            print(f"{name}: " + ("токен в файле" if a.get("tokenFile") else "токен в настройке" if a.get("botToken")
+                                 else "токена нет") + (f", агент {a['agent']}" if a.get("agent") else ""))
+        sys.exit(0)
+    if args[:1] == ["add"] and len(args) >= 3:
+        sys.exit(0 if add(args[1].lstrip("/"), args[2]) else 1)
+    if ACCOUNT and args[:1] == ["show"]:
+        for s in SCOPES:
+            print("— по умолчанию" if s is None else "— личные чаты")
+            for c, d in current(s):
+                print(f"/{c} — {d}")
+        sys.exit(0)
+    if ACCOUNT:
+        sys.exit("Для другого бота — только accounts, add, show: его меню целиком ставим не мы.")
     if sys.argv[1:] == ["show"]:
         for s in SCOPES:
             print("— по умолчанию" if s is None else "— личные чаты")
