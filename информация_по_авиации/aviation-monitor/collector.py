@@ -413,7 +413,12 @@ def section_of(title, summ, cfg):
     for name, pat in pats:
         if pat.search(head):
             return name
+    uav_civil = any(x in head for x in cfg.get("uav_civil_words", []))
     for name, pat in pats:  # в заголовке не нашлось — смотрим текст
+        # раздел БПЛА — только если о беспилотниках сам заголовок: «задержали рейсы из-за ограничений»,
+        # где дроны упомянуты лишь в тексте, — это сбой перевозок, а не рынок БПЛА
+        if name == "БПЛА и низковысотная авиация" and not uav_civil:
+            continue
         if pat.search(low):
             return name
     return "Прочее"
