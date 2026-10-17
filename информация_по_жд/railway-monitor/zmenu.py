@@ -35,12 +35,34 @@ def api(method, **params):
         return json.loads(r.read().decode("utf-8"))
 
 
+# Telegram показывает список из самой «узкой» области: чат > все личные чаты > язык > по умолчанию.
+# Если OpenClaw поставил список в узкую область, наш общий его не перебивает — ставим во все.
+SCOPES = [("по умолчанию", {}), ("все личные чаты", {"scope": json.dumps({"type": "all_private_chats"})}),
+          ("по умолчанию, ru", {"language_code": "ru"}),
+          ("все личные чаты, ru", {"scope": json.dumps({"type": "all_private_chats"}), "language_code": "ru"})]
+
+
+def owner_scope():
+    p = Path.home() / ".secrets" / "zhdusha_owner"
+    if p.exists():
+        cid = p.read_text(encoding="utf-8").strip()
+        return [("чат владельца", {"scope": json.dumps({"type": "chat", "chat_id": cid})})]
+    return []
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["show"]:
-        for c in api("getMyCommands").get("result", []):
-            print(f"/{c['command']} — {c['description']}")
+        for name, extra in SCOPES + owner_scope():
+            cmds = api("getMyCommands", **extra).get("result", [])
+            has = "есть /prognoz" if any(c["command"] == "prognoz" for c in cmds) else "НЕТ /prognoz"
+            print(f"{name}: {len(cmds)} команд, {has}" if cmds else f"{name}: пусто (берётся общий список)")
         sys.exit(0)
-    res = api("setMyCommands", commands=json.dumps([{"command": c, "description": d} for c, d in MENU], ensure_ascii=False))
+    cmds = json.dumps([{"command": c, "description": d} for c, d in MENU], ensure_ascii=False)
+    res = api("setMyCommands", commands=cmds)
+    for name, extra in SCOPES[1:]:
+        api("setMyCommands", commands=cmds, **extra)
+    for name, extra in owner_scope():  # личный список владельца, если его кто-то поставил, убираем — пусть берётся общий
+        api("deleteMyCommands", **extra)
     api("setChatMenuButton", menu_button=json.dumps({"type": "commands"}))
     api("setMyDescription", description=DESCRIPTION)
     api("setMyShortDescription", short_description=SHORT)
