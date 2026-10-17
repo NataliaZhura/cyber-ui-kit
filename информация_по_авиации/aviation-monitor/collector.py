@@ -52,8 +52,10 @@ def load_config():
     # companies.csv — все компании из материалов владельца: узнаём их в новостях, но отдельный поиск
     # по каждой не запускаем (иначе +75 запросов за сбор на слабом сервере); поиск — только для watchlist
     known = {a.lower() for w in watch for a in w["aliases"]}
-    cl = BASE / "companies.csv"
-    if cl.exists():
+    # focus_bas.csv — компании беспилотной отрасли (10 шт.): узнаём и ищем отдельно, как watchlist
+    for cl, search in ((BASE / "focus_bas.csv", True), (BASE / "companies.csv", False)):
+        if not cl.exists():
+            continue
         with cl.open(encoding="utf-8-sig", newline="") as f:
             for row in csv.DictReader(f, delimiter=";"):
                 name = (row.get("компания") or "").strip()
@@ -61,7 +63,8 @@ def load_config():
                 if not name or any(x.lower() in known for x in [name] + aliases):
                     continue  # уже есть в watchlist (там же и поиск по ней)
                 watch.append({"name": name, "aliases": [name] + aliases, "regions": [], "subsidy": False,
-                              "search": False})
+                              "search": search})
+                known.update(x.lower() for x in [name] + aliases)
     # официальные сайты и Telegram-каналы компаний (links.py apply) — свои посты компании
     cs = BASE / "company_sources.json"
     cfg["company_sources"] = json.loads(cs.read_text(encoding="utf-8")) if cs.exists() else []

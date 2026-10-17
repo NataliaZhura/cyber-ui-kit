@@ -17,6 +17,8 @@ links.csv: компания;инн;сайт;rss;telegram;откуда;стату
 Перед изменением списка делается копия в bak/.
 Если есть focus.csv (компания;инн;огрн) — все команды работают только с ним: остальные компании не тратят
 лимиты Checko и 1С:Контрагент.
+--bas — то же для компаний беспилотной отрасли: focus_bas.csv → links_bas.csv; apply дополняет company_sources.json,
+не стирая авиакомпании (и наоборот).
 """
 import csv
 import json
@@ -31,11 +33,13 @@ from pathlib import Path
 import checko
 
 BASE = Path(__file__).resolve().parent
-# Рабочий список: если есть focus.csv (компании в тесте) — работаем только с ним, остальные не тратят лимиты Checko/1С
-FOCUS = BASE / "focus.csv"
-COMPANIES = FOCUS if FOCUS.exists() else BASE / "companies.csv"
-LINKS = BASE / "links.csv"
-CHECK = BASE / "links_check.csv"
+# Рабочий список: если есть focus.csv (компании в тесте) — работаем только с ним, остальные не тратят лимиты Checko/1С.
+# --bas — отдельный список компаний беспилотной отрасли (focus_bas.csv) со своими файлами, авиакомпании не трогает
+BAS = "--bas" in sys.argv
+FOCUS = BASE / ("focus_bas.csv" if BAS else "focus.csv")
+COMPANIES = FOCUS if FOCUS.exists() or BAS else BASE / "companies.csv"
+LINKS = BASE / ("links_bas.csv" if BAS else "links.csv")
+CHECK = BASE / ("links_bas_check.csv" if BAS else "links_check.csv")
 SOURCES = BASE / "company_sources.json"
 FIELDS = ["компания", "инн", "сайт", "rss", "telegram", "откуда", "статус", "одобрено"]
 UA = {"User-Agent": "Mozilla/5.0 (AviationMonitor/1.0)"}
@@ -439,13 +443,17 @@ def cmd_show():
 def cmd_apply():
     rows, _ = read_csv(LINKS)
     ok = [r for r in rows if (r.get("одобрено") or "").strip().lower() in ("да", "yes", "1", "+")]
-    src = [{"company": r["компания"], "inn": r["инн"], "site": r["сайт"], "rss": r["rss"], "telegram": r["telegram"]}
-           for r in ok if r["сайт"] or r["telegram"]]
+    src = [{"company": r["компания"], "inn": r["инн"], "site": r["сайт"], "rss": r["rss"], "telegram": r["telegram"],
+            "group": "БАС" if BAS else "авиа"} for r in ok if r["сайт"] or r["telegram"]]
+    old = []
     if SOURCES.exists():
         bak = BASE / "bak"
         bak.mkdir(exist_ok=True)
         shutil.copy2(SOURCES, bak / f"company_sources-{datetime.now():%Y-%m-%d-%H%M}.json")
-    SOURCES.write_text(json.dumps(src, ensure_ascii=False, indent=1), encoding="utf-8")
+        # компании из другого списка (авиа / БАС) сохраняются: заменяем только тех, кто есть в этом links-файле
+        mine = {r["инн"] for r in rows}
+        old = [s for s in json.loads(SOURCES.read_text(encoding="utf-8")) if s.get("inn") not in mine]
+    SOURCES.write_text(json.dumps(old + src, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"Подключено компаний: {len(src)} (Telegram: {sum(1 for s in src if s['telegram'])}, "
           f"RSS: {sum(1 for s in src if s['rss'])}, сайт через поиск: {sum(1 for s in src if s['site'] and not s['rss'])}). "
           "Сборщик опрашивает их раз в 3 часа.")
