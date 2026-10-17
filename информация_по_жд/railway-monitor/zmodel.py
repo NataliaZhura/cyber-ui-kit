@@ -97,13 +97,21 @@ def backtest(rows_by_year, start=2014):
     if len(err) < 4:
         return None
     ratio = math.sqrt(sum(err) / len(err)) / math.sqrt(sum(naive) / len(naive))
-    return {"ratio": round(ratio, 2), "hit": round(hit / len(err), 2), "years": len(err),
+    return {"ratio": round(ratio, 2), "hit": round(hit / len(err), 2), "years": len(err), "k": len(rows_by_year[t][1]),
             "error": round(math.sqrt(sum(err) / len(err)))}
 
 
-def grade(bt):
-    if not bt:
-        return "нельзя проверить — мало лет"
+def wrong_signs(D, fids, b):
+    """Показатели, которые в этом наборе тянут ставку не в ту сторону (пересекаются с соседями по набору)."""
+    return [D["factors"][f]["name"] for f, bi in zip(fids, b[1:]) if D["factors"][f].get("sign", 0) * bi < 0]
+
+
+def grade(bt, wrong=()):
+    if wrong:
+        return "низкая — " + ("связь обратная ожидаемой" if len(wrong) == 1 and bt and bt.get("k") == 1 else
+                              "в этом наборе работает в обратную сторону: " + ", ".join(wrong))
+    if not bt or bt["years"] < 6:
+        return "низкая — мало лет для проверки"
     if bt["ratio"] < 0.7:
         return "высокая"
     if bt["ratio"] < 0.9:
@@ -118,28 +126,37 @@ def scenario_x(D, model, fid, scen, overrides, gon_path=None):
         sc = dict(D["scenarios"][scen]["park"])
         for k in ("buy", "off"):
             if k in overrides:
-                sc[k] = [overrides[k]] * len(sc[k])
+                sc[k] = sc[k][:1] + [overrides[k]] * (len(sc[k]) - 1)  # свои значения — с 2027 г. (2026 — факт)
         park, out = [D["start"]["park"]], {}
         for b, o in zip(sc["buy"], sc["off"]):
             park.append(park[-1] + b - o)
         for i, y in enumerate(YEARS):  # park[i+1] — конец года y-1 (2026 → индекс 1)
             out[y] = 100 * math.log(park[i + 1] / park[i])
         return out
+    if f["kind"] == "balance":  # баланс парка: (уголь + погрузка) / 2 + оборот вагона − парк год назад
+        c, l, t, p = (scenario_x(D, model, k, scen, overrides) for k in ("coal", "load", "turn", "park"))
+        return {y: (c[y] + l[y]) / 2 + t[y] - p[y] for y in YEARS}
     if f["kind"] == "gon_lag":  # ставка полувагона год назад
         prev = {2026: D["start"]["gon"], **gon_path}
         out = {2027: 100 * math.log(D["start"]["gon"] / D["start"]["gon_2025"])}
         for y in YEARS[1:]:
             out[y] = 100 * math.log(prev[y - 1] / prev[y - 2])
         return out
-    vals = list(D["scenarios"][scen][fid])
+    lag = f.get("lag", {}).get(model, 0)
+    vals = list(D["scenarios"][scen][fid])  # значения 2025–2030 (2025 — факт)
     if fid in overrides:
-        vals = [overrides[fid]] * len(vals)
-    lvl = dict(zip([2026] + YEARS, vals))
-    if f["kind"] == "level":
-        return {y: lvl[y] for y in YEARS}
-    if f["kind"] == "diff":
-        return {y: lvl[y] - lvl[y - 1] for y in YEARS}
-    return {y: 100 * math.log(1 + lvl[y] / 100) for y in YEARS}  # pct: в сценарии — изменение за год, %
+        vals = vals[:2] + [overrides[fid]] * (len(vals) - 2)  # свои значения — с 2027 г.
+    lvl = dict(zip(range(2025, 2031), vals))
+    out = {}
+    for y in YEARS:
+        t = y - lag
+        if f["kind"] == "level":
+            out[y] = lvl[t]
+        elif f["kind"] == "diff":
+            out[y] = lvl[t] - lvl[t - 1]
+        else:  # pct: в сценарии — изменение за год, %
+            out[y] = 100 * math.log(1 + lvl[t] / 100)
+    return out
 
 
 def forecast_one(D, model, fids, scen, overrides, gon_path=None):
@@ -154,15 +171,14 @@ def forecast_one(D, model, fids, scen, overrides, gon_path=None):
         parts = {f: b[i + 1] * xs[f][y] for i, f in enumerate(fids)}
         ch = b[0] + sum(parts.values())
         lvl = max(floor, lvl * math.exp(ch / 100))
-        path[y], contrib[y] = round(lvl), {"Константа (общий тренд)": b[0], **{D["factors"][f]["name"]: v for f, v in parts.items()}}
-    return {"path": path, "contrib": contrib, "b": dict(zip(["const"] + fids, b)), "r2": round(r2, 2), "n": len(rows), "bt": bt}
+        path[y], contrib[y] = round(lvl), {"Константа (общий тренд)": b[0], **{D["factors"][f].get("short", D["factors"][f]["name"]): v for f, v in parts.items()}}
+    return {"path": path, "contrib": contrib, "b": dict(zip(["const"] + fids, b)), "r2": round(r2, 2), "n": len(rows), "bt": bt,
+            "grade": grade(bt, wrong_signs(D, fids, b))}
 
 
 def run(a):
     D = load()
     fids = [f.strip() for f in a.factors.split(",") if f.strip()]
-    if not 1 <= len(fids) <= MAX_FACTORS:
-        sys.exit(f"Выбери от 1 до {MAX_FACTORS} показателей: {', '.join(D['factors'])}")
     bad = [f for f in fids if f not in D["factors"]]
     if bad:
         sys.exit(f"Нет таких показателей: {', '.join(bad)}. Есть: {', '.join(D['factors'])}")
@@ -172,12 +188,18 @@ def run(a):
         ov[k.strip()] = float(v)
     wagons = ["gon", "inno", "kr158", "kr138"] if a.wagon == "all" else [a.wagon]
     res = {}
-    gon_f = [f for f in fids if "gon" in D["factors"][f]["models"]] or D["default"]["gon"]
+    order = list(D["factors"])
+    pick = lambda m: sorted([f for f in fids if m in D["factors"][f]["models"]], key=order.index) or D["default"][m]
+    for m, nm in (("gon", "полувагона"), ("kr", "крытого")):
+        if len(pick(m)) > MAX_FACTORS:
+            sys.exit(f"Для ставки {nm} выбери не больше {MAX_FACTORS} показателей: при большем числе модель "
+                     "подгоняется под прошлое и хуже прогнозирует.")
+    gon_f = pick("gon")
     g = forecast_one(D, "gon", gon_f, a.scenario, ov)
     if {"gon", "inno"} & set(wagons):
         res["gon"] = g
     if {"kr158", "kr138"} & set(wagons):
-        kr_f = [f for f in fids if "kr" in D["factors"][f]["models"]] or D["default"]["kr"]
+        kr_f = pick("kr")
         res["kr"] = forecast_one(D, "kr", kr_f, a.scenario, ov, gon_path=g["path"])
     md = report(D, a, wagons, res, ov)
     out = Path(a.out) if a.out else None
@@ -197,8 +219,10 @@ def paths(D, res, wagons):
             rows["gon"] = p
         if "inno" in wagons:
             d = D["inno_delta"]
-            rows["inno"] = {y: (D["start"]["inno"] if y == 2026 else p[y] + (d["up"] if p[y] > p[y - 1] else d["down"]))
-                            for y in p}
+            def delta(y):  # рост рынка > +3% — «рост», падение < −3% — «падение», между ними — середина
+                ch = p[y] / p[y - 1] - 1
+                return d["up"] if ch > 0.03 else d["down"] if ch < -0.03 else (d["up"] + d["down"]) / 2
+            rows["inno"] = {y: (D["start"]["inno"] if y == 2026 else round(p[y] + delta(y))) for y in p}
     if "kr" in res:
         p = res["kr"]["path"]
         if "kr158" in wagons:
@@ -206,6 +230,10 @@ def paths(D, res, wagons):
         if "kr138" in wagons:
             rows["kr138"] = {y: round(v * D["kr138_ratio"]) for y, v in p.items()}
     return rows
+
+
+def fmt(x):
+    return f"{x:g}".replace(".", ",").replace("-", "−")
 
 
 def n(v):
@@ -226,7 +254,14 @@ def report(D, a, wagons, res, ov):
         last = a.year or 2030
         ch = (p[last] / p[2026] - 1) * 100
         L.append(f"{NAMES[w]}, {last} | {n(p[last])} ₽ | {'✓ ▲' if ch >= 0 else '⚠ ▼'} {ch:+.0f}% к 2026")
-    L += ["```", "", "## Прогноз по годам", "", "| Тип вагона | " + " | ".join(str(y) for y in [2026] + YEARS) + " |",
+    L += ["```", ""]
+    weak = [("полувагона" if k == "gon" else "крытого вагона") for k, r in res.items() if r["grade"].startswith("низкая")]
+    if weak:
+        rec = ", ".join(D["factors"][f]["name"] for f in dict.fromkeys(D["default"]["gon"] + D["default"]["kr"]))
+        L += [f"> ⚠ **Набор для ставки {' и '.join(weak)} ненадёжен** — на прошлых годах он прогнозировал не лучше, чем "
+              f"«ставка не изменится», или показатель в нём работает не в ту сторону. Цифрам ниже не доверяй; "
+              f"рекомендуемый набор: {rec}.", ""]
+    L += ["## Прогноз по годам", "", "| Тип вагона | " + " | ".join(str(y) for y in [2026] + YEARS) + " |",
           "|---|" + "---|" * (len(YEARS) + 1)]
     for w in wagons:
         L.append(f"| {NAMES[w]} | " + " | ".join(n(rows[w][y]) for y in [2026] + YEARS) + " |")
@@ -243,20 +278,25 @@ def report(D, a, wagons, res, ov):
         for c in r["contrib"][YEARS[0]]:
             L.append(f"| {c} | " + " | ".join(f"{r['contrib'][y][c]:+.0f}" for y in YEARS) + " |")
         bt = r["bt"]
-        L += ["", f"Надёжность набора: **{grade(bt)}**" + (
+        L += ["", f"Надёжность набора: **{r['grade']}**" + (
             f" — проверка на {bt['years']} прошлых годах: ошибка {bt['error']}% против {round(bt['error'] / bt['ratio'])}% у прогноза "
             f"«ставка не изменится», направление угадано в {round(bt['hit'] * 100)}% лет." if bt else "") +
             f" Набор объясняет {round(r['r2'] * 100)}% колебаний ставки за {r['n']} лет.", ""]
     L += ["## Допущения сценария", "", "| Показатель | " + " | ".join(str(y) for y in [2026] + YEARS) + " |",
           "|---|" + "---|" * (len(YEARS) + 1)]
     sc = D["scenarios"][a.scenario]
+    shown = []
     for f in used:
+        shown += ["coal", "load", "turn", "park"] if D["factors"][f]["kind"] == "balance" else [f]
+    for f in dict.fromkeys(shown):
         fd = D["factors"][f]
         if fd["kind"] == "park":
-            L.append("| Закупки полувагонов, тыс. | " + " | ".join(f"{ov.get('buy', v):g}" for v in sc["park"]["buy"]) + " |")
-            L.append("| Списания полувагонов, тыс. | " + " | ".join(f"{ov.get('off', v):g}" for v in sc["park"]["off"]) + " |")
-        elif fd["kind"] != "gon_lag":
-            L.append(f"| {fd['name']}, {fd['unit']} | " + " | ".join(f"{ov.get(f, v):g}" for v in sc[f]) + " |")
+            for k, nm in (("buy", "Закупки полувагонов, тыс."), ("off", "Списания полувагонов, тыс.")):
+                v = sc["park"][k]
+                L.append(f"| {nm} | " + " | ".join(fmt(x) for x in v[:1] + [ov.get(k, x) for x in v[1:]]) + " |")
+        elif fd["kind"] not in ("gon_lag", "balance"):
+            v = sc[f][1:]
+            L.append(f"| {fd['name']}, {fd['unit']} | " + " | ".join(fmt(x) for x in v[:1] + [ov.get(f, x) for x in v[1:]]) + " |")
     L += ["", "> **Как читать:** это расчёт по выбранным показателям, а не гарантия. Средняя ошибка модели за год — "
           "±25–35%; прогноз задаёт направление и порядок ставки. Ставку сильнее всего двигает баланс парка: "
           "сколько вагонов нужно под грузы против сколько их на сети."]
@@ -271,7 +311,8 @@ def cmd_list():
     D = load()
     print("Показатели (код — название — для каких вагонов — надёжность в одиночку):")
     for k, f in D["factors"].items():
-        print(f"  {k:9s} {f['name']} — {', '.join(f['models'])} — {f.get('note', '')}")
+        note = "; ".join(f"{'полувагон' if m == 'gon' else 'крытый'}: {g}" for m, g in f.get("note", {}).items())
+        print(f"  {k:9s} {f['name']} — {note}")
     print("\nРекомендуемые наборы:", json.dumps(D["default"], ensure_ascii=False))
 
 
@@ -289,7 +330,4 @@ if __name__ == "__main__":
     if a.cmd == "list":
         cmd_list()
     else:
-        if not a.factors:
-            D = load()
-            a.factors = ",".join(dict.fromkeys(D["default"]["gon"] + D["default"]["kr"]))
         run(a)
