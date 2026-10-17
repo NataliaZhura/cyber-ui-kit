@@ -2,7 +2,7 @@
 """Карта влияния беспилотников: какие виды работ и заказчики у каждой компании рабочего списка.
 
   python3 exposure.py draft              черновик по focus.csv: сайты (sites/<ИНН>) + архив новостей за год → exposure_draft.csv
-  python3 exposure.py show               черновик и подтверждённое — коротко, с доказательствами (для владельца)
+  python3 exposure.py show [ИНН]         черновик и подтверждённое: по строке на компанию; с ИНН — с цитатами-доказательствами
   python3 exposure.py set <ИНН> "<виды работ через запятую>" ["<заказчики через запятую>"]
                                          подтвердить строку → exposure.csv (его читает сборщик новостей)
 
@@ -50,6 +50,11 @@ def write(path, rows):
         w.writerows(rows)
 
 
+def flat(s):
+    """Текст в одну строку: переносы и меню сайта не разрывают вывод."""
+    return " ".join((s or "").split())
+
+
 def texts(name, inn):
     """(источник, текст): страницы сайта компании и новости о ней за год из архива."""
     pages = BASE / "sites" / inn / "pages.json"
@@ -84,7 +89,7 @@ def cmd_draft():
                     if work not in proof:
                         w = next(x for x in words if x in low)
                         i = low.index(w)
-                        proof[work] = f"{src}: «…{t[max(0, i - 60):i + 80].strip()}…»"
+                        proof[work] = f"{src}: «…{flat(t[max(0, i - 60):i + 80])}…»"
             for cu in CUSTOMERS:
                 if cu.lower() in low and cu.lower() not in name.lower():
                     cust[cu] = cust.get(cu, 0) + 1
@@ -99,18 +104,22 @@ def cmd_draft():
           f"{sum(1 for o in out if o['виды_работ'])}. Посмотреть: python3 exposure.py show")
 
 
-def cmd_show():
+def cmd_show(inn=None):
     final = {r["инн"]: r for r in read(FINAL)}
     for i, r in enumerate(read(DRAFT), 1):
-        f = final.get(r["инн"])
-        print(f"{i}. {r['компания']} (ИНН {r['инн']})" + (" — ✅ подтверждено" if f else ""))
-        if f:
-            print(f"   работы: {f['виды_работ']}\n   заказчики: {f['заказчики'] or '—'}")
+        if inn and r["инн"] != inn:
             continue
-        print(f"   по текстам: {r['виды_работ'] or '—'}\n   заказчики в текстах: {r['заказчики'] or '—'}")
-        for p in (r["доказательства"] or "").split(" | ")[:3]:
-            if p:
-                print(f"   · {p[:220]}")
+        f = final.get(r["инн"])
+        if f:
+            print(f"{i}. {r['компания']} ({r['инн']}) ✅ {f['виды_работ']}" + (f"; заказчики: {f['заказчики']}" if f['заказчики'] else ""))
+            continue
+        print(f"{i}. {r['компания']} ({r['инн']}): {r['виды_работ'] or '—'}" + (f"; заказчики: {r['заказчики']}" if r['заказчики'] else ""))
+        if inn:
+            for p in (r["доказательства"] or "").split(" | "):
+                if p:
+                    print(f"   · {flat(p)[:300]}")
+    if not inn:
+        print("Цитаты по компании: python3 exposure.py show <ИНН>")
 
 
 def cmd_set(inn, works, customers=""):
