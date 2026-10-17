@@ -6,6 +6,8 @@ OpenClaw при запуске ставит меню сам и не даёт д�
 
   python3 menu.py          поставить меню
   python3 menu.py show     показать, какое меню стоит сейчас
+  python3 menu.py check    проверить меню; если его нет или оно не наше — поставить заново (запускать после любых
+                           изменений и раз в час по расписанию; модель не нужна)
 
 Токен бота берётся из файла, указанного в настройке OpenClaw channels.telegram.tokenFile; на экран не выводится.
 """
@@ -60,14 +62,48 @@ def api(method, **params):
         return json.loads(r.read().decode("utf-8"))
 
 
+SCOPES = [None, {"type": "all_private_chats"}]   # меню по умолчанию и меню личных чатов (второе важнее первого)
+
+
+def current(scope):
+    res = api("getMyCommands", **({"scope": json.dumps(scope)} if scope else {}))
+    return [(c["command"], c["description"]) for c in res.get("result", [])]
+
+
+def setup():
+    cmds = json.dumps([{"command": c, "description": d} for c, d in MENU], ensure_ascii=False)
+    res = {}
+    for scope in SCOPES:
+        res = api("setMyCommands", commands=cmds, **({"scope": json.dumps(scope)} if scope else {}))
+        if not res.get("ok"):
+            return res
+    return res
+
+
+def check():
+    """True — меню на месте. Иначе ставим заново и проверяем ещё раз."""
+    bad = [("по умолчанию" if s is None else "личные чаты", len(current(s))) for s in SCOPES if current(s) != MENU]
+    if not bad:
+        print(f"✅ Меню на месте: {len(MENU)} команд, " + ", ".join("/" + c for c, _ in MENU))
+        return True
+    print("⚠ Меню не наше или пустое (" + "; ".join(f"{n}: команд {k}" for n, k in bad) + ") — ставлю заново")
+    setup()
+    api("setChatMenuButton", menu_button=json.dumps({"type": "commands"}))
+    ok = all(current(s) == MENU for s in SCOPES)
+    print("✅ Меню восстановлено" if ok else "❌ Меню поставить не удалось — пришли этот вывод")
+    return ok
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["show"]:
-        res = api("getMyCommands")
-        for c in res.get("result", []):
-            print(f"/{c['command']} — {c['description']}")
+        for s in SCOPES:
+            print("— по умолчанию" if s is None else "— личные чаты")
+            for c, d in current(s):
+                print(f"/{c} — {d}")
         sys.exit(0)
-    cmds = json.dumps([{"command": c, "description": d} for c, d in MENU], ensure_ascii=False)
-    res = api("setMyCommands", commands=cmds)
+    if sys.argv[1:] == ["check"]:
+        sys.exit(0 if check() else 1)
+    res = setup()
     api("setChatMenuButton", menu_button=json.dumps({"type": "commands"}))
     api("setMyDescription", description=DESCRIPTION)        # текст «Что умеет этот бот?» до нажатия «Старт»
     api("setMyShortDescription", short_description=SHORT)   # строка в профиле бота
