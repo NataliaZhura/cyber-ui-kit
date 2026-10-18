@@ -41,7 +41,12 @@ TH = {
     "debt_ebit_ok": 3.0,    # до 3 — надёжный заёмщик (методика: 2–3)
     "cur_liq": (1.0, 2.0),  # текущая ликвидность: приемлемо 1–2
     "drop": 0.15,           # падение показателя больше чем на 15% за год — «ухудшение»
+    "stale_years": 2,       # отчётность старше (текущий год − 2) — устарела: выводы не делать, в отрасль не брать
 }
+
+
+def stale(year):
+    return int(year) < datetime.now().year - TH["stale_years"]
 
 # строки РСБУ; оттоки денег (4xxx) в отчёте со знаком минус — берём по модулю
 K = {"rev": "2110", "cogs": "2120", "sell": "2210", "adm": "2220", "ebit": "2200", "int": "2330", "net": "2400",
@@ -376,7 +381,7 @@ def peers_cmd(a):
         r = ratios(Y, y)
         db[inn] = {"name": name, "year": y, **{k: r[k] for k, _ in PEER_KEYS}}
         path.write_text(json.dumps(db, ensure_ascii=False, indent=1), encoding="utf-8")
-        print(f"  {name}: {y} ✓")
+        print(f"  {name}: {y} " + ("⚠ свежей отчётности нет — в сравнение не войдёт" if stale(y) else "✓"))
     print(f"Файл: {path} — компаний: {len(db)}")
 
 
@@ -385,9 +390,12 @@ def peers_block(inn, r, group):
     if not path.exists():
         return ["Сравнение с отраслью не построено — нет файла отрасли (`python3 zfactory.py peers "
                 f"{group}`)."]
-    db = {k: v for k, v in json.loads(path.read_text(encoding="utf-8")).items() if k != inn}
+    allp = {k: v for k, v in json.loads(path.read_text(encoding="utf-8")).items() if k != inn}
+    db = {k: v for k, v in allp.items() if not stale(v["year"])}
+    old = [f"{v['name']} ({v['year']})" for v in allp.values() if stale(v["year"])]
+    old_note = (f" Без свежей отчётности в открытом реестре, в сравнение не взяты: {', '.join(old)}." if old else "")
     if len(db) < 3:
-        return [f"Сравнение с отраслью не построено — в файле отрасли меньше 3 компаний ({len(db)})."]
+        return [f"Сравнение с отраслью не построено — со свежей отчётностью меньше 3 компаний ({len(db)})." + old_note]
     who = "заводы-производители вагонов" if group == "zavod" else "операторы вагонов"
     L = [f"| Показатель | Компания | Середина отрасли | Разброс | Оценка |", "|---|---|---|---|---|"]
     for k, hb in PEER_KEYS:
@@ -401,7 +409,7 @@ def peers_block(inn, r, group):
         L.append(f"| {PEER_NAMES[k]} | {f(mine)} | {f(med)} | {f(vals[0])} … {f(vals[-1])} | {mark} |")
     yrs = sorted({v["year"] for v in db.values()})
     L += ["", f"<small>Отрасль: {who}, {len(db)} компаний ({', '.join(v['name'] for v in db.values())}), "
-          f"отчётность за {', '.join(yrs)}. Середина — медиана. Источник — РСБУ через Checko.</small>"]
+          f"отчётность за {', '.join(yrs)}. Середина — медиана. Источник — РСБУ через Checko.{old_note}</small>"]
     return L
 
 
@@ -418,11 +426,18 @@ def run(a):
     m = {**m, "debt": r["debt"]}
     cover, months = runway(m)
     stops, prob, causes = diagnose(Y, R, yrs)
+    is_old = stale(y)
+    if is_old:
+        stops.insert(0, f"последняя отчётность в открытом реестре — за {y} г., свежее нет (компания не раскрыла "
+                        "отчётность; у компаний под санкциями это бывает). Все цифры ниже — по состоянию на конец "
+                        f"{y} г. и для решения не годятся: запросить у {'завода' if a.zavod else 'компании'} "
+                        "бухгалтерскую отчётность за последний год и последний квартал")
     cls = grade(prob, stops, cover)
     who = "завода" if a.zavod else "компании"
     cases = checko.cases_summary(checko.cached("legal-cases", a.id))
 
-    head = (f"чистый оборотный капитал {t(r['nwc'])}, долг — {FMT['debt_ebit'](r['debt_ebit'])} прибыли от продаж"
+    head = (f"свежей отчётности нет — последняя за {y} год" if is_old else
+            f"чистый оборотный капитал {t(r['nwc'])}, долг — {FMT['debt_ebit'](r['debt_ebit'])} прибыли от продаж"
             if stops else
             f"поток покрывает платежи по долгу в {x(cover, 1)} раза" if cover is not None else
             "поток не рассчитан — нет отчёта о движении денег")
@@ -430,7 +445,7 @@ def run(a):
          f"{{{{класс:{cls}}}}} **{GRADE[cls]} риск:** {head}"
          + (f", денег хватит на {months:.0f} мес. без новых поступлений." if months and months <= 24 and not stops else "."), "",
          f"<small>ИНН/ОГРН {a.id} · последняя доступная отчётность: РСБУ юрлица на 31.12.{y}"
-         + (f" (к {yp} г.)" if yp else "") + " · Подготовлено по открытым источникам</small>", ""]
+         + (f" (к {yp} г.)" if yp else "") + (" ⚠ устарела" if is_old else "") + " · Подготовлено по открытым источникам</small>", ""]
     if stops:
         L += [f"> **⛔ Решение — только после пояснения {who}.** " + "; ".join(s[0].upper() + s[1:] for s in stops) + ". Запросить у " + who + ": "
               + ("как будет выполнен заказ — портфель заказов, график выпуска, источники денег на производство, "
