@@ -10,7 +10,9 @@ for name in ("workspace", "workspace-tester"):
     if not p.exists():
         continue
     t = p.read_text(encoding="utf-8")
-    print(f"== {p}: {len(t)} знаков" + ("  ⚠ БОЛЬШЕ ЛИМИТА — конец правил бот не видит" if len(t) > 20000 else ""))
+    warn = ("  ⚠ БОЛЬШЕ ЛИМИТА — конец правил бот не видит" if len(t) > 20000
+            else f"  ⚠ запас до лимита {20000 - len(t)} знаков — пора выносить разделы" if len(t) > 18000 else "")
+    print(f"== {p}: {len(t)} знаков" + warn)
     pos = [i for i in range(len(t)) if t.startswith("\n## ", i)] + [len(t)]
     head = t[:pos[0]]
     print(f"   {len(head):6d}  (начало до первого раздела)")
