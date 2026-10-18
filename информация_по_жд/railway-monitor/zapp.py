@@ -205,7 +205,9 @@ def run_task(agent, uid, text):
     cmd = config().get("task_cmd")
     if not cmd:
         return {"ok": False, "fallback": text}
-    args = [a.replace("{agent}", agent).replace("{to}", uid).replace("{text}", text) for a in cmd]
+    sid = f"zapp-{uid}-{time.strftime('%Y%m%d%H%M%S')}"  # {session} в task_cmd — каждая задача в новом разговоре
+    args = [a.replace("{agent}", agent).replace("{to}", uid).replace("{text}", text).replace("{session}", sid)
+            for a in cmd]
     # ЖДуша отвечает минутами — запускаем отдельно и не ждём; ответ придёт в чат, журнал — saved/task.log
     try:
         log = (SAVED / "task.log").open("a", encoding="utf-8")
