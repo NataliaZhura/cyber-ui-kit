@@ -393,7 +393,7 @@ def peers_cmd(a):
         y = sorted(Y)[-1]
         r = ratios(Y, y)
         db[inn] = {"name": name, "year": y, **{k: r[k] for k, _ in PEER_KEYS}}
-        print(f"  {name}: {y} " + ("⚠ свежей отчётности нет — в таблице для справки, в середину отрасли не входит"
+        print(f"  {name}: {y} " + ("⚠ нет актуальной отчётности — в сравнение не войдёт"
                                    if stale(y) else "✓"))
     path.write_text(json.dumps(db, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"Файл: {path} — компаний: {len(db)}")
@@ -406,13 +406,15 @@ def peers_block(inn, r, group, year):
         return ["Сравнение с отраслью не построено — нет файла отрасли (`python3 zfactory.py peers "
                 f"{group}`)."]
     allp = {k: v for k, v in json.loads(path.read_text(encoding="utf-8")).items() if k != inn}
-    if not allp:
-        return ["Сравнение с отраслью не построено — в файле отрасли нет других компаний."]
-    peers = sorted(allp.values(), key=lambda v: (stale(v["year"]), v["name"]))
-    fresh = [v for v in peers if not stale(v["year"])]
+    old = [f"{v['name']} ({v['year']})" for v in allp.values() if stale(v["year"])]
+    peers = sorted((v for v in allp.values() if not stale(v["year"])), key=lambda v: v["name"])  # только актуальные
+    fresh = peers
+    if not peers:
+        return ["Сравнение с отраслью не построено — у заводов из списка нет актуальной отчётности"
+                + (f" (последняя: {', '.join(old)})." if old else ".")]
     use_med = len(fresh) >= 2
-    head = ["Показатель", f"Компания ({year})"] + [f"{v['name']} ({v['year']}{' ⚠' if stale(v['year']) else ''})" for v in peers]
-    head += ["Середина (свежие)", "Оценка"] if use_med else []
+    head = ["Показатель", f"Компания ({year})"] + [f"{v['name']} ({v['year']})" for v in peers]
+    head += ["Середина", "Оценка"] if use_med else []
     L = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for k, hb in PEER_KEYS:
         f, mine = FMT[k], r.get(k)
@@ -424,11 +426,10 @@ def peers_block(inn, r, group, year):
                     else "⚠ хуже" if mine != med else "на уровне")
             row += [f(med), mark]
         L.append("| " + " | ".join(row) + " |")
-    old = [v["name"] for v in peers if stale(v["year"])]
     who = "заводы-производители вагонов" if group == "zavod" else "операторы вагонов"
-    L += ["", f"<small>Отрасль: {who}. Середина — медиана по заводам со свежей отчётностью"
-          + ("" if use_med else " — не считается: свежая отчётность меньше чем у двух") + "."
-          + (f" ⚠ {', '.join(old)} — в открытом реестре нет свежей отчётности, цифры старые, только для справки." if old else "")
+    L += ["", f"<small>Отрасль: {who}, только актуальная отчётность. Середина — медиана"
+          + ("" if use_med else " — не считается: актуальная отчётность меньше чем у двух") + "."
+          + (f" Не включены — нет актуальной отчётности: {', '.join(old)}." if old else "")
           + " Источник — РСБУ через Checko.</small>"]
     return L
 
