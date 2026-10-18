@@ -350,66 +350,86 @@ PEER_NAMES = {"cur_liq": "Текущая ликвидность", "nwc_ta": "Ч�
 
 
 def peer_list(group):
+    """Заводы — список из раздела «Отрасль для сравнения» в ZAVODY.md; операторы — watchlist.csv (тип «оператор»)."""
     if group == "zavod":
-        out = []
+        out, on = [], False
         for line in (HERE / "ZAVODY.md").read_text(encoding="utf-8").splitlines():
-            cells = [s.strip() for s in line.strip("|").split("|")]
-            if len(cells) > 2 and re.fullmatch(r"\d{10}", cells[1]):
-                out.append((cells[1], cells[0]))
+            if line.startswith("**Отрасль для сравнения"):
+                on = True
+            elif on and line.startswith("- "):
+                inn = re.search(r"\b\d{10}\b", line)
+                name = line[2:].split(" — ")[0].strip()
+                q = re.search(r"«([^»]+)»", line)  # что искать, если ИНН ещё нет
+                out.append((inn.group(0) if inn else None, name, q.group(1) if q else name.split(" (")[0]))
+            elif on and line.strip() and not line.startswith("- "):
+                break
         return out
     path = HERE / "watchlist.csv"
     if not path.exists():
         sys.exit(f"Нет {path} — список операторов только на сервере")
     with path.open(encoding="utf-8-sig") as f:
-        return [(r["инн"].strip(), r["компания"].strip()) for r in csv.DictReader(f, delimiter=";")
+        return [(r["инн"].strip(), r["компания"].strip(), "") for r in csv.DictReader(f, delimiter=";")
                 if re.fullmatch(r"\d{10}", (r.get("инн") or "").strip()) and "оператор" in (r.get("тип") or "")]
 
 
 def peers_cmd(a):
     path = HERE / f"peers_{a.group}.json"
-    db = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    for inn, name in peer_list(a.group):
-        if inn in db and not a.force:
-            print(f"  {name}: уже есть ({db[inn]['year']})")
+    old = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    db = {}  # только компании из текущего списка
+    for inn, name, q in peer_list(a.group):
+        if not inn:
+            print(f"  {name}: нет ИНН — найди: python3 ~/aviation-monitor/checko.py find \"{q}\" "
+                  "и впиши ИНН в ZAVODY.md («Отрасль для сравнения»)")
+            continue
+        if inn in old and not a.force:
+            db[inn] = {**old[inn], "name": name}
+            print(f"  {name}: уже есть ({old[inn]['year']})")
             continue
         ys = checko.years(checko.cached("finances", inn))
         if not ys:
-            print(f"  {name}: отчётность не получена (лимит Checko?) — запусти позже, посчитанные сохранены")
-            break
+            print(f"  {name}: отчётность не получена (лимит Checko?) — запусти позже")
+            continue
         Y = years_data(ys)
         y = sorted(Y)[-1]
         r = ratios(Y, y)
         db[inn] = {"name": name, "year": y, **{k: r[k] for k, _ in PEER_KEYS}}
-        path.write_text(json.dumps(db, ensure_ascii=False, indent=1), encoding="utf-8")
-        print(f"  {name}: {y} " + ("⚠ свежей отчётности нет — в сравнение не войдёт" if stale(y) else "✓"))
+        print(f"  {name}: {y} " + ("⚠ свежей отчётности нет — в таблице для справки, в середину отрасли не входит"
+                                   if stale(y) else "✓"))
+    path.write_text(json.dumps(db, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"Файл: {path} — компаний: {len(db)}")
 
 
-def peers_block(inn, r, group):
+def peers_block(inn, r, group, year):
+    """Таблица «компания и каждый завод отрасли»; середина — только по свежей отчётности (если таких 2 и больше)."""
     path = HERE / f"peers_{group}.json"
     if not path.exists():
         return ["Сравнение с отраслью не построено — нет файла отрасли (`python3 zfactory.py peers "
                 f"{group}`)."]
     allp = {k: v for k, v in json.loads(path.read_text(encoding="utf-8")).items() if k != inn}
-    db = {k: v for k, v in allp.items() if not stale(v["year"])}
-    old = [f"{v['name']} ({v['year']})" for v in allp.values() if stale(v["year"])]
-    old_note = (f" Без свежей отчётности в открытом реестре, в сравнение не взяты: {', '.join(old)}." if old else "")
-    if len(db) < 3:
-        return [f"Сравнение с отраслью не построено — со свежей отчётностью меньше 3 компаний ({len(db)})." + old_note]
-    who = "заводы-производители вагонов" if group == "zavod" else "операторы вагонов"
-    L = [f"| Показатель | Компания | Середина отрасли | Разброс | Оценка |", "|---|---|---|---|---|"]
+    if not allp:
+        return ["Сравнение с отраслью не построено — в файле отрасли нет других компаний."]
+    peers = sorted(allp.values(), key=lambda v: (stale(v["year"]), v["name"]))
+    fresh = [v for v in peers if not stale(v["year"])]
+    use_med = len(fresh) >= 2
+    head = ["Показатель", f"Компания ({year})"] + [f"{v['name']} ({v['year']}{' ⚠' if stale(v['year']) else ''})" for v in peers]
+    head += ["Середина (свежие)", "Оценка"] if use_med else []
+    L = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for k, hb in PEER_KEYS:
-        vals = sorted(v[k] for v in db.values() if v.get(k) is not None)
-        if len(vals) < 3:
-            continue
-        med, f = statistics.median(vals), FMT[k]
-        mine = r.get(k)
-        mark = ("нет данных" if mine is None else "✓ лучше середины" if (mine > med) == hb and mine != med
-                else "⚠ хуже середины" if mine != med else "на уровне")
-        L.append(f"| {PEER_NAMES[k]} | {f(mine)} | {f(med)} | {f(vals[0])} … {f(vals[-1])} | {mark} |")
-    yrs = sorted({v["year"] for v in db.values()})
-    L += ["", f"<small>Отрасль: {who}, {len(db)} компаний ({', '.join(v['name'] for v in db.values())}), "
-          f"отчётность за {', '.join(yrs)}. Середина — медиана. Источник — РСБУ через Checko.{old_note}</small>"]
+        f, mine = FMT[k], r.get(k)
+        row = [PEER_NAMES[k], f(mine)] + [f(v.get(k)) for v in peers]
+        if use_med:
+            vals = [v[k] for v in fresh if v.get(k) is not None]
+            med = statistics.median(vals) if len(vals) >= 2 else None
+            mark = ("нет данных" if mine is None or med is None else "✓ лучше" if (mine > med) == hb and mine != med
+                    else "⚠ хуже" if mine != med else "на уровне")
+            row += [f(med), mark]
+        L.append("| " + " | ".join(row) + " |")
+    old = [v["name"] for v in peers if stale(v["year"])]
+    who = "заводы-производители вагонов" if group == "zavod" else "операторы вагонов"
+    L += ["", f"<small>Отрасль: {who}. Середина — медиана по заводам со свежей отчётностью"
+          + ("" if use_med else " — не считается: свежая отчётность меньше чем у двух") + "."
+          + (f" ⚠ {', '.join(old)} — в открытом реестре нет свежей отчётности, цифры старые, только для справки." if old else "")
+          + " Источник — РСБУ через Checko.</small>"]
     return L
 
 
@@ -486,7 +506,7 @@ def run(a):
           f"То же словами: {FCF_WORDS}. Износ в расчёт не входит — он есть и в прибыли, и во вложениях, и сокращается. "
           f"Сверка — {F['fcf_cf']} (поток от операций минус покупка внеоборотных активов); заметное расхождение — "
           "переоценки, продажа активов или неденежные статьи.", ""]
-    L += ["## Сравнение с отраслью", ""] + peers_block(a.id, r, "zavod" if a.zavod else "oper") + [""]
+    L += ["## Сравнение с отраслью", ""] + peers_block(a.id, r, "zavod" if a.zavod else "oper", y) + [""]
 
     L += ["## Выводы", "",
           "**1. Состояние.** " + "; ".join(f"{n} — {v[0]}" for n, v in prob.items()) + ".", ""]
