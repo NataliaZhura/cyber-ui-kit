@@ -5,6 +5,7 @@
   python3 send.py --to <telegram_id> файл.pdf                      другому человеку (только после «да» владельца)
   python3 send.py --copy файл.md                                   текст файла владельцу сообщением (копия переписки гостя)
   python3 send.py --note "гость-прогноз"                           одна строка владельцу (гость что-то запросил)
+  python3 send.py --to <telegram_id> --text письмо.html             текст файла сообщением (HTML-разметка Telegram: <b>…</b>)
 
 Токен — ~/.secrets/zhdusha_bot (на экран не выводится). Telegram ID владельца — ~/.secrets/zhdusha_owner
 (одна строка с числом). Получатель должен сначала сам написать боту /start. Отправки пишутся в saved/sent.log.
@@ -69,6 +70,21 @@ def main():
         return
     if args[0] == "--to":
         chat_id, args = args[1], args[2:]
+    if args[:1] == ["--text"]:  # письмо от бота: текст файла одним сообщением, не длиннее 4 000 знаков
+        token = read_secret("zhdusha_bot")
+        text = Path(args[1]).expanduser().read_text(encoding="utf-8").strip()
+        if len(text) > 4000:
+            sys.exit(f"Текст {len(text)} знаков — Telegram принимает до 4 096; сократи.")
+        data = json.dumps({"chat_id": chat_id or read_secret("zhdusha_owner"), "text": text, "parse_mode": "HTML",
+                           "disable_web_page_preview": True}).encode()
+        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req, timeout=60).read()
+        except urllib.error.HTTPError as e:
+            sys.exit(f"Telegram не принял: {e.read(300).decode('utf-8', 'replace')}")
+        print(f"Сообщение отправлено в Telegram {chat_id or 'владельцу'}")
+        return
     chat_id = chat_id or read_secret("zhdusha_owner")
     token = read_secret("zhdusha_bot")
     log = BASE / "saved" / "sent.log"

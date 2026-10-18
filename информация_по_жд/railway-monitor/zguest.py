@@ -6,6 +6,7 @@
   python3 zguest.py off   <TELEGRAM_ID> [имя_агента]    отключить (папки остаются)
   python3 zguest.py rules <TELEGRAM_ID> [имя_агента]    только обновить правила гостя (настройки OpenClaw не трогает)
   python3 zguest.py news  <TELEGRAM_ID> [имя_агента]    утренние новости гостю каждый день в 08:45 (на полку, без копии владельцу)
+  python3 zguest.py cleanup <TELEGRAM_ID> [агент] [--apply]  старые демо-рассылки «Гость ЖД: …» — показать / удалить
 
 Имя агента по умолчанию — zguest. Гостю доступны все разделы меню. Гость НЕ видит: выпуски Argus и rates.csv
 (лицензия — только для внутреннего использования), внутренние обзоры, справки и память владельца, настройки.
@@ -64,7 +65,8 @@ HEADER = """# ⚠️ Гость — ограничения (главнее вс�
 def args():
     if len(sys.argv) < 3 or not sys.argv[2].isdigit():
         sys.exit(__doc__)
-    agent = sys.argv[3] if len(sys.argv) > 3 else "zguest"
+    rest = [x for x in sys.argv[3:] if not x.startswith("--")]
+    agent = rest[0] if rest else "zguest"
     if agent in ("main", "tester", "zhdusha", "vladislav"):
         sys.exit(f"Имя «{agent}» занято — выбери другое.")
     return sys.argv[2], agent
@@ -130,6 +132,44 @@ def cmd_news(tid, agent):
     print(f"Готово: новости гостю {tid} каждый день в 08:45 МСК, полка saved_{agent}/market/.")
 
 
+def jobs():
+    """(id, название) всех расписаний OpenClaw — из JSON-вывода списка."""
+    import json
+    raw = guest.oc("automations", "list", "--json", check=False) or guest.oc("automations", "list", check=False)
+    found = []
+
+    def walk(v):
+        if isinstance(v, dict):
+            jid = v.get("id") or v.get("jobId")
+            if jid and isinstance(v.get("name"), str):
+                found.append((str(jid), v["name"]))
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, list):
+            for x in v:
+                walk(x)
+    try:
+        walk(json.loads(raw))
+    except ValueError:
+        sys.exit("Список расписаний не в JSON — пришли вывод: openclaw automations list --json | head -40")
+    return found
+
+
+def cmd_cleanup(tid, agent):
+    keep = f"Гость ЖД: новости ежедневно ({agent})"
+    old = [(j, n) for j, n in jobs() if n.startswith("Гость ЖД:") and n != keep]
+    if not old:
+        return print("Старых демо-рассылок нет.")
+    for j, n in old:
+        print(f"  {n}  [{j}]")
+    if "--apply" not in sys.argv:
+        return print(f"Всего {len(old)}. Ничего не удалено. Удалить: python3 zguest.py cleanup {tid} {agent} --apply")
+    for j, n in old:
+        guest.oc("automations", "remove", j, check=False)
+    left = [n for _, n in jobs() if n.startswith("Гость ЖД:")]
+    print(f"Удалено: {len(old)}. Осталось «Гость ЖД»: {', '.join(left) or 'нет'}")
+
+
 def cmd_apply(tid, agent):
     bindings, allow, entries = cmd_plan(tid, agent)
     cfg = OC / "openclaw.json"
@@ -170,7 +210,8 @@ def cmd_off(tid, agent):
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    cmds = {"plan": cmd_plan, "apply": cmd_apply, "off": cmd_off, "rules": cmd_rules, "news": cmd_news}
+    cmds = {"plan": cmd_plan, "apply": cmd_apply, "off": cmd_off, "rules": cmd_rules, "news": cmd_news,
+            "cleanup": cmd_cleanup}
     if cmd not in cmds:
         sys.exit(__doc__)
     cmds[cmd](*args())
