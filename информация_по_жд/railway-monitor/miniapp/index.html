@@ -65,7 +65,7 @@ opacity:0;transform:translateY(20px);transition:.2s;pointer-events:none;z-index:
 <script>
 const tg = window.Telegram?.WebApp;
 tg?.ready(); tg?.expand();
-const TABS = ["Рынок", "Прогнозы", "Компании", "Решения", "Задача"];
+const TABS = ["Рынок", "Прогнозы", "Компании", "Задача"];
 const TASKS = [
   {cmd: "/find", title: "Найти ИНН и ОГРН", hint: "Название компании", ph: "например, Первая грузовая компания"},
   {cmd: "/remember", title: "Запомнить", hint: "Компания, правило или факт", ph: "например, ПГК — в приоритете"},
@@ -73,7 +73,7 @@ const TASKS = [
 ];
 const S = {data: null, tab: "Рынок", section: null, seen: {}};
 try { S.seen = JSON.parse(localStorage.getItem("zseen") || "{}"); } catch (e) {}
-try { S.tab = localStorage.getItem("ztab") || S.tab; } catch (e) {}
+try { const t = localStorage.getItem("ztab"); if (TABS.includes(t)) S.tab = t; } catch (e) {}
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
