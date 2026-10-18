@@ -1,0 +1,354 @@
+#!/usr/bin/env python3
+"""Мини-приложение ЖДуши: отчёты и загрузки по разделам меню. Просмотр — без нейросети (0 токенов).
+
+  python3 zapp.py serve [--port 8787]     запустить (слушает только 127.0.0.1; снаружи — через Caddy с HTTPS)
+  python3 zapp.py sort                    показать, какие старые файлы saved/ в какой раздел лягут (ничего не меняет)
+  python3 zapp.py sort --apply            разложить (только после «да» владельца; файлы переносятся, не удаляются)
+  python3 zapp.py check                   что умеет `openclaw agent` (для кнопки «Поставить задачу»), только чтение
+
+Кто что видит (проверяется подпись Telegram, подделать нельзя):
+  владелец (~/.secrets/zhdusha_owner) — saved/ и forecast/*.pdf;
+  гость (Telegram ID из ~/.openclaw/workspace-<агент>/AGENTS.md) — только saved_<агент>/ и forecast/guest/;
+  остальные — отказ. private/ (Argus, rates.csv) не показывается никому.
+
+Токен бота — ~/.secrets/zhdusha_bot; в страницу и ответы не попадает.
+Кнопка «Поставить задачу»: если в miniapp.json задан task_cmd — команда уходит агенту сразу; иначе текст копируется,
+и его вставляют в чат.
+"""
+import hashlib
+import hmac
+import json
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+import send as S  # тот же sendDocument, что у send.py
+
+BASE = Path(__file__).resolve().parent
+SAVED, FORECAST = BASE / "saved", BASE / "forecast"
+PAGE = BASE / "miniapp" / "index.html"
+CONFIG = BASE / "miniapp.json"
+OC = Path.home() / ".openclaw"
+MAX_UPLOAD = 20 * 1024 * 1024
+SHOW = {".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".csv", ".png", ".jpg", ".jpeg", ".md"}
+
+# Разделы = пункты меню (zmenu.py) без /start, /new; /find, /remember, /save — во вкладке «Задача».
+# Ключевые слова — только для раскладки старых файлов (sort) и файлов без папки; порядок важен.
+SECTIONS = [
+    ("Рынок", "poluvagony", "Полувагоны", ["полуваг"]),
+    ("Рынок", "krytye", "Крытые вагоны", ["крыт"]),
+    ("Рынок", "market", "Новости рынка", ["новост", "рынок", "market"]),
+    ("Рынок", "rates", "Ставки", ["ставки_аренд", "_ставки"]),
+    ("Рынок", "loading", "Погрузка", ["погрузк"]),
+    ("Рынок", "balance", "Баланс парка", ["баланс"]),
+    ("Прогнозы", "prognoz", "Ставки до 2030", ["прогноз_ставок", "2030"]),
+    ("Прогнозы", "forecast", "Прогноз на неделю", ["прогноз"]),
+    ("Прогнозы", "vagon", "Стоимость вагона", ["стоимость_вагона"]),
+    ("Компании", "company", "Новости оператора", ["новости_оператор"]),
+    ("Компании", "profile", "Справка по компании", ["справка", "профиль"]),
+    ("Компании", "finance", "Финансы", ["финанс"]),
+    ("Компании", "courts", "Суды и приставы", ["суд", "пристав"]),
+    ("Компании", "assets", "Имущество и лизинг", ["имуществ", "лизинг"]),
+    ("Компании", "compare", "Сравнение компаний", ["сравнен", "_vs_"]),
+    ("Решения", "lease", "Оперировать или сдавать", ["оперировать", "аренд"]),
+    ("Решения", "model", "Финмодели и стресс-тест", ["модел", "стресс"]),
+    ("Решения", "zavod", "Заводы и аванс", ["завод"]),
+    ("Задача", "upload", "Мои загрузки", []),
+    ("Задача", "other", "Разное", []),
+]
+KEYS = [s[1] for s in SECTIONS]
+
+
+def secret(name):
+    p = Path.home() / ".secrets" / name
+    return p.read_text(encoding="utf-8").strip() if p.exists() else ""
+
+
+def config():
+    try:
+        return json.loads(CONFIG.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def guests():
+    """Telegram ID → имя агента гостя: zguest.py пишет ID в первые строки AGENTS.md агента."""
+    out = {}
+    for ws in OC.glob("workspace-*"):
+        try:
+            head = (ws / "AGENTS.md").read_text(encoding="utf-8")[:600]
+        except OSError:
+            continue
+        m = re.search(r"\*\*гостем\*\* \(Telegram ID (\d+)\)", head)
+        if m:
+            out[m.group(1)] = ws.name.removeprefix("workspace-")
+    return out
+
+
+def who(uid):
+    """(роль, имя агента, папки для чтения, папка для записи) или None."""
+    if uid and uid == secret("zhdusha_owner"):
+        return "owner", "zhdusha", [SAVED, FORECAST], SAVED
+    agent = guests().get(uid)
+    if agent:
+        own = BASE / f"saved_{agent}"
+        return "guest", agent, [own, FORECAST / "guest"], own
+    return None
+
+
+def check_init(init_data, token):
+    """Проверка подписи Telegram: core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app."""
+    pairs = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+    got = pairs.pop("hash", "")
+    data = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
+    key = hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    if not got or not hmac.compare_digest(hmac.new(key, data.encode(), hashlib.sha256).hexdigest(), got):
+        return None
+    if time.time() - int(pairs.get("auth_date", "0")) > 86400:
+        return None
+    return str(json.loads(pairs.get("user", "{}")).get("id", ""))
+
+
+def companies():
+    """Названия и синонимы из watchlist.csv (только на сервере), в нижнем регистре, пробелы → «_»."""
+    try:
+        lines = (BASE / "watchlist.csv").read_text(encoding="utf-8-sig").splitlines()[1:]
+    except OSError:
+        return []
+    names = set()
+    for line in lines:
+        cols = line.split(";")
+        for n in [cols[0]] + (cols[1].split(",") if len(cols) > 1 else []):
+            n = n.strip().lower().replace(" ", "_")
+            if len(n) >= 3:
+                names.add(n)
+    return names
+
+
+def section_of(path, root):
+    rel = path.relative_to(root).parts
+    if len(rel) > 1 and rel[0] in KEYS:
+        return rel[0]
+    if root.name == "forecast" or root.parent.name == "forecast":
+        return "prognoz"
+    name = path.name.lower()
+    if "завод" in name:
+        return "zavod"
+    for _, key, _, words in SECTIONS:
+        if any(w in name for w in words):
+            return key
+    if any(c in name for c in companies()):  # файл назван по компании из watchlist.csv — справка по компании
+        return "profile"
+    return "other"
+
+
+def files(roots):
+    """Все показываемые файлы: .md — только если рядом нет PDF с тем же именем."""
+    seen = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for p in root.rglob("*"):
+            rel = p.relative_to(root).parts
+            if not p.is_file() or p.suffix.lower() not in SHOW or "copy" in rel[:-1] or "_tmp" in p.stem:
+                continue
+            if root == FORECAST and rel[0] == "guest":
+                continue
+            if p.suffix.lower() == ".md" and p.with_suffix(".pdf").exists():
+                continue
+            seen.append((root, p))
+    return seen
+
+
+def listing(roots):
+    out = {k: [] for k in KEYS}
+    for root, p in files(roots):
+        st = p.stat()
+        out[section_of(p, root)].append({"id": f"{roots.index(root)}/{p.relative_to(root).as_posix()}",
+                                         "name": p.name, "size": st.st_size, "mtime": int(st.st_mtime)})
+    for v in out.values():
+        v.sort(key=lambda f: -f["mtime"])
+    return out
+
+
+def resolve(roots, fid):
+    idx, _, rel = fid.partition("/")
+    if not idx.isdigit() or int(idx) >= len(roots) or not rel:
+        return None
+    root = roots[int(idx)].resolve()
+    p = (root / rel).resolve()
+    if not p.is_file() or not p.is_relative_to(root) or p.suffix.lower() not in SHOW:
+        return None
+    return p
+
+
+def link_sig(token, uid, fid, exp):
+    key = hmac.new(token.encode(), b"zapp-link", hashlib.sha256).digest()
+    return hmac.new(key, f"{uid}|{fid}|{exp}".encode(), hashlib.sha256).hexdigest()
+
+
+def run_task(agent, uid, text):
+    cmd = config().get("task_cmd")
+    if not cmd:
+        return {"ok": False, "fallback": text}
+    args = [a.replace("{agent}", agent).replace("{to}", uid).replace("{text}", text) for a in cmd]
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {"ok": False, "fallback": text, "error": str(e)[:200]}
+    return {"ok": r.returncode == 0, "fallback": None if r.returncode == 0 else text}
+
+
+class App(BaseHTTPRequestHandler):
+    server_version = "zapp"
+
+    def log_message(self, fmt, *args):  # без адресов и подписей в журнале
+        sys.stderr.write(f"{time.strftime('%Y-%m-%d %H:%M')} {self.command} {self.path.split('?')[0]}\n")
+
+    def reply(self, code, body, ctype="application/json; charset=utf-8", extra=None):
+        data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def user(self):
+        token = secret("zhdusha_bot")
+        uid = check_init(self.headers.get("X-Init-Data", ""), token) if token else None
+        return (uid, who(uid), token) if uid else (None, None, token)
+
+    def do_GET(self):
+        url = urllib.parse.urlparse(self.path)
+        q = dict(urllib.parse.parse_qsl(url.query))
+        if url.path in ("/", "/index.html"):
+            return self.reply(200, PAGE.read_bytes(), "text/html; charset=utf-8")
+        if url.path == "/api/list":
+            uid, acc, _ = self.user()
+            if not acc:
+                return self.reply(403, {"error": "Нет доступа. Попроси владельца добавить тебя в ЖДушу."})
+            sections = [{"group": g, "key": k, "title": t} for g, k, t, _ in SECTIONS]
+            return self.reply(200, {"role": acc[0], "sections": sections, "files": listing(acc[2]),
+                                    "direct": bool(config().get("task_cmd"))})
+        if url.path == "/file":  # ссылка из /api/link: открывается во внешнем браузере, живёт 10 минут
+            token, uid, fid, exp = secret("zhdusha_bot"), q.get("u", ""), q.get("f", ""), q.get("e", "0")
+            if not exp.isdigit() or int(exp) < time.time() or not hmac.compare_digest(
+                    link_sig(token, uid, fid, exp), q.get("s", "")):
+                return self.reply(403, {"error": "Ссылка устарела — открой файл из приложения ещё раз."})
+            acc = who(uid)
+            p = resolve(acc[2], fid) if acc else None
+            if not p:
+                return self.reply(404, {"error": "Файл не найден"})
+            ctype = "application/pdf" if p.suffix.lower() == ".pdf" else "application/octet-stream"
+            disp = "inline" if p.suffix.lower() == ".pdf" else "attachment"
+            return self.reply(200, p.read_bytes(), ctype,
+                              {"Content-Disposition": f"{disp}; filename*=UTF-8''{urllib.parse.quote(p.name)}"})
+        self.reply(404, {"error": "Нет такой страницы"})
+
+    def do_POST(self):
+        uid, acc, token = self.user()
+        if not acc:
+            return self.reply(403, {"error": "Нет доступа"})
+        role, agent, roots, own = acc
+        size = int(self.headers.get("Content-Length", "0"))
+        if size > MAX_UPLOAD:
+            return self.reply(413, {"error": "Файл больше 20 МБ — пришли его боту в чат."})
+        raw = self.rfile.read(size)
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/api/upload":
+            name = Path(urllib.parse.unquote(self.headers.get("X-File-Name", ""))).name
+            if not name or Path(name).suffix.lower() not in SHOW:
+                return self.reply(400, {"error": "Такой тип файла не принимаю: PDF, Word, Excel, картинки, CSV."})
+            dest = own / "upload" / f"{time.strftime('%Y-%m-%d')}_{name}"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            n = 1
+            while dest.exists():
+                dest, n = dest.with_name(f"{time.strftime('%Y-%m-%d')}_{n}_{name}"), n + 1
+            dest.write_bytes(raw)
+            return self.reply(200, {"ok": True, "name": dest.name})
+        try:
+            body = json.loads(raw or b"{}")
+        except ValueError:
+            return self.reply(400, {"error": "Плохой запрос"})
+        if path == "/api/send":
+            p = resolve(roots, body.get("id", ""))
+            if not p:
+                return self.reply(404, {"error": "Файл не найден"})
+            try:
+                ok = S.send(uid, p, token)
+            except SystemExit as e:  # send.py сообщает об ошибке Telegram через sys.exit
+                return self.reply(502, {"error": str(e)[:300]})
+            return self.reply(200, {"ok": bool(ok)})
+        if path == "/api/link":
+            fid = body.get("id", "")
+            if not resolve(roots, fid):
+                return self.reply(404, {"error": "Файл не найден"})
+            exp = str(int(time.time()) + 600)
+            q = urllib.parse.urlencode({"u": uid, "f": fid, "e": exp, "s": link_sig(token, uid, fid, exp)})
+            return self.reply(200, {"url": f"/file?{q}"})
+        if path == "/api/task":
+            text = " ".join(str(body.get("text", "")).split())[:1500]
+            if not text:
+                return self.reply(400, {"error": "Пустая задача"})
+            return self.reply(200, run_task(agent, uid, text))
+        self.reply(404, {"error": "Нет такой команды"})
+
+
+def cmd_sort(apply):
+    moves = []
+    for p in sorted(SAVED.glob("*")) if SAVED.is_dir() else []:
+        if p.is_file() and p.suffix.lower() in SHOW | {".html"}:
+            moves.append((p, SAVED / section_of(p, SAVED) / p.name))
+    if not moves:
+        return print("В saved/ нет файлов без раздела — раскладывать нечего.")
+    by = {}
+    for src, dst in moves:
+        by.setdefault(dst.parent.name, []).append(src.name)
+    titles = {k: t for _, k, t, _ in SECTIONS}
+    for key, names in by.items():
+        print(f"\n{titles[key]} → saved/{key}/ ({len(names)})")
+        for n in names:
+            print("   ", n)
+    if not apply:
+        return print(f"\nВсего {len(moves)}. Ничего не перенесено. Разложить: python3 zapp.py sort --apply")
+    for src, dst in moves:
+        if dst.exists():
+            print(f"Пропуск: {dst} уже есть")
+            continue
+        dst.parent.mkdir(exist_ok=True)
+        shutil.move(src, dst)
+    print(f"\nПеренесено: {len(moves)}. Журнал отправок saved/sent.log остаётся на месте.")
+
+
+def cmd_check():
+    r = subprocess.run(["openclaw", "agent", "--help"], capture_output=True, text=True, timeout=60)
+    out = r.stdout + r.stderr
+    flags = [f for f in ("--agent", "--message", "--deliver", "--channel", "--account", "--to") if f in out]
+    print(out[-2500:])
+    print("Есть флаги:", ", ".join(flags) or "нет")
+    print("Подходит для прямой отправки задач." if len(flags) >= 5 else
+          "Прямой отправки нет — кнопка «Поставить задачу» будет копировать текст для вставки в чат.")
+
+
+if __name__ == "__main__":
+    a = sys.argv[1:]
+    if a[:1] == ["serve"]:
+        port = int(a[a.index("--port") + 1]) if "--port" in a else 8787
+        if not secret("zhdusha_bot") or not secret("zhdusha_owner"):
+            sys.exit("Нет ~/.secrets/zhdusha_bot или ~/.secrets/zhdusha_owner — см. SETUP.md, шаг 2.")
+        print(f"Мини-приложение ЖДуши: http://127.0.0.1:{port} (снаружи — через Caddy)")
+        ThreadingHTTPServer(("127.0.0.1", port), App).serve_forever()
+    elif a[:1] == ["sort"]:
+        cmd_sort("--apply" in a)
+    elif a[:1] == ["check"]:
+        cmd_check()
+    else:
+        sys.exit(__doc__)

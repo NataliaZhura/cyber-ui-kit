@@ -10,7 +10,7 @@ cd ~ && git clone --depth 1 --branch claude/zhdusha-railway --filter=blob:none -
   && cd zhd-repo && git sparse-checkout set информация_по_жд \
   && cp -r информация_по_жд/railway-monitor ~/railway-monitor && ls ~/railway-monitor
 ```
-Обновление позже: `cd ~/zhd-repo && git pull && cp информация_по_жд/railway-monitor/*.py информация_по_жд/railway-monitor/*.md информация_по_жд/railway-monitor/sources.json ~/railway-monitor/`
+Обновление позже: `cd ~/zhd-repo && git pull && cp информация_по_жд/railway-monitor/*.py информация_по_жд/railway-monitor/*.md информация_по_жд/railway-monitor/sources.json ~/railway-monitor/ && cp -r информация_по_жд/railway-monitor/miniapp ~/railway-monitor/`
 
 ## 2. Секреты (в репозиторий не попадают)
 
@@ -70,6 +70,63 @@ openclaw automations create "45 8 * * *" \
 # прогноз на неделю — пятница 17:00; сверка — понедельник 09:00 (тот же вид команды, свой текст задания)
 ```
 
+## 7. Мини-приложение (отчёты по разделам)
+
+Что это: кнопка «Меню» в @zhdusha_bot открывает окно с разделами (как пункты меню), в каждом — готовые отчёты.
+Просмотр — без нейросети. Команды бота остаются: их список появляется, если набрать «/». Описание — `MINIAPP.md`.
+
+**7.1. Адрес (один раз, в браузере).** duckdns.org → войти (Google/GitHub) → придумать имя, например `zhdusha` →
+в поле «current ip» — IP сервера (`curl -4 ifconfig.me` на сервере) → «update ip». Адрес: `https://zhdusha.duckdns.org`.
+Свой домен вместо этого: A-запись поддомена (например, `zhd.твойдомен.ru`) → IP сервера; дальше всё так же.
+
+**7.2. Проверить, что порты 80, 443 и 8787 свободны и Caddy ещё не стоит** (только чтение):
+```bash
+cat /etc/os-release | head -2; sudo ss -ltnp | grep -E ':(80|443|8787) '; which caddy
+```
+Если порты кем-то заняты или Caddy уже есть — остановиться и прислать вывод, Caddyfile не трогать.
+
+**7.3. Caddy — HTTPS-сертификат сам** (Ubuntu/Debian, официальная инструкция caddyserver.com/docs/install):
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update && sudo apt install -y caddy
+sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak      # копия приветственной страницы Caddy
+printf 'zhdusha.duckdns.org {\n\treverse_proxy 127.0.0.1:8787\n}\n' | sudo tee /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+Если включён ufw: `sudo ufw allow 80,443/tcp`.
+
+**7.4. Программа приложения — постоянно, с автозапуском:**
+```bash
+sudo tee /etc/systemd/system/zhdusha-app.service >/dev/null <<UNIT
+[Unit]
+Description=ZhDusha mini app
+After=network.target
+[Service]
+User=$USER
+WorkingDirectory=$HOME/railway-monitor
+ExecStart=/usr/bin/python3 $HOME/railway-monitor/zapp.py serve
+Restart=always
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo systemctl daemon-reload && sudo systemctl enable --now zhdusha-app
+systemctl status zhdusha-app --no-pager | head -5
+```
+Проверка: `https://zhdusha.duckdns.org` в браузере → «Открой приложение кнопкой «Меню»…» — значит, работает
+(вне Telegram отчёты не показываются).
+
+**7.5. Кнопка «Меню» → приложение:** `python3 ~/railway-monitor/zmenu.py webapp https://zhdusha.duckdns.org`.
+Вернуть как было (кнопка со списком команд): `python3 ~/railway-monitor/zmenu.py`.
+
+**7.6. Разложить старые отчёты по разделам:** `python3 zapp.py sort` — только показывает, что куда ляжет.
+Если всё верно — `python3 zapp.py sort --apply` (файлы переносятся в подпапки `saved/`, ничего не удаляется).
+
+**7.7. Кнопка «Поставить задачу»** (только чтение): `python3 zapp.py check`. Пока не настроено — кнопка копирует
+текст, его вставляют в чат. Если `check` пишет «Подходит» — прислать вывод в разговор «Мини-приложение»,
+там соберём `miniapp.json` для отправки задач напрямую.
+
 ## Проверка готовности
 
 - [ ] `collector.py check` — работает большинство источников
@@ -77,3 +134,4 @@ openclaw automations create "45 8 * * *" \
 - [ ] `/start` в @zhdusha_bot → приветствие ЖДуши; `/start` в @marketMi_bot → по-прежнему Ави
 - [ ] `python3 send.py SOUL.md` → файл пришёл от @zhdusha_bot
 - [ ] утром в 08:45 справка пришла сама; `free -h` — памяти хватает
+- [ ] «Меню» в @zhdusha_bot открывает разделы; «В чат» присылает PDF; гость видит только свои отчёты

@@ -3,6 +3,8 @@
 
   python3 zmenu.py          поставить меню ЖДуши
   python3 zmenu.py show     показать, какое меню стоит сейчас
+  python3 zmenu.py webapp https://<адрес>   кнопка «Меню» открывает мини-приложение (команды остаются — по «/»)
+  python3 zmenu.py          (без слов) — вернуть кнопку «Меню» со списком команд
 
 Токен — ~/.secrets/zhdusha_bot; на экран не выводится.
 """
@@ -59,13 +61,19 @@ if __name__ == "__main__":
             has = "есть /prognoz" if any(c["command"] == "prognoz" for c in cmds) else "НЕТ /prognoz"
             print(f"{name}: {len(cmds)} команд, {has}" if cmds else f"{name}: пусто (берётся общий список)")
         sys.exit(0)
+    webapp = sys.argv[2] if sys.argv[1:2] == ["webapp"] and len(sys.argv) > 2 else None
+    if sys.argv[1:2] == ["webapp"] and not (webapp or "").startswith("https://"):
+        sys.exit("Нужен адрес с https://, например: python3 zmenu.py webapp https://zhdusha.duckdns.org")
     cmds = json.dumps([{"command": c, "description": d} for c, d in MENU], ensure_ascii=False)
     res = api("setMyCommands", commands=cmds)
     for name, extra in SCOPES[1:]:
         api("setMyCommands", commands=cmds, **extra)
     for name, extra in owner_scope():  # личный список владельца, если его кто-то поставил, убираем — пусть берётся общий
         api("deleteMyCommands", **extra)
-    api("setChatMenuButton", menu_button=json.dumps({"type": "commands"}))
+    button = {"type": "web_app", "text": "Меню", "web_app": {"url": webapp}} if webapp else {"type": "commands"}
+    api("setChatMenuButton", menu_button=json.dumps(button, ensure_ascii=False))
     api("setMyDescription", description=DESCRIPTION)
     api("setMyShortDescription", short_description=SHORT)
+    if webapp:
+        print(f"Кнопка «Меню» открывает мини-приложение: {webapp}")
     print("Меню ЖДуши поставлено: " + ", ".join("/" + c for c, _ in MENU) if res.get("ok") else f"Ошибка Telegram: {res}")
