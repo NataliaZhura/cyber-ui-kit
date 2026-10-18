@@ -7,7 +7,7 @@
   python3 zapp.py check                   что умеет `openclaw agent` (для кнопки «Поставить задачу»), только чтение
 
 Кто что видит (проверяется подпись Telegram, подделать нельзя):
-  владелец (~/.secrets/zhdusha_owner) — saved/ и forecast/*.pdf;
+  владелец (~/.secrets/zhdusha_owner) — saved/, forecast/*.pdf и полки гостей saved_<агент>/ (пометка «гость»);
   гость (Telegram ID из ~/.openclaw/workspace-<агент>/AGENTS.md) — только saved_<агент>/ и forecast/guest/;
   остальные — отказ. private/ (Argus, rates.csv) не показывается никому.
 
@@ -92,8 +92,8 @@ def guests():
 
 def who(uid):
     """(роль, имя агента, папки для чтения, папка для записи) или None."""
-    if uid and uid == secret("zhdusha_owner"):
-        return "owner", "zhdusha", [SAVED, FORECAST], SAVED
+    if uid and uid == secret("zhdusha_owner"):  # владелец видит и полки гостей (с пометкой «гость»)
+        return "owner", "zhdusha", [SAVED, FORECAST] + [BASE / f"saved_{a}" for a in sorted(set(guests().values()))], SAVED
     agent = guests().get(uid)
     if agent:
         own = BASE / f"saved_{agent}"
@@ -175,8 +175,11 @@ def listing(roots):
     out = {k: [] for k in KEYS}
     for root, p in files(roots):
         st = p.stat()
-        out[section_of(p, root)].append({"id": f"{roots.index(root)}/{p.relative_to(root).as_posix()}",
-                                         "name": p.name, "size": st.st_size, "mtime": int(st.st_mtime)})
+        item = {"id": f"{roots.index(root)}/{p.relative_to(root).as_posix()}",
+                "name": p.name, "size": st.st_size, "mtime": int(st.st_mtime)}
+        if root.name.startswith("saved_"):
+            item["guest"] = root.name.removeprefix("saved_")
+        out[section_of(p, root)].append(item)
     for v in out.values():
         v.sort(key=lambda f: -f["mtime"])
     return out
@@ -257,8 +260,10 @@ class App(BaseHTTPRequestHandler):
             p = resolve(acc[2], fid) if acc else None
             if not p:
                 return self.reply(404, {"error": "Файл не найден"})
-            ctype = "application/pdf" if p.suffix.lower() == ".pdf" else "application/octet-stream"
-            disp = "inline" if p.suffix.lower() == ".pdf" else "attachment"
+            ext = p.suffix.lower()
+            ctype = {".pdf": "application/pdf", ".md": "text/plain; charset=utf-8", ".csv": "text/plain; charset=utf-8",
+                     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}.get(ext, "application/octet-stream")
+            disp = "attachment" if ctype == "application/octet-stream" else "inline"
             return self.reply(200, p.read_bytes(), ctype,
                               {"Content-Disposition": f"{disp}; filename*=UTF-8''{urllib.parse.quote(p.name)}"})
         self.reply(404, {"error": "Нет такой страницы"})

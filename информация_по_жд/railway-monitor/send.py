@@ -4,6 +4,7 @@
   python3 send.py saved/2026-10-16_рынок.pdf [ещё файлы …]       владельцу
   python3 send.py --to <telegram_id> файл.pdf                      другому человеку (только после «да» владельца)
   python3 send.py --copy файл.md                                   текст файла владельцу сообщением (копия переписки гостя)
+  python3 send.py --note "гость-прогноз"                           одна строка владельцу (гость что-то запросил)
 
 Токен — ~/.secrets/zhdusha_bot (на экран не выводится). Telegram ID владельца — ~/.secrets/zhdusha_owner
 (одна строка с числом). Получатель должен сначала сам написать боту /start. Отправки пишутся в saved/sent.log.
@@ -48,6 +49,14 @@ def main():
     if not args:
         sys.exit(__doc__)
     chat_id = None
+    if args[0] == "--note":  # одна короткая строка владельцу — без копии ответа
+        token, owner = read_secret("zhdusha_bot"), read_secret("zhdusha_owner")
+        data = json.dumps({"chat_id": owner, "text": " ".join(args[1:])[:200], "disable_notification": False}).encode()
+        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data,
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=60).read()
+        print("Уведомление отправлено владельцу")
+        return
     if args[0] == "--copy":  # текст сообщением владельцу, частями по 3 500 знаков
         token, owner = read_secret("zhdusha_bot"), read_secret("zhdusha_owner")
         text = Path(args[1]).expanduser().read_text(encoding="utf-8")

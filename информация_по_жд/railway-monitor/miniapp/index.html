@@ -41,6 +41,10 @@ h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--hint
 .act{border:0;background:var(--bg2);color:var(--link);border-radius:8px;padding:6px 9px;font:inherit;font-size:13px;cursor:pointer}
 .main-btn{display:block;width:100%;border:0;border-radius:12px;padding:12px;margin:0 0 12px;background:var(--btn);color:var(--btn-text);font:inherit;font-weight:600;cursor:pointer}
 .ghost{background:var(--bg);color:var(--link)}
+.tag{display:inline-block;border-radius:6px;padding:0 5px;font-size:11px;font-weight:600;vertical-align:1px}
+.tag.new{background:var(--btn);color:var(--btn-text)}.tag.guest{background:#f2994a;color:#fff}
+.ask{display:flex;gap:8px;margin:0 0 12px}.ask input{flex:1;min-width:0;border:1px solid var(--sep);border-radius:10px;
+padding:9px 10px;background:var(--bg);color:var(--text);font:inherit}.ask .main-btn{width:auto;margin:0;padding:10px 14px}
 .empty{color:var(--hint);text-align:center;padding:24px 12px;background:var(--bg);border-radius:14px}
 .box{background:var(--bg);border-radius:14px;padding:12px;margin-bottom:10px}
 .box label{display:block;font-weight:600;margin-bottom:6px}
@@ -93,7 +97,8 @@ function toast(t) { const el = $("toast"); el.textContent = t; el.classList.add(
 const ext = n => (n.split(".").pop() || "").toLowerCase();
 const date = t => new Date(t * 1000).toLocaleDateString("ru-RU", {day: "2-digit", month: "2-digit", year: "2-digit"});
 const kb = b => b > 1048576 ? (b / 1048576).toFixed(1).replace(".", ",") + " МБ" : Math.max(1, Math.round(b / 1024)) + " КБ";
-const pretty = n => n.replace(/\.[^.]+$/, "").replace(/^\d{4}-\d{2}-\d{2}_/, "").replace(/_/g, " ");
+const pretty = n => n.replace(/\.[^.]+$/, "").replace(/^\d{4}-\d{2}-\d{2}_(\d{4}_)?/, "").replace(/_/g, " ");
+const stamp = t => new Date(t * 1000).toLocaleString("ru-RU", {day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit"});
 
 async function load() {
   try {
@@ -124,22 +129,29 @@ function card(s) {
   return `<button class="card" data-sec="${s.key}"><span class="count${fresh ? " new" : ""}">${fresh ? "+" + fresh : f.length}</span>
     <b>${esc(s.title)}</b><small>${sub}</small></button>`;
 }
-function rows(list, showSec) {
+const HINTS = {vagon: "тип: обычный / инновационный / крытый 158 / все; возраст б/у; пессимистичный?",
+  zavod: "завод или ИНН; сумма сделки, тыс. ₽", rates: "полувагоны / крытые / оба", market: "период: вчера / неделя / месяц",
+  loading: "период", profile: "компания", finance: "компания, год", courts: "компания", assets: "компания",
+  company: "компания, период", compare: "две компании", lease: "компания или тип вагона", prognoz: "тип вагона, год, сценарий",
+  model: "пришли файл в чат или «демо»"};
+function rows(list, showSec, prevSeen) {
   if (!list.length) return `<div class="empty">Здесь пока ничего нет</div>`;
   const titles = Object.fromEntries(S.data.sections.map(s => [s.key, s.title]));
   return `<div class="list">${list.map(f => `<div class="row">
     <div class="ico ${ext(f.name)}">${esc(ext(f.name).toUpperCase())}</div>
-    <div class="meta"><div>${esc(pretty(f.name))}</div><small>${date(f.mtime)} · ${kb(f.size)}${showSec ? " · " + esc(titles[f.sec]) : ""}</small></div>
+    <div class="meta"><div>${esc(pretty(f.name))}</div><small>${prevSeen !== undefined && f.mtime > prevSeen ? '<span class="tag new">новое</span> ' : ""}${f.guest ? '<span class="tag guest">гость</span> ' : ""}${stamp(f.mtime)} · ${kb(f.size)}${showSec ? " · " + esc(titles[f.sec]) : ""}</small></div>
     <button class="act" data-open="${esc(f.id)}">Открыть</button><button class="act" data-send="${esc(f.id)}">В чат</button></div>`).join("")}</div>`;
 }
 function renderSection(key) {
   const s = S.data.sections.find(x => x.key === key);
   const f = S.data.files[key] || [];
+  const prev = S.seen[key] || 0;
   S.seen[key] = Math.floor(Date.now() / 1000);
   try { localStorage.setItem("zseen", JSON.stringify(S.seen)); } catch (e) {}
   tg?.BackButton.show();
-  const cmd = ["upload", "other"].includes(key) ? "" : `<button class="main-btn" data-task="/${key}">Новый отчёт: /${key}</button>`;
-  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>${esc(s.title)}</h2>${cmd}${rows(f)}`;
+  const cmd = ["upload", "other"].includes(key) ? "" : `<div class="ask"><input id="ask" placeholder="${esc(HINTS[key] || "уточнение (необязательно)")}">
+    <button class="main-btn" data-ask="/${key}">Новый отчёт</button></div>`;
+  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>${esc(s.title)}</h2>${cmd}${rows(f, false, prev)}`;
 }
 function renderSearch(q) {
   tg?.BackButton.hide();
@@ -185,6 +197,7 @@ document.addEventListener("click", async e => {
     catch (er) { toast(er.message); }
   }
   else if (d.task) task(d.task);
+  else if (d.ask) { const v = $("ask").value.trim(); task(v ? d.ask + " " + v : d.ask); }
   else if (d.cmd !== undefined) { const t = TASKS[d.cmd], v = $("t" + d.cmd).value.trim(); task(v ? t.cmd + " " + v : t.cmd); }
   else if (d.free !== undefined) { const v = $("free").value.trim(); v ? task(v) : toast("Напиши задачу"); }
   else if (d.upload !== undefined) $("file").click();

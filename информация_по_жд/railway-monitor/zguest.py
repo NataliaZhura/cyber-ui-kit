@@ -4,10 +4,13 @@
   python3 zguest.py plan  <TELEGRAM_ID> [имя_агента]    показать, что будет сделано (ничего не меняет)
   python3 zguest.py apply <TELEGRAM_ID> [имя_агента]    копия настроек → папка → агент → маршрут → доступ к @zhdusha_bot
   python3 zguest.py off   <TELEGRAM_ID> [имя_агента]    отключить (папки остаются)
+  python3 zguest.py rules <TELEGRAM_ID> [имя_агента]    только обновить правила гостя (настройки OpenClaw не трогает)
+  python3 zguest.py news  <TELEGRAM_ID> [имя_агента]    утренние новости гостю каждый день в 08:45 (на полку, без копии владельцу)
 
-Имя агента по умолчанию — zguest. Гость НЕ видит: выпуски Argus и rates.csv (лицензия — только для внутреннего
-использования), сохранённые справки и память владельца, watchlist-файлы на запись, настройки. Копии всех ответов
-гостю уходят владельцу через @zhdusha_bot. Агент zhdusha владельца и «Ави» не меняются.
+Имя агента по умолчанию — zguest. Гостю доступны все разделы меню. Гость НЕ видит: выпуски Argus и rates.csv
+(лицензия — только для внутреннего использования), внутренние обзоры, справки и память владельца, настройки.
+Ответы гостю лежат на его полках (saved_<агент>/<раздел>/, видны владельцу в мини-приложении), владельцу приходит
+одна строка «гость-<раздел>». Агент zhdusha владельца и «Ави» не меняются.
 """
 import shutil
 import sys
@@ -21,25 +24,32 @@ OC = Path.home() / ".openclaw"
 
 HEADER = """# ⚠️ Гость — ограничения (главнее всех правил ниже)
 
-Ты работаешь с **гостем** (Telegram ID GUEST_ID), а не с владельцем. Разрешено: утренние новости и справки по рынку
-полувагонов и крытых (`/poluvagony`, `/krytye`, `/market`, `/loading`, `/balance`), справки по компаниям, сравнения,
-стресс-тест присланной модели. Сохранённые справки гостя — `~/railway-monitor/saved_AGENT/`.
+Ты работаешь с **гостем** (Telegram ID GUEST_ID), а не с владельцем. Гостю **доступны все разделы меню**: новости,
+справки, ставки, погрузка, баланс, прогнозы (`/forecast`, `/prognoz`), `/vagon`, компании, сравнения, `/lease`,
+`/model`, `/zavod`, `/find`. Где у программы есть флаг `--guest` (`zvagon.py`, `zmodel.py`, PROGNOZ.md) — всегда с ним.
 
 **Ставки — только из открытых источников** (РЖД-Партнёр, ИЦО/ПГК в СМИ, новости из архива). **Запрещено** открывать
 `~/railway-monitor/private/` (выпуски Argus, rates.csv, выжимки): лицензия — только для внутреннего использования
-владельца. Если открытых ставок нет — «открытых данных о ставках за … нет».
+владельца. Если открытых ставок нет — «открытых данных о ставках за … нет». Внутренние обзоры владельца гостю не показывать.
 
 **Запрещено** — откажи коротко «Это недоступно в гостевом режиме»: читать `~/railway-monitor/saved/`,
 `~/.openclaw/workspace-zhdusha/` (память владельца), `~/.secrets/`, настройки OpenClaw; менять `watchlist.csv`,
 `sources.json`, программы и правила; запускать `openclaw`, `apt`, `pip`, `systemctl`; называть других пользователей бота.
 `/remember` — только в свой MEMORY.md.
 
+**Полки (обязательно, каждый ответ):** любой ответ гостю — даже короткий — сохрани в
+`~/railway-monitor/saved_AGENT/<раздел>/ГГГГ-ММ-ДД_ЧЧММ_<тема>.md`, где раздел — команда без «/» (`market`, `rates`,
+`prognoz`, `vagon`, `zavod`, `finance`, `profile`, `compare`…; не из команды — `other`). Первая строка файла —
+«ДД.ММ.ГГГГ ЧЧ:ММ · <тема>». Если делал PDF — он в той же папке с тем же именем. Файлы, присланные гостем, — копия в
+`saved_AGENT/upload/`. Все пути вывода (`--out`, `saved/…` в правилах ниже) у гостя — внутри `saved_AGENT/`.
+
 Файлы — **только гостю**: `python3 ~/railway-monitor/send.py --to GUEST_ID <файл>` (а не владельцу без --to).
 
-**Копия владельцу (обязательно):** каждый ответ гостю сохрани в `~/railway-monitor/saved_AGENT/copy/ГГГГ-ММ-ДД_ЧЧММ.md`
-(первая строка — «Гость · <тема в 3–7 словах>») и отправь: `python3 ~/railway-monitor/send.py --copy <файл>`;
-вложения — `python3 ~/railway-monitor/send.py <файл>`. Делай молча; на прямой вопрос «видит ли кто-то переписку» —
-честно: её видит организатор, чтобы улучшать сервис.
+**Владельцу — одна строка, без копии ответа:** после ответа на запрос гостя выполни молча
+`python3 ~/railway-monitor/send.py --note "гость-<раздел по-русски>"` (например «гость-прогноз», «гость-финансы»,
+«гость-завод»). Владелец читает ответ на полке — **не пересылай ему текст и файлы**. Для утренних новостей по
+расписанию уведомление не нужно. На прямой вопрос «видит ли кто-то переписку» — честно: её видит организатор,
+чтобы улучшать сервис.
 
 **`/prognoz` у гостя** — по `PROGNOZ.md`, с флагом `--guest`; готовая презентация — только
 `forecast/guest/Прогноз_ставок_вагонов_2030.pdf`. Остальные файлы `forecast/` (вне `guest/`) гостю не отправлять.
@@ -83,24 +93,55 @@ def cmd_plan(tid, agent):
     return bindings, allow, entries
 
 
-def cmd_apply(tid, agent):
-    bindings, allow, entries = cmd_plan(tid, agent)
-    cfg = OC / "openclaw.json"
-    shutil.copy2(cfg, cfg.with_name(f"openclaw.json.bak-{agent}-{datetime.now():%Y%m%d-%H%M%S}"))
+def write_rules(tid, agent):
+    """Правила гостя = гостевая шапка + AGENTS.md ЖДуши; справочники — копией. Память и полки не трогает."""
     ws = OC / f"workspace-{agent}"
     (ws / "skills").mkdir(parents=True, exist_ok=True)
     (ws / "AGENTS.md").write_text(HEADER.replace("GUEST_ID", tid).replace("AGENT", agent)
                                   + (KIT / "AGENTS.md").read_text(encoding="utf-8"), encoding="utf-8")
-    for f in ("SOUL.md", "TEMPLATE.md", "MARKET.md", "COMPANY.md", "PROGNOZ.md"):
+    for f in ("SOUL.md", "TEMPLATE.md", "MARKET.md", "COMPANY.md", "PROGNOZ.md", "ZMENU.md", "ZAVODY.md"):
         if (KIT / f).exists():
             shutil.copy2(KIT / f, ws / f)
+    return ws
+
+
+def cmd_rules(tid, agent):
+    if not (OC / f"workspace-{agent}").exists():
+        sys.exit(f"Нет агента «{agent}» — сначала: python3 zguest.py apply {tid}")
+    write_rules(tid, agent)
+    print(f"Правила гостя {tid} (агент «{agent}») обновлены. Перезапуск не нужен — действуют со следующего сообщения.")
+
+
+NEWS = ("Утренние новости ЖД-рынка за вчера строго по TEMPLATE.md и правилам AGENTS.md, только открытые источники. "
+        "Сначала: python3 ~/railway-monitor/collector.py collect --days 2. Сохрани на полку "
+        "~/railway-monitor/saved_<AG>/market/ГГГГ-ММ-ДД_0845_новости.md (первая строка — «ДД.ММ.ГГГГ · Утренние новости») "
+        "и сделай PDF: ~/pw/bin/python ~/railway-monitor/zreport.py <файл.md>. В чат — текст новостей. "
+        "Владельцу ничего не отправляй.")
+
+
+def cmd_news(tid, agent):
+    name = f"Гость ЖД: новости ежедневно ({agent})"
+    out = guest.oc("automations", "list", check=False)
+    if name in out:
+        return print(f"Уже есть: {name}")
+    print(guest.oc("automations", "create", "45 8 * * *", NEWS.replace("<AG>", agent), "--name", name,
+                   "--tz", "Europe/Moscow", "--agent", agent, "--session", "isolated", "--announce",
+                   "--channel", "telegram", "--account", "zhdusha", "--to", tid)[-400:])
+    print(f"Готово: новости гостю {tid} каждый день в 08:45 МСК, полка saved_{agent}/market/.")
+
+
+def cmd_apply(tid, agent):
+    bindings, allow, entries = cmd_plan(tid, agent)
+    cfg = OC / "openclaw.json"
+    shutil.copy2(cfg, cfg.with_name(f"openclaw.json.bak-{agent}-{datetime.now():%Y%m%d-%H%M%S}"))
+    ws = write_rules(tid, agent)
     src = OC / "workspace-zhdusha" / "skills"
     for s in ("company-picker", "excel", "model-stress", "pdf-read", "fin-assessment"):
         if (src / s).is_dir():
             shutil.copytree(src / s, ws / "skills" / s, dirs_exist_ok=True)
     if not (ws / "MEMORY.md").exists():
         (ws / "MEMORY.md").write_text("# Память гостя\n\n## Предпочтения\n\n## Факты\n", encoding="utf-8")
-    (KIT / f"saved_{agent}" / "copy").mkdir(parents=True, exist_ok=True)
+    (KIT / f"saved_{agent}").mkdir(parents=True, exist_ok=True)
     if not guest.entry_path(entries, agent):
         model = guest.entry(entries, "zhdusha").get("model") or "openai/gpt-5.6-sol"
         model = model.get("primary") if isinstance(model, dict) else model
@@ -129,6 +170,7 @@ def cmd_off(tid, agent):
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    if cmd not in ("plan", "apply", "off"):
+    cmds = {"plan": cmd_plan, "apply": cmd_apply, "off": cmd_off, "rules": cmd_rules, "news": cmd_news}
+    if cmd not in cmds:
         sys.exit(__doc__)
-    {"plan": cmd_plan, "apply": cmd_apply, "off": cmd_off}[cmd](*args())
+    cmds[cmd](*args())
