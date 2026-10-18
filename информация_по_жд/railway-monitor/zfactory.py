@@ -106,6 +106,8 @@ def ratios(Y, y):
     c, p = Y[y], Y.get(str(int(y) - 1), {})
     r = {"year": y}
     r["debt"] = add(c["debt_l"], c["debt_s"])
+    if r["debt"] is None and c["ta"] is not None:
+        r["debt"] = 0.0  # нулевые строки в отчётности не публикуются: баланс есть, кредитов нет
     r["cur_liq"] = div(c["ca"], c["stl"])
     r["quick"] = div(add(c["ar"], c["stfi"], c["cash"]), c["stl"])
     r["abs_liq"] = div(add(c["stfi"], c["cash"]), c["stl"])
@@ -114,9 +116,10 @@ def ratios(Y, y):
     r["nwc_ta"] = div(r["nwc"], c["ta"])
     r["eq_ta"] = div(c["eq"], c["ta"])
     r["eq_td"] = div(c["eq"], add(c["ltl"], c["stl"]))
-    r["debt_ebit"] = div(r["debt"], c["ebit"]) if (c["ebit"] or 0) > 0 else None
+    r["debt_ebit"] = (r["debt"] / c["ebit"]) if (c["ebit"] or 0) > 0 and r["debt"] is not None else None
     r["no_ebit"] = bool(r["debt"]) and (c["ebit"] is not None and c["ebit"] <= 0)
     r["int_cov"] = div(c["ebit"], c["int"])
+    r["no_int"] = not c["int"] and c["ta"] is not None  # процентов к уплате нет
     d_re = None if c["re"] is None or p.get("re") is None else c["re"] - p["re"]
     r["selffin"] = div(d_re, c["net"]) if (c["net"] or 0) > 0 and (d_re or 0) > 0 else None
     r["at_turn"] = div(c["rev"], avg(c["ta"], p.get("ta")))
@@ -260,7 +263,10 @@ def diagnose(Y, R, yrs):
     if worse(r["cost_cycle"], rp.get("cost_cycle"), higher_better=False):
         causes.append(f"деньги дольше лежат в запасах и долгах покупателей: {days(rp.get('cost_cycle'))} → "
                       f"{days(r['cost_cycle'])}")
-    if worse(r["credit_cycle"], rp.get("credit_cycle"), higher_better=False) and worse(r["cost_cycle"], rp.get("cost_cycle"), False):
+    cl_now = None if c["stl"] is None else c["stl"] - (c["debt_s"] or 0)
+    cl_was = None if p.get("stl") is None else p["stl"] - (p.get("debt_s") or 0)
+    if (worse(r["credit_cycle"], rp.get("credit_cycle"), higher_better=False) and worse(r["cost_cycle"], rp.get("cost_cycle"), False)
+            and cl_now is not None and cl_was is not None and cl_now > cl_was):
         causes.append(f"отсрочка поставщикам выросла ({days(rp.get('credit_cycle'))} → {days(r['credit_cycle'])}) — "
                       "похоже, вынужденно: нехватку денег закрывают за счёт поставщиков")
     if (c["div"] or 0) > 0 and (r["selffin"] is None or r["selffin"] < 0.5):
@@ -392,7 +398,7 @@ def peers_cmd(a):
         Y = years_data(ys)
         y = sorted(Y)[-1]
         r = ratios(Y, y)
-        db[inn] = {"name": name, "year": y, **{k: r[k] for k, _ in PEER_KEYS}}
+        db[inn] = {"name": name, "year": y, "no_int": r["no_int"], **{k: r[k] for k, _ in PEER_KEYS}}
         print(f"  {name}: {y} " + ("⚠ нет актуальной отчётности — в сравнение не войдёт"
                                    if stale(y) else "✓"))
     path.write_text(json.dumps(db, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -418,7 +424,8 @@ def peers_block(inn, r, group, year):
     L = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for k, hb in PEER_KEYS:
         f, mine = FMT[k], r.get(k)
-        row = [PEER_NAMES[k], f(mine)] + [f(v.get(k)) for v in peers]
+        cell = lambda d, val: "процентов нет" if k == "int_cov" and val is None and d.get("no_int") else f(val)
+        row = [PEER_NAMES[k], cell(r, mine)] + [cell(v, v.get(k)) for v in peers]
         if use_med:
             vals = [v[k] for v in fresh if v.get(k) is not None]
             med = statistics.median(vals) if len(vals) >= 2 else None
@@ -462,7 +469,7 @@ def run(a):
             if stops else
             f"поток покрывает платежи по долгу в {x(cover, 1)} раза" if cover is not None else
             "поток не рассчитан — нет отчёта о движении денег" if m["cfo"] is None else
-            f"платежей по кредитам в отчёте нет, поток от операций {t(m['cfo'])}"
+            f"возврата кредитов и процентов в отчёте за год нет (долг {t(r['debt'])}), поток от операций {t(m['cfo'])}"
             + (" — отрицательный" if m["cfo"] < 0 else ""))
     L = [f"# {a.name} — финансовое состояние" + (" и риск аванса" if a.zavod else ""), "",
          f"{{{{класс:{cls}}}}} **{GRADE[cls]} риск:** {head}"
@@ -482,7 +489,8 @@ def run(a):
           f"Долг / прибыль от продаж | {FMT['debt_ebit'](r['debt_ebit'])} | "
           + ("⚠ прибыли от продаж нет" if r["no_ebit"] else "⚠ больше 7 — стоп" if (r["debt_ebit"] or 0) > TH["stop_debt_ebit"]
              else "⚠ больше 3" if (r["debt_ebit"] or 0) > TH["debt_ebit_ok"] else "✓ до 3" if r["debt_ebit"] is not None else "долга нет"),
-          f"Покрытие процентов | {FMT['int_cov'](r['int_cov'])} | {'⚠ меньше 1' if r['int_cov'] is not None and r['int_cov'] < 1 else '✓'}",
+          (f"Покрытие процентов | процентов нет | — " if r["no_int"] else
+           f"Покрытие процентов | {FMT['int_cov'](r['int_cov'])} | {'⚠ меньше 1' if r['int_cov'] is not None and r['int_cov'] < 1 else '✓' if r['int_cov'] is not None else 'нет данных'}"),
           f"Капитал | {t(m['eq'])} | {'⚠ отрицательный' if (m['eq'] or 0) < 0 else '✓'}", "```", ""]
 
     ty = yrs[-3:]  # в таблице — 3 последних года, чтобы помещалась на страницу
@@ -534,7 +542,8 @@ def run(a):
     L += ["## Сколько выдержит при росте нагрузки", "", "| Сценарий | Покрытие платежей потоком | Денег хватит |", "|---|---|---|"]
     for name, rk, dk, rp_ in TH["stress"]:
         c_, mo = runway(m, rk, dk, rp_)
-        cs = "нет данных" if c_ is None else "поток отрицательный" if c_ < 0 else x(c_, 1)
+        cs = (("платежей по долгу нет" if m["cfo"] is not None else "нет данных") if c_ is None
+              else "поток отрицательный" if c_ < 0 else x(c_, 1))
         ms = ("поток покрывает платежи" if c_ is not None and mo is None else "больше 2 лет" if mo and mo > 24
               else f"{mo:.0f} мес." if mo else "нет данных")
         L.append(f"| {name} | {cs} | {ms} |")
