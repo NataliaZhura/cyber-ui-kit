@@ -232,7 +232,10 @@ class App(BaseHTTPRequestHandler):
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):  # окно закрыли раньше, чем дошёл ответ — не ошибка
+            pass
 
     def user(self):
         token = secret("zhdusha_bot")
