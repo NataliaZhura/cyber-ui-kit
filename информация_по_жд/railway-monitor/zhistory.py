@@ -6,6 +6,7 @@
   python3 zhistory.py --show 5            то же + 5 примеров (проверить, что вопрос и ответ найдены верно)
   python3 zhistory.py --apply             разложить: saved/<раздел>/ГГГГ-ММ-ДД_ЧЧММ_<вопрос>.md (уже разложенное — пропуск)
   python3 zhistory.py --agent zguest      то же для гостя → saved_zguest/<раздел>/
+  python3 zhistory.py --probe             устройство записей журнала (поля, роли, по 50 знаков текста) — для настройки
 
 Раздел — по команде в вопросе (/vagon → «Стоимость вагона»), иначе по словам в вопросе, потом в ответе; не понятно — «Разное».
 """
@@ -61,8 +62,8 @@ def messages(path):
             m = p.get("message") if isinstance(p.get("message"), dict) else p
             if m.get("role") in ("user", "assistant") and o.get("type") != "response_item":
                 role, text = m["role"], text_of(m.get("content"))
-        text = (text or "").strip()
-        if role and text and not text.startswith("<"):
+        text = re.sub(r"^(\s*<[^>]{1,80}>[^<]*</[^>]{1,80}>)+", "", (text or "")).strip()
+        if role and text:
             out.append((ts, role, text))
     return out
 
@@ -109,16 +110,52 @@ def stamp(ts):
         return None
 
 
+def probe(files):
+    """Показать устройство записей: какие поля, где роль и текст. Текст — не больше 50 знаков."""
+    def shape(v, depth=0):
+        if isinstance(v, dict):
+            return "{" + ", ".join(f"{k}: {shape(x, depth + 1)}" for k, x in list(v.items())[:12]) + "}" if depth < 4 else "{…}"
+        if isinstance(v, list):
+            return f"[{len(v)}× {shape(v[0], depth + 1)}]" if v else "[]"
+        if isinstance(v, str):
+            return repr(v[:50]) if len(v) < 40 or depth > 1 else f"str({len(v)})"
+        return type(v).__name__
+    f = max(files, key=lambda x: x.stat().st_mtime)
+    print(f"Файл: {f}")
+    kinds = {}
+    for line in f.open(encoding="utf-8", errors="replace"):
+        try:
+            o = json.loads(line)
+        except ValueError:
+            continue
+        k = str(o.get("type")) + "/" + str((o.get("payload") or {}).get("type") if isinstance(o.get("payload"), dict)
+                                           else (o.get("message") or {}).get("role") if isinstance(o.get("message"), dict) else "")
+        if kinds.get(k, 0) < 2:
+            print(f"\n[{k}] {shape(o)}")
+        kinds[k] = kinds.get(k, 0) + 1
+    print("\nВиды записей:", kinds)
+
+
 def main():
     a = sys.argv[1:]
     agent = a[a.index("--agent") + 1] if "--agent" in a else "zhdusha"
     show = int(a[a.index("--show") + 1]) if "--show" in a else 0
     root = zapp.SAVED if agent == "zhdusha" else zapp.BASE / f"saved_{agent}"
     base = zapp.OC / "agents" / agent
-    files = sorted(base.glob("sessions/*.jsonl")) or sorted(base.glob("agent/codex-home/sessions/**/*.jsonl"))
-    if not files:
+    sources = [sorted(base.glob("sessions/*.jsonl")), sorted(base.glob("agent/codex-home/sessions/**/*.jsonl"))]
+    if not any(sources):
         sys.exit(f"Не нашёл историю агента {agent} в {base}")
-    found = pairs(files)
+    if "--probe" in a:
+        for files in sources:
+            if files:
+                probe(files)
+                print("=" * 60)
+        return
+    files, found = [], []
+    for src in sources:  # сначала журнал OpenClaw, если в нём пар нет — журнал движка
+        files, found = src, pairs(src) if src else []
+        if found:
+            break
     titles = {k: t for _, k, t, _ in zapp.SECTIONS}
     plan = []
     for ts, q, ans in found:
