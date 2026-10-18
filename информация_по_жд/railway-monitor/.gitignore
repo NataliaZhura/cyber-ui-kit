@@ -11,3 +11,4 @@ saved/
 archive.db
 miniapp.json
 saved_*/
+peers_*.json
