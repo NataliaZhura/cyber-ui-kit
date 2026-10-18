@@ -141,6 +141,10 @@ def section_of(path, root):
         return "zavod"
     if "стоимость" in name:  # «стоимость_инновационного_полувагона» — это /vagon, а не справка по полувагонам
         return "vagon"
+    if "lease" in name or "оперировать" in name:  # «lease_крытые» — это /lease, а не справка по крытым
+        return "lease"
+    if "новост" in name and any(c in name for c in companies()):  # «ПГК_новости» — новости оператора
+        return "company"
     for _, key, _, words in SECTIONS:
         if any(w in name for w in words):
             return key
