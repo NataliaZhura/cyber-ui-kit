@@ -46,8 +46,9 @@ def text_of(content):
 
 
 def messages(path):
-    """(время, роль, текст) из одного .jsonl — формат OpenClaw или внутреннего движка (codex rollout)."""
-    out = []
+    """(время, роль, текст) из одного .jsonl. Внутренний журнал движка пишет ход дважды: событиями
+    user_message/agent_message и записями response_item — берём события, а если их нет — response_item."""
+    ev, ri = [], []
     for line in path.open(encoding="utf-8", errors="replace"):
         try:
             o = json.loads(line)
@@ -55,16 +56,18 @@ def messages(path):
             continue
         ts = o.get("timestamp") or o.get("ts") or ""
         p = o.get("payload") if isinstance(o.get("payload"), dict) else o
-        role, text = None, ""
         if o.get("type") == "event_msg" and p.get("type") in ("user_message", "agent_message"):
-            role, text = ("user" if p["type"] == "user_message" else "assistant"), p.get("message", "")
-        else:
-            m = p.get("message") if isinstance(p.get("message"), dict) else p
-            if m.get("role") in ("user", "assistant") and o.get("type") != "response_item":
-                role, text = m["role"], text_of(m.get("content"))
-        text = re.sub(r"^(\s*<[^>]{1,80}>[^<]*</[^>]{1,80}>)+", "", (text or "")).strip()
-        if role and text:
-            out.append((ts, role, text))
+            ev.append((ts, "user" if p["type"] == "user_message" else "assistant", p.get("message", "")))
+            continue
+        m = p.get("message") if isinstance(p.get("message"), dict) else p
+        if m.get("role") in ("user", "assistant"):
+            ri.append((ts, m["role"], text_of(m.get("content"))))
+    out = []
+    for ts, role, text in ev or ri:
+        text = re.sub(r"^(\s*<([\w-]{1,40})[^>]{0,200}>.*?</\2>)+", "", text or "", flags=re.S).strip()
+        if not text or (role == "user" and ("AGENTS.md instructions" in text[:300] or text.startswith("<"))):
+            continue  # служебные вставки OpenClaw/движка: окружение, правила
+        out.append((ts, role, text))
     return out
 
 
