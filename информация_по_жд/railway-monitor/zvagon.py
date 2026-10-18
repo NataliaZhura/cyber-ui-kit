@@ -97,7 +97,7 @@ def run(a):
     L += ["", f"Сумма баллов: **{score:+d}** из {sum(1 for s in V['signals'] if s.get('scored', True))}. "
           f"{V['backtest_note']}", "", "<small>* подтверждающий сигнал — в сумму не входит.</small>", ""]
     L += ["## Цена вагона: сейчас и прогноз", "", "```cards"]
-    paths, bottoms = {}, {}
+    paths, bottoms, used_paths = {}, {}, {}
     for t in types:
         p, fit26 = price_path(V, t, {y: rp[RATE_KEY[t]][y] for y in range(2027, 2031)})
         paths[t] = p
@@ -113,12 +113,24 @@ def run(a):
         ph = V["phase_factor"]["bottom"] if score >= 2 else 1.0  # скидка дна рынка уходит за 3 года
         used = {y: max(floor, p[y] * kf * ph ** max(0, 1 - (y - 2026) / 3)) for y in p}
         bottoms[t] = (low, min(used, key=used.get))
+        used_paths[t] = used
         L.append(f"| {NAMES[t]}, б/у {a.age} лет | " + " | ".join(n(used[y]) for y in range(2026, 2031)) +
                  f" | {min(used, key=used.get)} |")
     pf = f" × {n(V['phase_factor']['bottom'], 2)} на дне рынка (скидка уходит за 3 года)" if score >= 2 else ""
     L += ["", f"<small>Б/у = новый × {n(age_factor(V, a.age), 2)} (возраст {a.age} лет){pf}, не ниже цены лома "
           f"{n(V['scrap_floor'])} млн ₽. Ставки 2027–2030 — рабочая модель /prognoz. Ошибка модели цены — около ±15% "
           "в год.</small>", ""]
+    risks = []
+    for t in types:
+        u26, u27 = used_paths[t][2026], used_paths[t][2027]
+        if u27 < u26 * 0.97:
+            risks.append(f"Риск (высокий): падение остаточной стоимости — б/у {NAMES[t].lower()} {a.age} лет подешевеет "
+                         f"с {n(u26)} до {n(u27)} млн ₽ к 2027 г. ({(u27 / u26 - 1) * 100:+.0f}%); залог и выкуп пересчитать.")
+        if paths[t][2027] < paths[t][2026] * 0.9:
+            risks.append(f"Риск: цена нового {NAMES[t].lower()} снизится на {(1 - paths[t][2027] / paths[t][2026]) * 100:.0f}% "
+                         "к 2027 г. — купленные сейчас вагоны потеряют в цене.")
+    if risks:
+        L += ["## Риски", ""] + [f"- {r}" for r in risks] + [""]
     L += ["```chart"] + [f"{NAMES[t]}, новый, млн ₽ | " + " | ".join(f"{y}: {paths[t][y]:.1f}" for y in range(2026, 2031))
                          for t in types] + ["```", ""]
     when = []
@@ -131,7 +143,8 @@ def run(a):
           "Продавать старые вагоны — когда светофор уходит в минус: ставка у максимума, парк растёт быстрее грузов.", "",
           "## На что смотреть каждый месяц", ""]
     L += [f"- **{s['name']}** — {s['watch']}" for s in V["signals"]]
-    L += ["", V["guest_note"] if a.guest else V["owner_note"]]
+    L += ["", "<small>Подготовлено по открытым источникам. Цены б/у — запрашиваемые продавцами, сделки обычно на 10–20% "
+          "ниже. Выводы — оценка рынка.</small>"]
     md = "\n".join(L) + "\n"
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
