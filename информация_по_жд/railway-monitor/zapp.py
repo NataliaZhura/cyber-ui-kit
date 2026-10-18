@@ -46,7 +46,7 @@ SECTIONS = [
     ("Рынок", "rates", "Ставки", ["ставки_аренд", "_ставки"]),
     ("Рынок", "loading", "Погрузка", ["погрузк"]),
     ("Рынок", "balance", "Баланс парка", ["баланс"]),
-    ("Прогнозы", "prognoz", "Ставки до 2030", ["прогноз_ставок", "2030"]),
+    ("Прогнозы", "prognoz", "Ставки до 2030", ["прогноз_ставок", "2030", "прогноз_3м"]),
     ("Прогнозы", "forecast", "Прогноз на неделю", ["прогноз"]),
     ("Прогнозы", "vagon", "Стоимость вагона", ["стоимость_вагона"]),
     ("Компании", "company", "Новости оператора", ["новости_оператор"]),
@@ -139,6 +139,8 @@ def section_of(path, root):
     name = path.name.lower()
     if "завод" in name:
         return "zavod"
+    if "стоимость" in name:  # «стоимость_инновационного_полувагона» — это /vagon, а не справка по полувагонам
+        return "vagon"
     for _, key, _, words in SECTIONS:
         if any(w in name for w in words):
             return key
@@ -197,11 +199,15 @@ def run_task(agent, uid, text):
     if not cmd:
         return {"ok": False, "fallback": text}
     args = [a.replace("{agent}", agent).replace("{to}", uid).replace("{text}", text) for a in cmd]
+    # ЖДуша отвечает минутами — запускаем отдельно и не ждём; ответ придёт в чат, журнал — saved/task.log
     try:
-        r = subprocess.run(args, capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.TimeoutExpired) as e:
+        log = (SAVED / "task.log").open("a", encoding="utf-8")
+        log.write(f"\n{time.strftime('%Y-%m-%d %H:%M')} {agent} {uid}: {text[:200]}\n")
+        log.flush()
+        subprocess.Popen(args, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
+    except OSError as e:
         return {"ok": False, "fallback": text, "error": str(e)[:200]}
-    return {"ok": r.returncode == 0, "fallback": None if r.returncode == 0 else text}
+    return {"ok": True, "fallback": None}
 
 
 class App(BaseHTTPRequestHandler):
@@ -331,10 +337,11 @@ def cmd_sort(apply):
 def cmd_check():
     r = subprocess.run(["openclaw", "agent", "--help"], capture_output=True, text=True, timeout=60)
     out = r.stdout + r.stderr
-    flags = [f for f in ("--agent", "--message", "--deliver", "--channel", "--account", "--to") if f in out]
+    flags = [f for f in ("--agent", "--message", "--deliver", "--reply-channel", "--reply-account", "--reply-to")
+             if f in out]
     print(out[-2500:])
     print("Есть флаги:", ", ".join(flags) or "нет")
-    print("Подходит для прямой отправки задач." if len(flags) >= 5 else
+    print("Подходит для прямой отправки задач." if len(flags) == 6 else
           "Прямой отправки нет — кнопка «Поставить задачу» будет копировать текст для вставки в чат.")
 
 
