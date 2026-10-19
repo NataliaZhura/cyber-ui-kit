@@ -201,7 +201,7 @@ function renderBuild() {
   const sc = Object.keys(r.years);
   const yrs = Object.keys(r.years[sc[0]]);
   const months = ["октябрь", "ноябрь", "декабрь"];
-  const q4 = `<table class="tbl"><tr><th>Сценарий</th>${months.map(m => `<th>${m.slice(0, 3)}</th>`).join("")}<th>ср. 2026</th></tr>${sc.map(k =>
+  const q4 = `<table class="tbl"><tr><th>Сценарий</th>${months.map(m => `<th>${m.slice(0, 3)}</th>`).join("")}<th>средняя за 2026 г.*</th></tr>${sc.map(k =>
     `<tr class="${k === r.scenario ? "me" : ""}"><td>${k.replace("истичный", "ист.")}<br><small style="color:var(--hint)">парк ${String(r.q4[k].pace).replace(".", ",")}%/мес</small></td>${r.q4[k].months.map((m, i) =>
     `<td>${fmt(m)}<br><small style="color:var(--hint)">${sgn(r.q4[k].delta[i])}</small></td>`).join("")}<td>${fmt(r.q4[k].avg)}</td></tr>`).join("")}</table>`;
   const years = `<table class="tbl"><tr><th>Сценарий</th>${yrs.map(y => `<th>${y}</th>`).join("")}</tr>${sc.map(k =>
@@ -209,7 +209,7 @@ function renderBuild() {
   const py = Object.keys(r.parts), keys = [...new Set(py.flatMap(y => Object.keys(r.parts[y])))];
   const parts = `<table class="tbl"><tr><th>Фактор, ₽/сут</th>${py.map(y => `<th>${y}</th>`).join("")}</tr>${keys.map(k =>
     `<tr><td>${esc(k)}</td>${py.map(y => `<td>${sgn(r.parts[y][k] || 0)}</td>`).join("")}</tr>`).join("")}
-    <tr class="me"><td>Ставка на конец года</td>${py.map(y => `<td>${fmt(r.end[y])}</td>`).join("")}</tr></table>`;
+    <tr class="me"><td>Ставка на конец года (декабрь)</td>${py.map(y => `<td>${fmt(r.end[y])}</td>`).join("")}</tr></table>`;
   const price = `<table class="tbl">${Object.entries(r.price).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${Math.abs(v) < 1 ? "связи нет" : sgn(v) + " ₽"}</td></tr>`).join("")}</table>`;
   const need = F.wagon === "inno" ? `<div class="box"><label>Что нужно для 1 500 и 1 560 ₽</label><table class="tbl">
     <tr><th>Цель</th><th>Рабочий парк</th><th>в месяц за 3 мес.</th></tr>${r.need.map(n => `<tr><td>${fmt(n.target)} ₽</td>
@@ -220,12 +220,14 @@ function renderBuild() {
     <label>Факторы сценария «${esc(r.scenario)}»</label><small>Годовые — на 2027–2030; рабочий парк — % в месяц в IV кв. 2026 (минус — сокращение)</small>
     <div class="f2">${inp("pace")}${inp("coal")}${inp("load")}${inp("stroy")}${inp("buy")}${inp("off")}</div>
     <button class="main-btn" data-calc>Рассчитать</button><button class="main-btn ghost" data-reset>Вернуть значения сценария</button></div>
-    <div class="box"><label>${esc(r.wagon)}: октябрь — декабрь 2026, ₽/сут</label><div class="note">Сентябрь — ${fmt(r.now)} ₽. Под ставкой — изменение за месяц.</div><div class="wrap">${q4}</div></div>
-    <div class="box"><label>Средняя ставка за год, ₽/сут</label><div class="wrap">${years}</div>
+    <div class="box"><label>${esc(r.wagon)}: октябрь — декабрь 2026, ₽/сут</label><div class="note">Ставка месяца — середина диапазона ставок рынка за месяц. Сентябрь — ${fmt(r.now)} ₽. Под ставкой — изменение за месяц.</div><div class="wrap">${q4}</div>
+    <div class="note">* Средняя за 2026 г. — январь–декабрь: январь–сентябрь — факт, октябрь–декабрь — прогноз (сумма 12 месяцев / 12).</div></div>
+    <div class="box"><label>Средняя ставка за год (январь–декабрь), ₽/сут</label><div class="wrap">${years}</div>
+    <div class="note">2026 — январь–сентябрь факт + октябрь–декабрь прогноз. 2027–2030 — середина между ставкой на начало года (декабрь прошлого) и на конец года (декабрь); пессимистичный — средняя прошлого года + инфляция.</div>
     ${r.cap.length ? `<div class="note">⚠ Выше рекорда 2024 г. в ${r.cap.join(", ")} г. — заложен рост выпуска вагонов.</div>` : ""}</div>
-    <div class="box"><label>Из чего складывается рост (${esc(r.parts_scenario)})</label><div class="wrap">${parts}</div></div>
+    <div class="box"><label>Из чего складывается рост (${esc(r.parts_scenario)}): изменение от декабря к декабрю</label><div class="wrap">${parts}</div></div>
     ${need}<div class="box"><label>Цена фактора, ₽/сут</label>${price}</div>
-    <div class="note">Данные рынка на ${esc(r.as_of)}. Оценка рынка, не инвестиционная рекомендация. Ошибка модели на прошлых годах ±22–31% в год; 2029–2030 — ориентир.</div>`;
+    <div class="note">Данные рынка на ${esc(r.as_of)}. Оценка рынка, не инвестиционная рекомендация. Средняя ошибка модели по проверочным годам ±22–31% в год; 2029–2030 — ориентир.</div>`;
 }
 
 async function task(text) {

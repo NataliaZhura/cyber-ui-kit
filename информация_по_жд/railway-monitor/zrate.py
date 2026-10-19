@@ -2,6 +2,9 @@
 """Рабочая модель ставки аренды полувагона (обычный и инновационный): IV квартал 2026 г. по месяцам и 2027–2030 гг.
 Без нейросети (0 токенов). Одни и те же цифры — у ЖДуши (/prognoz), в Excel и в мини-приложении.
 
+  python3 zrate.py menu                        меню /prognoz одним сообщением (бот присылает дословно)
+  python3 zrate.py run --pick "2 1 4"          ответ на меню: вагон, период, сценарий [, показатели крытых];
+                                               крытые (4, 5) — передаются в zmodel.py
   python3 zrate.py run                         все сценарии, оба типа вагона, вклад факторов, что нужно для 1 500 / 1 560
   python3 zrate.py run --wagon inno --scenario opt --set coal=2.5,off=35,pace=-1.5
                                                свои значения: годовые факторы — одно число на 2027–2030 или четыре через «;»
@@ -35,6 +38,17 @@ YEARS = [2027, 2028, 2029, 2030]
 Q4 = ["октябрь", "ноябрь", "декабрь"]
 WAGONS = {"inno": "Инновационный полувагон", "gon": "Обычный полувагон"}
 SCN = {"pess": "Пессимистичный", "base": "Базовый", "opt": "Оптимистичный"}
+OWN = "Свой"
+AVG = {  # пометки: что за средняя и за какой период
+    "month": "ставка месяца — середина диапазона ставок рынка за месяц",
+    "2026": "средняя за 2026 г. (январь–декабрь: январь–сентябрь — факт, октябрь–декабрь — прогноз; сумма 12 месяцев / 12)",
+    "year": "средняя за год (январь–декабрь) — середина между ставкой на начало года (декабрь прошлого) и на конец "
+            "года (декабрь); пессимистичный — средняя прошлого года + инфляция",
+    "end": "на конец года — ставка декабря",
+}
+PICK_W = {"1": "gon", "2": "inno", "3": "all", "4": "kr158", "5": "kr138"}
+PICK_Y = {"1": None, "2": 2026, "3": 2027, "4": 2028, "5": 2029, "6": 2030}
+PICK_S = {"1": "base", "2": "opt", "3": "pess", "4": "all", "5": "own"}
 FACTORS = {  # ключ → (название, единица)
     "coal": ("Добыча и погрузка угля", "% за год"), "load": ("Погрузка на сети", "% за год"),
     "turn": ("Замедление оборота вагона", "% за год"), "stroy": ("Стройка (щебень)", "% за год"),
@@ -164,27 +178,62 @@ def unit_price(D, w):
                "Стройка +1% за год": rub(b.get("stroy", 0)), "Тренд издержек, за год": rub(b["const"])}
 
 
-def report(D, a, res):
+def label(sc, ov=None):
+    return SCN.get(sc) or OWN
+
+
+def brief(a, res, W, ov):
+    """Коротко по запросу: выбранный вагон, период, сценарий — с пометкой, что за ставка."""
+    pick = getattr(a, "pick_scen", None)
+    keys = [k for k in (["own", "base"] if "own" in res[W[0]] else [pick] if pick in SCN else ["base", "opt", "pess"])]
+    y = getattr(a, "year", None)
+    L = ["## Коротко", ""]
+    if "own" in res[W[0]]:
+        L += ["Свой сценарий — базовый с вашими значениями: " + ", ".join(
+            f"{FACTORS[k][0][0].lower() + FACTORS[k][0][1:]} {v.replace(';', ' / ').replace('.', ',').replace('-', '−')} "
+            f"{FACTORS[k][1]}" for k, v in ov.items()) + ".", ""]
+    if y == 2026:
+        head = "| Вагон, сценарий | октябрь* | ноябрь* | декабрь* | средняя за 2026 г.** |"
+        row = lambda r: " | ".join(n(q) for q in r["q4"]) + f" | {n(r['lvl'][2026])}"
+        notes = [f"* {AVG['month']}.", f"** {AVG['2026']}."]
+    elif y:
+        head = f"| Вагон, сценарий | средняя за {y} г.* | на конец {y} г.** | средняя {y} г. к средней 2026 г. |"
+        row = lambda r: (f"{n(r['lvl'][y])} | {n(r['end'][y]) if r['end'] else '—'} | "
+                         f"{sg((r['lvl'][y] / r['lvl'][2026] - 1) * 100)}%")
+        notes = [f"* {AVG['year']}.", f"** {AVG['end']}; у пессимистичного не считается."]
+    else:
+        head = "| Вагон, сценарий | декабрь 2026* | средняя за 2026 г.** | средняя за 2027 г.*** | средняя за 2030 г.*** |"
+        row = lambda r: f"{n(r['q4'][-1])} | {n(r['lvl'][2026])} | {n(r['lvl'][2027])} | {n(r['lvl'][2030])}"
+        notes = [f"* {AVG['month']}.", f"** {AVG['2026']}.", f"*** {AVG['year']}."]
+    L += [head, "|---" * head.count(" | ") + "|---|"]
+    for w in W:
+        for sc in keys:
+            L.append(f"| {WAGONS[w]}, {label(sc).lower()} | {row(res[w][sc])} |")
+    return L + [""] + [f"<small>{x}</small>  " for x in notes] + [""]
+
+
+def report(D, a, res, ov=None):
     W = [a.wagon] if a.wagon != "all" else ["inno", "gon"]
     L = ["# Ставка аренды полувагона: IV квартал 2026 и прогноз до 2030", "",
          f"<small>₽ за вагон в сутки без НДС · данные рынка на {D['as_of']} · оценка рынка, не инвестиционная "
-         "рекомендация</small>", "", "## 1. Октябрь — декабрь 2026", ""]
+         "рекомендация</small>", ""] + brief(a, res, W, ov or {}) + ["## 1. Октябрь — декабрь 2026", ""]
     for w in W:
         r0 = res[w]["base"]
         L += [f"**{WAGONS[w]}** — сентябрь {n(r0['months'][-1])} ₽. Рабочий парк −1% → ставка +{f1(r0['e'])}%.", "",
-              "| Сценарий | Рабочий парк, % в месяц | " + " | ".join(Q4) + " | средняя 2026 |", "|---|---|---|---|---|---|"]
-        for sc in SCN:
+              "| Сценарий | Рабочий парк, % в месяц | " + " | ".join(f"{m}*" for m in Q4) + " | средняя за 2026 г.** |",
+              "|---|---|---|---|---|---|"]
+        for sc in res[w]:
             r = res[w][sc]
-            L.append(f"| {SCN[sc]} | {sg(r['scen']['pace'], 2)} | " + " | ".join(
+            L.append(f"| {label(sc)} | {sg(r['scen']['pace'], 2)} | " + " | ".join(
                 f"{n(q)} ({sg(d)})" for q, d in zip(r["q4"], r["q4_rub"])) + f" | {n(r['lvl'][2026])} |")
-        L.append("")
+        L += ["", f"<small>* {AVG['month']}; в скобках — изменение к прошлому месяцу. ** {AVG['2026']}.</small>", ""]
     if not a.guest:
         L += ["| 2026, январь–сентябрь | " + " | ".join(["янв", "фев", "мар", "апр", "май*", "июн*", "июл*", "авг", "сен"]) + " |",
               "|---|" + "---|" * 9] + [f"| {WAGONS[w]} | " + " | ".join(n(x) for x in res[w]["base"]["months"]) + " |" for w in W]
         L += ["", "<small>* по прямой между апрелем и августом.</small>", ""]
     w0 = "inno" if "inno" in W else W[0]
     L += ["## 2. Что нужно, чтобы ставка была выше 1 500 и 1 560", "",
-          f"{WAGONS[w0]}, от сентябрьских {n(res[w0]['base']['months'][-1])} ₽ — сокращение рабочего парка "
+          f"{WAGONS[w0]}, от ставки сентября {n(res[w0]['base']['months'][-1])} ₽ (ставка месяца) — сокращение рабочего парка "
           f"({f1(D['workpark']['aug'])} тыс. в августе; в августе −6,4 тыс. за месяц):", "",
           "| Цель | Сокращение рабочего парка | За 1 месяц | За 3 месяца, в месяц |", "|---|---|---|---|"]
     for t in D["targets"]:
@@ -194,24 +243,25 @@ def report(D, a, res):
                  f"{'быстрее' if k / 3 > 6.4 else 'медленнее'} августа |")
     L += ["", "Другие пути к росту (те же рубли, см. «Цена фактора»): экспорт угля в осенний пик, дальнейшее списание "
           "старых вагонов, удорожание ремонта и отстоя (собственники не сдают дешевле).", ""]
-    L += ["## 3. 2027–2030: средняя ставка за год", ""]
+    L += ["## 3. 2027–2030: средняя ставка за год (январь–декабрь)", ""]
     for w in W:
-        L += [f"**{WAGONS[w]}**", "", "| Сценарий | 2026 | " + " | ".join(map(str, YEARS)) + " |", "|---|" + "---|" * 5]
-        for sc in SCN:
+        L += [f"**{WAGONS[w]}**", "", "| Сценарий | 2026* | " + " | ".join(f"{y}**" for y in YEARS) + " |", "|---|" + "---|" * 5]
+        for sc in res[w]:
             r = res[w][sc]
-            L.append(f"| {SCN[sc]} | " + " | ".join(n(r["lvl"][y]) for y in [2026] + YEARS) + " |" +
+            L.append(f"| {label(sc)} | " + " | ".join(n(r["lvl"][y]) for y in [2026] + YEARS) + " |" +
                      (f" ⚠ выше рекорда в {', '.join(map(str, r['cap']))} г. — заложен рост выпуска" if r["cap"] else ""))
         L.append("")
-    sc = a.scenario if a.scenario != "pess" else "base"
+    L += [f"<small>* {AVG['2026']}. ** {AVG['year']}.</small>", ""]
+    sc = "own" if "own" in res[W[0]] else a.scenario if a.scenario != "pess" else "base"
     for w in W:
         r = res[w][sc]
-        L += [f"## 4. Из чего складывается рост: {WAGONS[w].lower()}, {SCN[sc].lower()}", "",
+        L += [f"## 4. Из чего складывается рост: {WAGONS[w].lower()}, {label(sc).lower()}", "",
               "Изменение ставки за год (от конца прошлого года к концу этого), ₽/сут:", "",
               "| Фактор | " + " | ".join(map(str, YEARS)) + " |", "|---|" + "---|" * 4]
         for k in dict.fromkeys(k for y in YEARS for k in r["parts"][y]):
             L.append(f"| {k} | " + " | ".join(sg(r["parts"][y].get(k, 0)) for y in YEARS) + " |")
-        L.append("| Ставка на конец года | " + " | ".join(n(r["end"][y]) for y in YEARS) + " |")
-        L.append("| **Средняя за год** | " + " | ".join(f"**{n(r['lvl'][y])}**" for y in YEARS) + " |")
+        L.append("| Ставка на конец года (декабрь) | " + " | ".join(n(r["end"][y]) for y in YEARS) + " |")
+        L.append("| **Средняя за год (январь–декабрь)** | " + " | ".join(f"**{n(r['lvl'][y])}**" for y in YEARS) + " |")
         L += ["", "Факторы: " + "; ".join(
             f"{FACTORS[k][0].lower()} {', '.join(sg(v, 1) if k not in ('buy', 'off') else n(v) for v in r['scen'][k][1:])}"
             for k in ("coal", "load", "stroy", "buy", "off")) + " (2027–2030).", ""]
@@ -219,7 +269,7 @@ def report(D, a, res):
     L += ["## 5. Цена фактора", "", "| Изменение | " + " | ".join(WAGONS[w] for w in W) + " |", "|---|" + "---|" * len(W)]
     for k in up[W[0]][1]:
         L.append(f"| {k} | " + " | ".join(sg(up[w][1][k]) + " ₽" if abs(up[w][1][k]) >= 0.5 else "связи нет" for w in W) + " |")
-    L += ["", f"<small>От сентябрьского уровня: {'; '.join(f'{WAGONS[w].lower()} {n(up[w][0])} ₽' for w in W)}.</small>", ""]
+    L += ["", f"<small>От ставки сентября (ставка месяца): {'; '.join(f'{WAGONS[w].lower()} {n(up[w][0])} ₽' for w in W)}.</small>", ""]
     L += ["## 6. Все факторы: макро и микро", "", "| Фактор | Тип | Сейчас | Влияние на ставку | Последствия | В модели |",
           "|---|---|---|---|---|---|"] + [f"| {' | '.join(row)} |" for row in D["catalog"]]
     L += ["", "## 7. За чем следить кредитору", "", "| Показатель | Пессимистичный | Базовый | Оптимистичный | Где смотреть |",
@@ -228,7 +278,7 @@ def report(D, a, res):
     for w in W:
         f, bt = res[w]["base"]["fit"], res[w]["base"]["fit"]["bt"] or {}
         L.append(f"- {WAGONS[w]}: годовая модель на прошлых годах угадала направление в {round(bt.get('hit', 0) * 100)}% лет "
-                 f"({bt.get('years', 0)} проверочных), средняя ошибка ±{bt.get('error', '—')}% в год; объясняет "
+                 f"({bt.get('years', 0)} проверочных), средняя ошибка по проверочным годам ±{bt.get('error', '—')}% в год; объясняет "
                  f"{round(f['r2'] * 100)}% колебаний за {f['n']} лет.")
     L += ["- IV квартал 2026 зависит от одного допущения — темпа рабочего парка; таблица 1 показывает три темпа.",
           "- 2029–2030 гг. — ориентир: ошибка накапливается.", "",
@@ -236,7 +286,62 @@ def report(D, a, res):
     return "\n".join(L) + "\n"
 
 
+def menu():
+    """Меню /prognoz: полувагоны — эта модель, крытые — zmodel.py (показатели ④ — только для крытых)."""
+    fs = ""
+    try:
+        import zmodel
+        Z = zmodel.load()
+        star = set(Z["default"]["kr"])
+        fs = " · ".join(f"{i} {'★ ' if f in star else ''}{Z['factors'][f].get('short', Z['factors'][f]['name'])}"
+                        for i, f in enumerate(zmodel.PICK_F, 1))
+    except (SystemExit, Exception):  # noqa: BLE001 — нет данных крытых: меню без пункта ④
+        pass
+    print("Прогноз ставок аренды до 2030 — ответь одной строкой, например: 2 1 4\n\n"
+          "① Вагон: 1 полувагон обычный · 2 полувагон инновационный · 3 оба полувагона · 4 крытый 158 м³ · 5 крытый 138 м³\n"
+          "② Период: 1 весь 2026–2030 · 2 — 2026 (октябрь–декабрь по месяцам) · 3 — 2027 · 4 — 2028 · 5 — 2029 · 6 — 2030\n"
+          "③ Сценарий: 1 базовый · 2 оптимистичный (только полувагоны) · 3 пессимистичный · 4 все · 5 свой "
+          "(после цифр напиши, что изменить: «уголь 2, списания 35, рабочий парк −1,5»)\n"
+          + (f"④ Только для крытых — показатели, до 3 через запятую, 0 — рекомендуемые ★:\n{fs}\n" if fs else "")
+          + "\nСтавки — средние за год (январь–декабрь); 2026 — 9 месяцев факта + 3 месяца прогноза.\n"
+          "Готовый документ (PDF) — ответь «П».")
+
+
+def run_kr(a, w, year, sc, rest):
+    """Крытые — расчёт zmodel.py (у крытых нет оптимистичного сценария)."""
+    import subprocess
+    if sc == "opt":
+        sys.exit("Оптимистичного сценария для крытых нет — выбери 1 базовый, 3 пессимистичный или 5 свой.")
+    cmd = [sys.executable, str(BASE / "zmodel.py"), "run", "--wagon", w, "--scenario", "pess" if sc == "pess" else "base"]
+    cmd += ["--year", str(year)] if year else []
+    f = "".join(rest)
+    if f not in ("", "0"):
+        import zmodel
+        try:
+            cmd += ["--factors", ",".join(zmodel.PICK_F[int(x) - 1] for x in f.split(",") if x)]
+        except (ValueError, IndexError):
+            sys.exit(f"Показатели крытых — номера от 1 до {len(zmodel.PICK_F)} через запятую.")
+    cmd += (["--set", a.set] if a.set else []) + (["--guest"] if a.guest else []) + (["--out", a.out] if a.out else [])
+    sys.exit(subprocess.run(cmd).returncode)
+
+
+def apply_pick(a):
+    parts = a.pick.replace(";", " ").split()
+    if len(parts) < 3 or parts[0] not in PICK_W or parts[1] not in PICK_Y or parts[2] not in PICK_S:
+        sys.exit("Ответ — 3 числа: вагон 1–5, период 1–6, сценарий 1–5 (например: 2 1 4).")
+    w, a.year, sc = PICK_W[parts[0]], PICK_Y[parts[1]], PICK_S[parts[2]]
+    if w.startswith("kr"):
+        run_kr(a, w, a.year, sc, parts[3:])
+    if sc == "own" and not a.set:
+        sys.exit("Для своего сценария напиши, что изменить (с 2027 г.): уголь, погрузка, стройка — % за год; выпуск, "
+                 "списания — тыс. вагонов в год; рабочий парк в IV кв. 2026 — % в месяц.")
+    a.wagon, a.pick_scen = w, sc
+    a.scenario = sc if sc in SCN else "base"
+
+
 def run(a):
+    if a.pick:
+        apply_pick(a)  # крытые уходят в zmodel.py до загрузки данных полувагонов
     D = load()
     ov = {}
     for kv in filter(None, (a.set or "").split(",")):
@@ -245,13 +350,16 @@ def run(a):
             sys.exit(f"Нет фактора {k}. Есть: {', '.join(FACTORS)}")
         ov[k.strip()] = v.strip()
     W = [a.wagon] if a.wagon != "all" else ["inno", "gon"]
-    res = {w: {sc: forecast(D, w, sc, ov if sc == a.scenario else {}) for sc in SCN} for w in W}
+    res = {w: {sc: forecast(D, w, sc) for sc in SCN} for w in W}
+    for w in W:  # свои значения — отдельной строкой «Свой» (от выбранного сценария, по умолчанию базового)
+        if ov:
+            res[w]["own"] = forecast(D, w, a.scenario if a.scenario != "pess" else "base", ov)
     if a.json:
         out = {w: {sc: {"year": {str(y): round(v) for y, v in r["lvl"].items()}, "q4": [round(x) for x in r["q4"]]}
                    for sc, r in res[w].items()} for w in W}
         print(json.dumps(out, ensure_ascii=False))
         return
-    md = report(D, a, res)
+    md = report(D, a, res, ov)
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(md, encoding="utf-8")
@@ -285,7 +393,10 @@ def track(a):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("menu")
     r = sub.add_parser("run")
+    r.add_argument("--pick", help="ответ на меню: вагон период сценарий [показатели крытых]")
+    r.add_argument("--year", type=int, choices=[2026] + YEARS)
     r.add_argument("--wagon", default="all", choices=["inno", "gon", "all"])
     r.add_argument("--scenario", default="base", choices=list(SCN))
     r.add_argument("--set", default="")
@@ -295,4 +406,4 @@ if __name__ == "__main__":
     t = sub.add_parser("track")
     t.add_argument("values", nargs="+")
     x = ap.parse_args()
-    run(x) if x.cmd == "run" else track(x)
+    menu() if x.cmd == "menu" else run(x) if x.cmd == "run" else track(x)

@@ -27,7 +27,8 @@ if ws.is_dir():
     print("гость zguest: правила обновлены,", len((ws / "AGENTS.md").read_text(encoding="utf-8")), "знаков (лимит 20000)")
 PY
 echo "== 4. Проверка модели"
-python3 zrate.py run --wagon inno | sed -n 5,13p
+python3 zrate.py menu | head -5
+python3 zrate.py run --pick "2 1 4" | sed -n 5,11p
 python3 zrate.py track coal=2.9 load=1.2 stroy=-3.7 netoff=0.7 workcut=5.1 | tail -1
 echo "== 5. Мини-приложение («Прогнозы» → «Построить прогноз»)"
 systemctl restart zhdusha-app 2>/dev/null && sleep 2 && systemctl is-active zhdusha-app || echo "служба zhdusha-app не найдена — приложение ещё не включено (SETUP.md, п. 7)"

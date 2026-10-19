@@ -38,7 +38,7 @@
 ## Что есть
 - Бот @zhdusha_bot (OpenClaw, агент `zhdusha`, гость — `zguest`) на сервере `avia` (FirstByte VPS), комплект — `~/railway-monitor`.
 - Меню (22 команды) — `zmenu.py`, правила меню — `ZMENU.md`, общие правила — `AGENTS.md` (лимит 20 000 знаков).
-- Программы для вкладок: `zmodel.py menu|run --pick` (прогноз ставок), `zvagon.py run|signals` (стоимость вагона,
+- Программы для вкладок: `zrate.py menu|run --pick` (прогноз ставок; крытые — через `zmodel.py`), `zvagon.py run|signals` (стоимость вагона,
   светофор), `zfactory.py run` (завод/оператор: поток, стресс, аванс), `zreport.py` (PDF), `send.py` (отправка).
 - Данные моделей — только на сервере (`forecast/*.json`), в репозиторий не кладутся.
 
