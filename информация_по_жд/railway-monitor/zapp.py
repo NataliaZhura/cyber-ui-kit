@@ -5,8 +5,9 @@
   python3 zapp.py sort                    показать, какие старые файлы saved/ в какой раздел лягут (ничего не меняет)
   python3 zapp.py sort --apply            разложить (только после «да» владельца; файлы переносятся, не удаляются)
   python3 zapp.py hide prognoz [--date 2026-10-19] [--apply]
-                                          убрать из раздела файлы за день (по умолчанию — сегодня): сначала список,
-                                          с --apply — перенос в archive/<дата>/ (не удаляются); файлы модели остаются
+                                          убрать из раздела файлы за день (дата в имени, иначе дата файла; по умолчанию —
+                                          сегодня): сначала список, с --apply — перенос в archive/<дата>/ (не удаляются);
+                                          файлы модели и сводки рынка остаются
   python3 zapp.py check                   что умеет `openclaw agent` (для кнопки «Поставить задачу»), только чтение
 
 Кто что видит (проверяется подпись Telegram, подделать нельзя):
@@ -404,9 +405,12 @@ def cmd_hide(key, day, apply):
     for root, p in files(roots):
         if root == FORECAST and p.relative_to(root).parts[0] == "guest":
             continue
-        if (section_of(p, root) == key and p.name not in KEEP
-                and time.strftime("%Y-%m-%d", time.localtime(p.stat().st_mtime)) == day):
-            found += [(root, x) for x in (p, p.with_suffix(".md")) if x.is_file() and (root, x) not in found]
+        dated = re.match(r"\d{4}-\d{2}-\d{2}", p.name)  # дата в имени важнее даты файла (файлы могли переложить)
+        when = dated.group() if dated else time.strftime("%Y-%m-%d", time.localtime(p.stat().st_mtime))
+        if section_of(p, root) == key and p.name not in KEEP and not p.name.startswith("сводка_") and when == day:
+            for x in (p, p.with_suffix(".md")):
+                if x.is_file() and (root, x) not in found:
+                    found.append((root, x))
     if not found:
         return print(f"В разделе «{key}» нет файлов за {day} — убирать нечего.")
     for root, p in found:
