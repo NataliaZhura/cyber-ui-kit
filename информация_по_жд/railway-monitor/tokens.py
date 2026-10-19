@@ -49,7 +49,7 @@ def usages(o, path=""):
                 i += c + (num(o, CACHE_W) or 0)
             return [(path, i, c, out)]
         for k, v in o.items():
-            if k in ("total_token_usage", "totalTokenUsage", "cumulative"):
+            if k in ("total_token_usage", "totalTokenUsage", "cumulative", "turn_token_usage", "thread_token_usage"):
                 continue
             found += usages(v, f"{path}.{k}")
     elif isinstance(o, list):
@@ -98,6 +98,8 @@ def scan(files, since):
     skip = {"повтор той же записи": 0, "больше 1 млн на вызов (накопительный итог)": 0}
     for f in files:
         cur, last = None, None
+        # движок пишет каждый вызов дважды: token_usage_record и event_msg/token_count — если есть первые, вторые не берём
+        rec = any('"token_usage_record"' in ln for ln in f.open(encoding="utf-8", errors="replace"))
         if f.stat().st_mtime < since.timestamp():
             continue
         for line in f.open(encoding="utf-8", errors="replace"):
@@ -112,6 +114,8 @@ def scan(files, since):
             if q is not None:
                 cur = [section(q), t, 0, 0, 0, 0]
                 rows.append(cur)
+                continue
+            if rec and o.get("type") == "event_msg":
                 continue
             for _, i, c, out in usages(o):
                 if t and t < since:
