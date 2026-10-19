@@ -5,6 +5,8 @@
   python3 zmenu.py show     показать, какое меню стоит сейчас
   python3 zmenu.py webapp https://<адрес>   кнопка «Меню» открывает мини-приложение (команды остаются — по «/»)
   python3 zmenu.py          (без слов) — вернуть кнопку «Меню» со списком команд
+  python3 zmenu.py pin https://<адрес> [ID …]   закреплённое сообщение с кнопкой «Открыть ЖДушу» (для телефона;
+                                                без ID — владельцу)
 
 Токен — ~/.secrets/zhdusha_bot; на экран не выводится.
 """
@@ -54,7 +56,26 @@ def owner_scope():
     return []
 
 
+def pin(url, ids):
+    """Сообщение с кнопкой приложения + закрепить: работает на телефоне, даже если кнопка «Меню» не обновилась."""
+    kb = json.dumps({"inline_keyboard": [[{"text": "📂 Открыть ЖДушу", "web_app": {"url": url}}]]}, ensure_ascii=False)
+    for cid in ids:
+        r = api("sendMessage", chat_id=cid, text="Приложение ЖДуши: отчёты по разделам, поиск и новые запросы.",
+                reply_markup=kb)
+        if not r.get("ok"):
+            print(f"{cid}: Telegram не принял — {r}")
+            continue
+        p = api("pinChatMessage", chat_id=cid, message_id=r["result"]["message_id"], disable_notification=True)
+        print(f"{cid}: кнопка отправлена{', закреплена' if p.get('ok') else ' (закрепить не удалось — закрепи вручную)'}")
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["pin"]:
+        if len(sys.argv) < 3 or not sys.argv[2].startswith("https://"):
+            sys.exit("Нужен адрес: python3 zmenu.py pin https://zhdusha.duckdns.org [ID …]")
+        owner = (Path.home() / ".secrets" / "zhdusha_owner").read_text(encoding="utf-8").strip()
+        pin(sys.argv[2], sys.argv[3:] or [owner])
+        sys.exit(0)
     if sys.argv[1:] == ["show"]:
         for name, extra in SCOPES + owner_scope():
             cmds = api("getMyCommands", **extra).get("result", [])
