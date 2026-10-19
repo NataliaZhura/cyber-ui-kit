@@ -95,8 +95,9 @@ def section(q):
 def scan(files, since):
     """Расход по вопросам: {вопрос-ключ: [раздел, дата, вызовов, вход, кэш, выход]} + вызовы без вопроса."""
     rows, calls = [], []
+    skip = {"повтор той же записи": 0, "больше 1 млн на вызов (накопительный итог)": 0}
     for f in files:
-        cur = None
+        cur, last = None, None
         if f.stat().st_mtime < since.timestamp():
             continue
         for line in f.open(encoding="utf-8", errors="replace"):
@@ -115,6 +116,13 @@ def scan(files, since):
             for _, i, c, out in usages(o):
                 if t and t < since:
                     continue
+                if (i, c, out) == last:  # движок повторяет расход прошлого вызова в служебных событиях
+                    skip["повтор той же записи"] += 1
+                    continue
+                last = (i, c, out)
+                if i > 1_000_000:  # одному запросу столько не помещается — это сумма, не вызов
+                    skip["больше 1 млн на вызов (накопительный итог)"] += 1
+                    continue
                 calls.append(i)
                 if cur is None:
                     cur = ["(без вопроса: запуск, расписание)", t, 0, 0, 0, 0]
@@ -123,7 +131,7 @@ def scan(files, since):
                 cur[3] += i
                 cur[4] += c
                 cur[5] += out
-    return [r for r in rows if r[2]], calls
+    return [r for r in rows if r[2]], calls, skip
 
 
 def k(v):
@@ -203,9 +211,10 @@ def main():
                 print(f"\n## {ag} ({src}), {len(fl)} файлов")
                 probe(fl)
                 continue
-            rows, calls = scan(fl, since)
+            rows, calls, skip = scan(fl, since)
             if rows:
                 report(ag, src, rows, calls)
+                print('   Не учтено: ' + ', '.join(f'{n} — {v}' for n, v in skip.items()))
             else:
                 print(f"\n== {ag} ({src}): {len(fl)} файлов, записей расхода за период нет")
     print("\nОба журнала могут описывать одни и те же вызовы — складывать их нельзя, смотреть по одному.")
