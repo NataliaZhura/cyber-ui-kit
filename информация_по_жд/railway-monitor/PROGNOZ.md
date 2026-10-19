@@ -33,10 +33,10 @@
 Сценарий 3 (свой): что изменить — из текста ответа, в `--set` с кодами: coal, load, turnover, stroy, mortgage,
 housing (% за год), gdp, key, tariff (%), price (% за год), buy, off (тыс. полувагонов в год); действует с 2027 г.
 
-## Как посчитать и отдать
+### Крытые: как посчитать и отдать
 
 1. `python3 ~/railway-monitor/zmodel.py run --pick "<ответ на меню>" [--set gdp=2,off=40]
-   --out ~/railway-monitor/saved/ГГГГ-ММ-ДД_прогноз_ставок.md` (или вместо --pick: `--wagon gon|inno|kr158|kr138|all
+   --out ~/railway-monitor/saved/ГГГГ-ММ-ДД_прогноз_ставок.md` (или вместо --pick: `--wagon kr158|kr138
    --factors <коды> --scenario base|pess --year <год>`). Гостю — добавь `--guest`, папка `saved_<агент>/`.
 2. PDF: `~/pw/bin/python ~/railway-monitor/zreport.py <файл.md>`; отправка — как любую справку (владельцу
    `send.py <pdf>`, гостю `send.py --to <ID> <pdf>` + копия владельцу по гостевым правилам).
