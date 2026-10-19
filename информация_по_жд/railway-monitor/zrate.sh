@@ -14,7 +14,7 @@ done
 [ -f "$F/rate_data.json" ] || { echo "СТОП: загрузи rate_data.json (PowerShell): scp rate_data.json avia:~/railway-monitor/"; exit 1; }
 echo "== 2. Обновление комплекта"
 cd "$REPO" && git pull -q && cp информация_по_жд/railway-monitor/*.md информация_по_жд/railway-monitor/*.py \
-  информация_по_жд/railway-monitor/*.sh "$KIT"/ && echo "ok"
+  информация_по_жд/railway-monitor/*.sh "$KIT"/ && cp -r информация_по_жд/railway-monitor/miniapp "$KIT"/ && echo "ok"
 cd "$KIT" || exit 1
 echo "== 3. Правила владельца и гостя"
 python3 openclaw_setup.py sync
@@ -29,4 +29,6 @@ PY
 echo "== 4. Проверка модели"
 python3 zrate.py run --wagon inno | sed -n 5,10p
 python3 zrate.py track coal=2.9 load=1.2 stroy=-3.7 netoff=0.7 workcut=5.1 | tail -1
+echo "== 5. Мини-приложение («Прогнозы» → «Построить прогноз»)"
+systemctl restart zhdusha-app 2>/dev/null && sleep 2 && systemctl is-active zhdusha-app || echo "служба zhdusha-app не найдена — приложение ещё не включено (SETUP.md, п. 7)"
 echo "== Готово. В чате ЖДуши: /new, затем «прогноз ставки инновационного полувагона до 2030»"
