@@ -111,6 +111,17 @@ def tool_of(o):
     py = re.findall(r"([\w-]+\.py)\b(?:\s+(\w+))?", cmd)
     if py:
         return " + ".join(f"{f} {sub}".strip() for f, sub in py[:2])
+    if re.match(r"\s*(const|let|var|await|async|for|if|return|import|function|\(|\{|//)", cmd):
+        # шаг-скрипт (код вместо команды): называем по функциям, которые он вызывает; строки выбрасываем
+        bare = re.sub(r"`[^`]*`|'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"", "", cmd)
+        skip = {"if", "for", "while", "return", "function", "catch", "switch", "log", "map", "filter", "join", "slice",
+                "push", "then", "toString", "includes", "split", "replace", "trim", "String", "Number", "JSON.parse",
+                "JSON.stringify", "console.log", "Object.keys", "Array.from", "Promise.all", "Math.max", "Math.min"}
+        calls = []
+        for f in re.findall(r"([A-Za-z_$][\w$.]*)\s*\(", bare):
+            if f not in skip and f.split(".")[-1] not in skip and f not in calls:
+                calls.append(f)
+        return "код: " + (", ".join(calls[:3]) or "без вызовов")
     words = [w for w in re.split(r"[\s;&|]+", cmd) if w and not w.startswith("-") and w not in ("cd", "bash", "-lc", "sh")]
     return words[0].split("/")[-1][:20] if words else name
 
