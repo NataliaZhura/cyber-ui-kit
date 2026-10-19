@@ -12,6 +12,8 @@
   остальные — отказ. private/ (Argus, rates.csv) не показывается никому.
 
 Токен бота — ~/.secrets/zhdusha_bot; в страницу и ответы не попадает.
+«Построить прогноз» (вкладка «Прогнозы»): ставка полувагона по факторам из формы — считает zrate.py, без нейросети;
+гостю — только результат модели, без помесячных ставок рынка.
 Кнопка «Поставить задачу»: если в miniapp.json задан task_cmd — команда уходит агенту сразу; иначе текст копируется,
 и его вставляют в чат.
 """
@@ -219,6 +221,41 @@ def run_task(agent, uid, text):
     return {"ok": True, "fallback": None}
 
 
+LIMITS = {"coal": (-20, 20), "load": (-20, 20), "stroy": (-30, 30), "buy": (0, 80), "off": (0, 80), "pace": (-5, 5)}
+
+
+def forecast(body):
+    """«Построить прогноз»: модель ставки полувагона (zrate.py) с факторами из формы. Без нейросети."""
+    import zrate as Z
+    try:
+        D = Z.load()
+    except SystemExit:
+        return {"error": "Модель ещё не загружена на сервер."}
+    w = body.get("wagon") if body.get("wagon") in Z.WAGONS else "inno"
+    sc = body.get("scenario") if body.get("scenario") in Z.SCN else "base"
+    ov = {}
+    for k, v in (body.get("set") or {}).items():
+        if k in LIMITS and v not in (None, ""):
+            try:
+                lo, hi = LIMITS[k]
+                ov[k] = str(min(hi, max(lo, float(str(v).replace(",", ".")))))
+            except ValueError:
+                return {"error": f"Не число: {Z.FACTORS[k][0]}"}
+    res = {s_: Z.forecast(D, w, s_, ov if s_ == sc else {}) for s_ in Z.SCN}
+    r = res[sc if sc != "pess" else "base"]
+    defaults = {s_: {k: (v if k == "pace" else v[1]) for k, v in D["scenarios"][s_].items() if k in LIMITS} for s_ in Z.SCN}
+    L, up = Z.unit_price(D, w)
+    return {"wagon": Z.WAGONS[w], "scenario": Z.SCN[sc], "as_of": D["as_of"], "now": round(res["base"]["months"][-1]),
+            "q4": {Z.SCN[k]: {"months": [round(x) for x in v["q4"]], "delta": [round(x) for x in v["q4_rub"]],
+                              "avg": round(v["lvl"][2026]), "pace": v["scen"]["pace"]} for k, v in res.items()},
+            "years": {Z.SCN[k]: {str(y): round(v["lvl"][y]) for y in [2026] + Z.YEARS} for k, v in res.items()},
+            "parts": {str(y): {k: round(v) for k, v in r["parts"][y].items()} for y in Z.YEARS},
+            "end": {str(y): round(r["end"][y]) for y in Z.YEARS}, "parts_scenario": Z.SCN[sc if sc != "pess" else "base"],
+            "price": {k: round(v) for k, v in up.items()},
+            "need": [{"target": t, "pct": round(Z.need(D, w, t)[0], 1), "k": round(Z.need(D, w, t)[1], 1)} for t in D["targets"]],
+            "defaults": defaults, "factors": {k: Z.FACTORS[k] for k in LIMITS}, "cap": r["cap"]}
+
+
 class App(BaseHTTPRequestHandler):
     server_version = "zapp"
 
@@ -314,6 +351,12 @@ class App(BaseHTTPRequestHandler):
             exp = str(int(time.time()) + 600)
             q = urllib.parse.urlencode({"u": uid, "f": fid, "e": exp, "s": link_sig(token, uid, fid, exp)})
             return self.reply(200, {"url": f"/file?{q}"})
+        if path == "/api/forecast":
+            try:
+                out = forecast(body)
+            except Exception as e:  # noqa: BLE001 — ошибка расчёта не должна ронять приложение
+                out = {"error": f"Расчёт не удался: {type(e).__name__}"}
+            return self.reply(400 if "error" in out else 200, out)
         if path == "/api/task":
             text = " ".join(str(body.get("text", "")).split())[:1500]
             if not text:
