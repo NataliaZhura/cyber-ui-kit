@@ -6,6 +6,7 @@
   python3 tokens.py --days 7        за 7 дней
   python3 tokens.py --agent zhdusha один агент
   python3 tokens.py --probe         где в журнале записан расход (поля, без текста переписки) — для настройки
+  python3 tokens.py --steps         + на что ушли шаги: какие программы и инструменты бот вызывал (без текста команд)
 
 Вызов модели = один запрос к нейросети; на один вопрос их бывает несколько (поиск, программа, ответ).
 «Вход» — всё, что отправлено модели: правила, история разговора, результаты программ; «из кэша» — часть входа,
@@ -15,6 +16,7 @@
 import json
 import re
 import sys
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -84,6 +86,35 @@ def when(o):
         return None
 
 
+def tool_of(o):
+    """Название шага, если строка журнала — вызов инструмента: программа (checko.py), команда (cat) или инструмент
+    (web_search). Сами команды и их аргументы не выводятся — в них бывают пути и ключи."""
+    if o.get("type") != "response_item" or not isinstance(o.get("payload"), dict):
+        return None
+    p = o["payload"]
+    kind = p.get("type", "")
+    if kind == "web_search_call":
+        return "поиск в интернете"
+    if kind not in ("function_call", "custom_tool_call", "local_shell_call"):
+        return None
+    name = p.get("name") or kind
+    raw = p.get("arguments") or p.get("input") or json.dumps(p.get("action") or {})
+    try:
+        args = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        args = {"cmd": raw}
+    cmd = args.get("cmd") or args.get("command") if isinstance(args, dict) else None
+    if isinstance(cmd, list):
+        cmd = " ".join(map(str, cmd))
+    if not cmd:
+        return name
+    py = re.findall(r"([\w-]+\.py)\b(?:\s+(\w+))?", cmd)
+    if py:
+        return " + ".join(f"{f} {sub}".strip() for f, sub in py[:2])
+    words = [w for w in re.split(r"[\s;&|]+", cmd) if w and not w.startswith("-") and w not in ("cd", "bash", "-lc", "sh")]
+    return words[0].split("/")[-1][:20] if words else name
+
+
 def section(q):
     m = re.match(r"\s*/([a-z_]+)", q)
     if m:
@@ -112,9 +143,12 @@ def scan(files, since):
             t = when(o)
             q = user_text(o)
             if q is not None:
-                cur = [section(q), t, 0, 0, 0, 0]
+                cur = [section(q), t, 0, 0, 0, 0, Counter()]
                 rows.append(cur)
                 continue
+            tool = tool_of(o)
+            if tool and cur is not None and not (t and t < since):
+                cur[6][tool] += 1
             if rec and o.get("type") == "event_msg":
                 continue
             for _, i, c, out in usages(o):
@@ -129,7 +163,7 @@ def scan(files, since):
                     continue
                 calls.append(i)
                 if cur is None:
-                    cur = ["(без вопроса: запуск, расписание)", t, 0, 0, 0, 0]
+                    cur = ["(без вопроса: запуск, расписание)", t, 0, 0, 0, 0, Counter()]
                     rows.append(cur)
                 cur[2] += 1
                 cur[3] += i
@@ -140,6 +174,23 @@ def scan(files, since):
 
 def k(v):
     return f"{v / 1000:,.0f}".replace(",", " ") + " тыс."
+
+
+def steps(rows):
+    """Шаги по разделам и в самых дорогих вопросах: что бот вызывал."""
+    by = {}
+    for r in rows:
+        by.setdefault(r[0], [0, Counter()])
+        by[r[0]][0] += r[3] + r[5]
+        by[r[0]][1].update(r[6])
+    print("   Шаги по разделам (вызовы инструментов за период):")
+    for name, (tok, c) in sorted(by.items(), key=lambda x: -x[1][0])[:8]:
+        print(f"   · {name[:34]}: " + (", ".join(f"{t} ×{n}" for t, n in c.most_common(8)) or "без инструментов"))
+    print("   Шаги в самых дорогих вопросах:")
+    for r in sorted(rows, key=lambda r: -(r[3] + r[5]))[:5]:
+        when_ = f"{r[1].astimezone(zhistory.MSK):%d.%m %H:%M} " if r[1] else ""
+        print(f"   · {when_}{r[0]} — {k(r[3] + r[5])}, {r[2]} выз.: " +
+              (", ".join(f"{t} ×{n}" for t, n in r[6].most_common(8)) or "без инструментов"))
 
 
 def report(agent, src, rows, calls):
@@ -178,6 +229,10 @@ def probe(files):
                 o = json.loads(line)
             except ValueError:
                 continue
+            pl = o.get("payload") if isinstance(o.get("payload"), dict) else {}
+            if o.get("type") == "response_item":
+                kind = f"шаг: {pl.get('type')}" + (f" / {pl.get('name')}" if pl.get("name") else "")
+                seen[kind] = seen.get(kind, 0) + 1
             for p, i, c, out in usages(o):
                 key = str(o.get("type")) + p
                 if seen.get(key, 0) < 2:
@@ -218,6 +273,8 @@ def main():
             rows, calls, skip = scan(fl, since)
             if rows:
                 report(ag, src, rows, calls)
+                if "--steps" in a:
+                    steps(rows)
                 print('   Не учтено: ' + ', '.join(f'{n} — {v}' for n, v in skip.items()))
             else:
                 print(f"\n== {ag} ({src}): {len(fl)} файлов, записей расхода за период нет")
