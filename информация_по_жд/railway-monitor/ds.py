@@ -3,7 +3,9 @@
 
   python3 ds.py check                         только смотрит: версия, модуль DeepSeek, ключ, модели агентов
   python3 ds.py on  [агент ...]               перевести на DeepSeek (по умолчанию tester и zguest), GPT — запасной
-  python3 ds.py off [агент ...]               вернуть GPT
+  python3 ds.py off [агент ...]               вернуть GPT (DeepSeek — запасной)
+  python3 ds.py on  --owner main tester zhdusha zguest    все агенты, включая владельца (когда кончился лимит GPT)
+  python3 ds.py off --owner main tester zhdusha zguest    вернуть всех на GPT
 
 Ключ: файл ~/.secrets/deepseek_key (одна строка, sk-…). Программа сама кладёт его в ~/.openclaw/.env
 (DEEPSEEK_API_KEY) — так его видит робот. Ключ на экран не выводится.
@@ -21,7 +23,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import guest  # noqa: E402  — те же oc/get/put, что у гостевых агентов
 
-DS = os.environ.get("DS_MODEL", "deepseek/deepseek-v4-flash")
+DS = os.environ.get("DS_MODEL", "deepseek/deepseek-flash")
+DS_PRO = "deepseek/deepseek-v4-pro"
 GPT = "openai/gpt-5.6-sol"
 DEFAULT = ["tester", "zguest"]
 OWNER = ("main", "zhdusha")
@@ -56,6 +59,8 @@ def check():
 def put_key():
     if key_in_env():
         return
+    if re.search(r"^deepseek/\S+.*\byes\b", guest.oc("models", "list", "--provider", "deepseek", check=False), re.M):
+        return  # доступ к DeepSeek уже настроен в OpenClaw (Auth: yes)
     if not KEYFILE.exists():
         sys.exit(f"СТОП: нет {KEYFILE} — положи туда ключ DeepSeek одной строкой и запусти снова. Ничего не изменено.")
     key = KEYFILE.read_text(encoding="utf-8").strip()
@@ -66,8 +71,10 @@ def put_key():
 
 
 def switch(on, agents):
-    if bad := [a for a in agents if a in OWNER]:
-        sys.exit(f"СТОП: {', '.join(bad)} — агенты владельца, их не трогаю.")
+    owner = "--owner" in agents
+    agents = [a for a in agents if a != "--owner"]
+    if not owner and (bad := [a for a in agents if a in OWNER]):
+        sys.exit(f"СТОП: {', '.join(bad)} — агенты владельца; переключать их — только с --owner.")
     if on:
         if "deepseek" not in guest.oc("plugins", "list", check=False).lower():
             print(guest.oc("plugins", "install", "@openclaw/deepseek-provider", check=False)[-600:])
@@ -81,12 +88,9 @@ def switch(on, agents):
             print(f"{a}: такого агента нет — пропускаю")
             continue
         if on:
-            r = subprocess.run(["openclaw", "config", "set", f"{path}.model",
-                                json.dumps({"primary": DS, "fallbacks": [GPT]})], capture_output=True, text=True)
-            if r.returncode:  # старая схема без запасной модели — просто DeepSeek
-                guest.put(f"{path}.model", DS)
+            guest.put(f"{path}.model", {"primary": DS, "fallbacks": [DS_PRO, GPT]})
         else:
-            guest.put(f"{path}.model", GPT)
+            guest.put(f"{path}.model", {"primary": GPT, "fallbacks": [DS, DS_PRO]})
         print(f"{a}: было {cur.get(a)} → стало {models()[1].get(a)}")
     subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], check=False)
     print("Робот перезапущен. Проверка: напиши тестовому боту «привет» и посмотри журнал:\n"
