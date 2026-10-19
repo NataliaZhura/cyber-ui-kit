@@ -180,6 +180,9 @@ def scan(files, since):
                 cur[3] += i
                 cur[4] += c
                 cur[5] += out
+    for r in rows:  # ход, где бот отвечал на «проверку связи» OpenClaw (heartbeat), — отдельной строкой, не вопросом
+        if any("heartbeat" in t for t in r[6]):
+            r[0] = "(проверка связи — heartbeat)"
     return [r for r in rows if r[2]], calls, skip
 
 
