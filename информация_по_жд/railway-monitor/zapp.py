@@ -4,6 +4,9 @@
   python3 zapp.py serve [--port 8787]     запустить (слушает только 127.0.0.1; снаружи — через Caddy с HTTPS)
   python3 zapp.py sort                    показать, какие старые файлы saved/ в какой раздел лягут (ничего не меняет)
   python3 zapp.py sort --apply            разложить (только после «да» владельца; файлы переносятся, не удаляются)
+  python3 zapp.py hide prognoz [--date 2026-10-19] [--apply]
+                                          убрать из раздела файлы за день (по умолчанию — сегодня): сначала список,
+                                          с --apply — перенос в archive/<дата>/ (не удаляются); файлы модели остаются
   python3 zapp.py check                   что умеет `openclaw agent` (для кнопки «Поставить задачу»), только чтение
 
 Кто что видит (проверяется подпись Telegram, подделать нельзя):
@@ -391,6 +394,33 @@ def cmd_sort(apply):
     print(f"\nПеренесено: {len(moves)}. Журнал отправок saved/sent.log остаётся на месте.")
 
 
+KEEP = {"Модель_ставки_полувагона_2030.pdf", "Модель_ставки_полувагона_2030.xlsx"}  # рабочая модель, не запросы
+
+
+def cmd_hide(key, day, apply):
+    """Убрать из раздела приложения файлы, сохранённые за день: перенос в archive/<дата>/, без удаления."""
+    roots = [SAVED, FORECAST, FORECAST / "guest"] + sorted(BASE.glob("saved_*"))
+    found = []
+    for root, p in files(roots):
+        if root == FORECAST and p.relative_to(root).parts[0] == "guest":
+            continue
+        if (section_of(p, root) == key and p.name not in KEEP
+                and time.strftime("%Y-%m-%d", time.localtime(p.stat().st_mtime)) == day):
+            found += [(root, x) for x in (p, p.with_suffix(".md")) if x.is_file() and (root, x) not in found]
+    if not found:
+        return print(f"В разделе «{key}» нет файлов за {day} — убирать нечего.")
+    for root, p in found:
+        print(f"   {root.name}/{p.relative_to(root).as_posix()}")
+    if not apply:
+        return print(f"\nВсего {len(found)}. Ничего не перенесено. Убрать: python3 zapp.py hide {key} --date {day} --apply")
+    arch = BASE / "archive" / day
+    for root, p in found:
+        dst = arch / root.relative_to(BASE) / p.relative_to(root)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(p, dst)
+    print(f"\nПеренесено: {len(found)} → {arch} (из приложения убраны, не удалены).")
+
+
 def cmd_check():
     r = subprocess.run(["openclaw", "agent", "--help"], capture_output=True, text=True, timeout=60)
     out = r.stdout + r.stderr
@@ -412,6 +442,8 @@ if __name__ == "__main__":
         ThreadingHTTPServer(("127.0.0.1", port), App).serve_forever()
     elif a[:1] == ["sort"]:
         cmd_sort("--apply" in a)
+    elif a[:1] == ["hide"] and len(a) > 1 and a[1] in KEYS:
+        cmd_hide(a[1], a[a.index("--date") + 1] if "--date" in a else time.strftime("%Y-%m-%d"), "--apply" in a)
     elif a[:1] == ["check"]:
         cmd_check()
     else:
