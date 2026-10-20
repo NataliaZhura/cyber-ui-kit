@@ -368,9 +368,8 @@ def growth(expr, infl):
     return infl + (float(m.group(1)) if m and m.group(1) else 0) if m else float(e)
 
 
-def cmd_forecast(*opts):
-    o = dict(zip(opts[::2], opts[1::2]))
-    to = int(o.get("--to", 2030))
+def forecast_rows(to=2030):
+    """{сценарий: [(год, себестоимость старого, нового, цена часа)]}, сценарии, годы, цена 2025, контракты."""
     base = base_rows()
     con = contracts() if FCON.exists() else []
     sc, years = scen()
@@ -392,6 +391,13 @@ def cmd_forecast(*opts):
                 price *= 1 + growth(p["цена часа"][y], infl) / 100
             rows.append((y, cost_at(base, f, "старый"), cost_at(base, f, "новый"), price))
         res[name] = rows
+    return res, sc, years, price0, con
+
+
+def cmd_forecast(*opts):
+    o = dict(zip(opts[::2], opts[1::2]))
+    to = int(o.get("--to", 2030))
+    res, sc, years, price0, con = forecast_rows(to)
     print(f"ПРОГНОЗ ЛЁТНОГО ЧАСА Ми-8 до {to} года, тыс. ₽ без НДС — ОЦЕНКА, не факт")
     print(f"Лизинг нового вертолёта пересчитан по ключевой ставке сценария (база — {fmt(KR_BASE, 2)}%; "
           "договоры, заключённые в этом году).")

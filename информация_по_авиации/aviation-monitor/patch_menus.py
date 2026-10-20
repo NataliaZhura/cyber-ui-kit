@@ -14,8 +14,9 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 AGENTS = Path(sys.argv[sys.argv.index("--agents") + 1]).expanduser() if "--agents" in sys.argv \
     else Path.home() / ".openclaw" / "workspace" / "AGENTS.md"
-MARK = "**Подменю (/model, /flighthour, /bpla).**"
-RULE = (MARK + " Команда `/model`, `/flighthour` или `/bpla` без уточнений (и Excel-файл без вопроса — как `/model`) —\n"
+MARK = "**Подменю (/model, /flighthour, /bpla, /forecast).**"
+OLD_MARKS = ("**Подменю (/model, /flighthour, /bpla).**",)
+RULE = (MARK + " Команда `/model`, `/flighthour`, `/bpla` или `/forecast` без уточнений (и Excel-файл без вопроса — как `/model`) —\n"
         "ответь **только** текстом подменю этой команды из `~/aviation-monitor/guides/menus.md` (между линиями «---»)\n"
         "**дословно**, ничего не запуская, не считая и не добавляя от себя. Затем жди цифру; после выбора — по строке\n"
         "«Дальше» того же раздела. Не отвечай на подменю готовым анализом: выбирает пользователь.\n\n")
@@ -31,6 +32,13 @@ def main():
     if MARK in t:
         print("AGENTS.md: правило подменю уже есть — менять нечего")
         return
+    old = next((m for m in OLD_MARKS if m in t), None)
+    if old:                          # прежняя версия правила — заменить абзац целиком
+        i = t.index(old)
+        j = t.index("\n\n", i) + 2
+        new = t[:i] + RULE + t[j:]
+        print("Обновлю правило подменю (добавлю /forecast)")
+        return save(t, new)
     a = next((x for x in ANCHORS if x in t), None)
     if a is None:
         print("Метка не найдена — правило будет в начале файла, после первого заголовка")
@@ -44,6 +52,10 @@ def main():
         else:                        # перед абзацем «Перед ответом на любую команду меню»
             new = t[:i] + RULE + t[i:]
         print(f"Вставлю правило подменю у метки «{a}»")
+    save(t, new)
+
+
+def save(t, new):
     if "--apply" not in sys.argv:
         print("Это предпросмотр. Применить: добавь --apply")
         return
