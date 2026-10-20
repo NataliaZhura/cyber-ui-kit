@@ -40,9 +40,9 @@ INFL = {2027: 3.975, 2028: 3.963, 2029: 3.955, 2030: 3.951}  # прогноз М
 TDATA = BASE / "forecast" / "types_data.json"
 GRAIN_F = {"export": ("Экспорт зерна (сезон, начатый год назад)", [("export", 1, 1)]),
            "park": ("Парк зерновозов год назад", [("park", 1, -1)])}
-GRAIN_S = {"base": {"export": [0, 0, 0, 0], "park": [2, 2, 2, 2]},
-           "opt": {"export": [8, 8, 8, 8], "park": [1, 1, 1, 1]},
-           "pess": {"export": [-10, -5, 0, 0], "park": [3, 3, 2, 2]}}
+GRAIN_S = {"base": {"export": [0, 0, 0, 0], "park": [3, 3, 3, 3]},  # выпуск хопперов в 2026 г. −79% (прогноз УВЗ-Транса)
+           "opt": {"export": [8, 8, 8, 8], "park": [2, 2, 2, 2]},    # экспорт к 75 млн т к 2030 г. (цель Минсельхоза)
+           "pess": {"export": [-10, -5, 0, 0], "park": [5, 5, 5, 5]}}  # спад экспорта, парк растёт как в среднем за 15 лет
 FIT_F = {"balance": ("Контейнеры минус рост парка платформ", [("teu", 0, 1), ("park", 0, -1)])}
 FIT_S = {"base": {"balance": [0, 0, 0, 0]}, "opt": {"balance": [4, 4, 4, 4]}, "pess": {"balance": [-6, -4, -2, 0]}}
 TYPES = {
@@ -191,6 +191,42 @@ def forecast(w, scen="base", ov=None):
             "real": real, "q4": q[-3:], "last_m": last_m, "pace": pace, "scen": s}
 
 
+AGE = [(3, 0.88), (8, 0.75), (14, 0.62), (19, 0.5), (99, 0.38)]  # цена б/у к новому по возрасту (как в zvagon)
+
+
+def age_k(age):
+    """Плавная кривая: между точками возраста — по прямой (без ступенек)."""
+    pts = [(0, 1.0)] + [(a, k) for a, k in AGE[:-1]] + [(30, 0.3)]
+    for (a0, k0), (a1, k1) in zip(pts, pts[1:]):
+        if age <= a1:
+            return k0 + (k1 - k0) * (age - a0) / (a1 - a0)
+    return 0.3
+
+
+def value(w, scen="base", age=14):
+    """Стоимость вагона 2026–2030, млн руб. без НДС: новый и б/у заданного возраста. Нет модели — None."""
+    T = TYPES[w]
+    if "data" not in T or not TDATA.exists():
+        return None
+    P = json.loads(TDATA.read_text(encoding="utf-8"))[T["data"]].get("price")
+    if not P:
+        return None
+    r = forecast(w, scen)
+    lv = dict(r["lvl"])
+    lv[2025] = lv[2024] = lv[2026]  # до 2026 г. ряда ставок партнёра нет — средняя за 3 года начинается с уровня 2026 г.
+    avg3 = {y: sum(lv[y - i] for i in range(3)) / 3 for y in range(2026, 2031)}
+    if P["model"] == "rate":
+        new = {2026: P["new_2026"] or lv[2026] * 365 / (P["cap"] / 100) / 1e6}
+        for y in range(2027, 2031):
+            new[y] = new[y - 1] * math.exp(P["b"] * math.log(avg3[y] / avg3[y - 1]) + P["trend"] / 100)
+    else:
+        g = P["trend"][scen] / 100
+        new = {y: P["new_2026"] * (1 + g) ** (y - 2026) for y in range(2026, 2031)}
+    used = {y: v * age_k(age) for y, v in new.items()}
+    cap = {y: lv[y] * 365 / (new[y] * 1e6) * 100 for y in new}
+    return {"new": new, "used": used, "cap": cap, "P": P, "age": age}
+
+
 def report(w, a):
     T = TYPES[w]
     ov = dict(kv.split("=", 1) for kv in filter(None, (a.set or "").split(",")))
@@ -239,7 +275,21 @@ def report(w, a):
     for k in fkeys(T):
         L.append(f"| {fname(T, k)} +1% | {sg(lvl * (math.exp(f['b'][k] * xval(T, k, 1) / 100) - 1))} |")
     L.append(f"| {FNAME['const']}, за год | {sg(lvl * (math.exp(f['b']['const'] / 100) - 1))} |")
-    L += ["", f"<small>От ставки {MONTHS[lm - 1]} {n(lvl)} ₽.</small>", "", "## 5. Точность", "",
+    L += ["", f"<small>От ставки {MONTHS[lm - 1]} {n(lvl)} ₽.</small>", ""]
+    V = {sc: value(w, sc) for sc in SCN}
+    if V["base"]:
+        P = V["base"]["P"]
+        L += ["## 5. Стоимость вагона", "", "| Сценарий, млн ₽ без НДС | 2026 | 2027 | 2028 | 2029 | 2030 |", "|---|---|---|---|---|---|"]
+        for sc in ("base", "opt", "pess"):
+            v = V[sc]
+            L.append(f"| {SCN[sc]}, новый | " + " | ".join(f1(v["new"][y]) for y in range(2026, 2031)) + " |")
+        v = V["base"]
+        L.append(f"| Базовый, б/у {v['age']} лет | " + " | ".join(f1(v["used"][y]) for y in range(2026, 2031)) + " |")
+        L.append("| Базовый, годовой доход к цене нового, % | " + " | ".join(f1(v["cap"][y]) for y in range(2026, 2031)) + " |")
+        L += ["", f"<small>{P['note'][0].upper() + P['note'][1:]}. Годовой доход к цене в 2010–2024 гг. — {f1(P['cap_range'][0])}–"
+              f"{f1(P['cap_range'][1])}%: ниже коридора — вагон дорог относительно ставки, выше — дёшев. Б/у — новый × "
+              f"коэффициент возраста ({f1(age_k(v['age']))} для {v['age']} лет).</small>", ""]
+    L += ["## 6. Точность", "",
           f"- Годовая модель объясняет {round(f['r2'] * 100)}% колебаний ставки за {f['n']} лет; на прошлых годах "
           f"угадала направление в {round(bt.get('hit', 0) * 100)}% лет ({bt.get('years', 0)} проверочных), средняя ошибка "
           f"по проверочным годам ±{bt.get('error', '—')}% в год.",

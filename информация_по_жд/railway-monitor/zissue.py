@@ -251,7 +251,7 @@ def build(a):
                          f" | {n(r['lvl'][2026])} | {n(r['lvl'][2027])} | {n(r['lvl'][2030])} |")
         try:  # крытые — та же схема (ztypes.py)
             import ztypes
-            for w in ("kr158", "kr138"):
+            for w in ("kr158", "kr138", "hop_grain", "fit80"):
                 for sc in ("base", "opt", "pess"):
                     r = ztypes.forecast(w, sc)
                     L.append(f"| {ztypes.TYPES[w]['name']}, {ztypes.SCN[sc].lower()} | " + " | ".join(n(q) for q in r["q4"]) +
@@ -280,9 +280,20 @@ def build(a):
             used = {y: max(floor, p[y] * kf * ph ** max(0, 1 - (y - 2026) / 3)) for y in p}
             L.append(f"| {zvagon.NAMES[t]}, новый | " + " | ".join(n(p[y], 1) for y in range(2026, 2031)) + " |")
             L.append(f"| {zvagon.NAMES[t]}, б/у 14 лет | " + " | ".join(n(used[y], 1) for y in range(2026, 2031)) + " |")
+        try:  # зерновоз и платформа — модель стоимости ztypes.py
+            import ztypes
+            for t_ in ("hop_grain", "fit80"):
+                v = ztypes.value(t_, "base")
+                if v:
+                    nm = ztypes.TYPES[t_]["name"]
+                    L.append(f"| {nm}, новый | " + " | ".join(n(v['new'][y], 1) for y in range(2026, 2031)) + " |")
+                    L.append(f"| {nm}, б/у 14 лет | " + " | ".join(n(v['used'][y], 1) for y in range(2026, 2031)) + " |")
+        except SystemExit:
+            pass
         L += ["", "<small>Цена нового вагона следует за средней ставкой за 3 года и себестоимостью; б/у — по возрасту и фазе "
-              "рынка, не ниже цены лома. Ставки — модель раздела 5 (базовый сценарий). Ошибка — около ±15% в год. Подробно — "
-              "/vagon.</small>", ""]
+              "рынка, не ниже цены лома. Ставки — модель раздела 5 (базовый сценарий). Ошибка — около ±15% в год. Зерновоз: цена 2026 г. — "
+              "оценка через годовой доход к цене; платформа — по себестоимости (прайс заводов), за ставкой не следует. Подробно — "
+              "/vagon и /prognoz.</small>", ""]
     except SystemExit:
         pass
     # 7. Сигналы
