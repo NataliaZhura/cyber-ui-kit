@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Подключить тестового пользователя: отдельный агент `tester`, его сообщения — только в этого агента.
 
-  python3 tester/connect.py <TELEGRAM_ID>          подключить (сначала bash tester/setup.sh <ID>)
-  python3 tester/connect.py <TELEGRAM_ID> --off    отключить: убрать привязку и доступ (папка агента остаётся)
+  python3 tester/connect.py <TELEGRAM_ID> [--agent tester2]   подключить (сначала bash tester/setup.sh <ID> [агент])
+  python3 tester/connect.py <TELEGRAM_ID> --off               отключить: убрать привязку и доступ (папка остаётся)
+  У каждого гостя — свой агент (tester, tester2…): своя папка, память, файлы и адрес отправки.
+  --account <имя бота Ави>   если человек уже гость другого бота (ЖДуша): привязка только к сообщениям Ави
+                             (имена ботов — python3 menu.py accounts)
 
 Что делает (существующие настройки дополняет, а не затирает):
   1. агент `tester` с рабочей папкой ~/.openclaw/workspace-tester и той же моделью, что у основного;
@@ -15,8 +18,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-AGENT = "tester"
-WORKSPACE = str(Path.home() / ".openclaw" / "workspace-tester")
+ACCOUNT = sys.argv[sys.argv.index("--account") + 1] if "--account" in sys.argv else None
+AGENT = sys.argv[sys.argv.index("--agent") + 1] if "--agent" in sys.argv else "tester"
+WORKSPACE = str(Path.home() / ".openclaw" / f"workspace-{AGENT}")
 # инструменты, которые тестовому агенту не нужны и опасны: настройки шлюза, расписания, узлы, чужие сессии
 DENY = ["gateway", "cron", "nodes", "sessions_send", "sessions_spawn", "sessions_list", "sessions_history", "canvas"]
 
@@ -59,21 +63,35 @@ def agent_path(entries):
 def main(tid, off=False):
     if not tid.isdigit():
         sys.exit("Telegram ID — только цифры.")
-    binding = {"agentId": AGENT, "comment": "тестовый пользователь",
-               "match": {"channel": "telegram", "peer": {"kind": "direct", "id": tid}}}
+    match = {"channel": "telegram", "peer": {"kind": "direct", "id": tid}}
+    if ACCOUNT:
+        match["accountId"] = ACCOUNT
+    binding = {"agentId": AGENT, "comment": "тестовый пользователь", "match": match}
     bindings = get("bindings") or []
     allow = get("channels.telegram.allowFrom") or []
     style = next((a for a in allow if isinstance(a, str)), "")
     entry = (style.split(":")[0] + ":" + tid) if ":" in style else tid  # тот же формат, что у владельца
 
-    if off:
-        put("bindings", [b for b in bindings if (b.get("match", {}).get("peer") or {}).get("id") != tid])
+    if off:          # снимаем только привязки к агентам Ави (tester…); привязку к ЖДуше и её гостю не трогаем
+        left = [b for b in bindings if not ((b.get("match", {}).get("peer") or {}).get("id") == tid
+                                            and str(b.get("agentId", "")).startswith("tester"))]
+        put("bindings", left)
+        if any((b.get("match", {}).get("peer") or {}).get("id") == tid for b in left):
+            print(f"Отключено от Ави: {tid}. Доступ к другому боту (привязка осталась) не трогаю.")
+            return
         put("channels.telegram.allowFrom", [a for a in allow if str(a).split(":")[-1] != tid])
-        print(f"Отключено: {tid} убран из привязок и разрешённых. Папка {WORKSPACE} сохранена.")
+        print(f"Отключено: {tid} убран из привязок и разрешённых. Папки агентов сохранены.")
         return
 
     if not Path(WORKSPACE, "AGENTS.md").exists():
-        sys.exit(f"Нет {WORKSPACE}/AGENTS.md — сначала: bash tester/setup.sh {tid}")
+        sys.exit(f"Нет {WORKSPACE}/AGENTS.md — сначала: bash tester/setup.sh {tid} {AGENT}")
+    same = [b for b in bindings if (b.get("match", {}).get("peer") or {}).get("id") == tid and b.get("agentId") != AGENT]
+    clash = [b for b in same if not ACCOUNT or b.get("match", {}).get("accountId") in (None, ACCOUNT)]
+    if clash:
+        acc = clash[0].get("match", {}).get("accountId")
+        sys.exit(f"{tid} уже привязан к агенту {clash[0].get('agentId')}" + (f" (бот {acc})" if acc else "")
+                 + ". Если это другой бот — укажи бота Ави: --account <имя> (python3 menu.py accounts); "
+                 "иначе сначала отключи прежнюю привязку.")
     entries = get("agents.entries")
     if not agent_path(entries):
         model = (get("agents.defaults.model") or {})
@@ -87,7 +105,7 @@ def main(tid, off=False):
     if not path:
         sys.exit("Агент добавлен, но не найден в agents.entries — пришли вывод: openclaw config get agents.entries")
     put(f"{path}.tools.deny", DENY)
-    if not any((b.get("match", {}).get("peer") or {}).get("id") == tid for b in bindings):
+    if not any((b.get("match", {}).get("peer") or {}).get("id") == tid and b.get("agentId") == AGENT for b in bindings):
         put("bindings", bindings + [binding])
     if entry not in allow and tid not in [str(a).split(":")[-1] for a in allow]:
         put("channels.telegram.allowFrom", allow + [entry])

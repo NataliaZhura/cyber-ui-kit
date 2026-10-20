@@ -205,22 +205,30 @@ def news(days=30, min_score=5):
     con = sqlite3.connect(DB)
     rows = con.execute("SELECT published, title, summary, url, score FROM news WHERE published >= ? AND score >= ? "
                        "ORDER BY score DESC, published DESC", (since, min_score)).fetchall()
-    up = CFG["up_words"]
-    down = CFG["down_words"]
+    up, down, sup = CFG["up_words"], CFG["down_words"], CFG.get("support_up_words", [])
+    avia = CFG.get("aviation_words", [])
     by = {}
-    seen = set()
+    seen = []
     for pub, title, summ, url, score in rows:
-        key = re.sub(r"\W+", " ", (title or "").lower())[:60]
-        if key in seen:
-            continue
-        seen.add(key)
         low = f"{title} {summ or ''}".lower()
+        if avia and not any(w in low for w in avia):
+            continue                 # не про авиацию (например, «капремонт» жилья) — мимо
+        words = {w for w in re.findall(r"\w{4,}", (title or "").lower())}
+        if any(words and len(words & s) / len(words | s) >= 0.5 for s in seen):
+            continue                 # тот же сюжет другими словами
+        seen.append(words)
         head = (title or "").lower()
         for d, spec in CFG["drivers"].items():
             if any(w in low for w in spec["words"]):
-                sign = "↑" if any(w in head for w in up) else "↓" if any(w in head for w in down) else "·"
+                ups = up + (sup if d in ("господдержка", "поставки", "госзаказ") else [])
+                sign = "↑" if any(w in head for w in ups) else "↓" if any(w in head for w in down) else "·"
                 by.setdefault(d, []).append((score, pub[:10], title, url, sign))
     return by
+
+
+def short(url):
+    """Длинные ссылки агрегатора не помещаются в экран — оставляем начало (Ави берёт полную из архива)."""
+    return url if len(url) <= 90 else url[:87] + "…"
 
 
 def pressure(d, items):
@@ -247,7 +255,7 @@ def cmd_news(*opts):
         spec = CFG["drivers"][d]
         print(f"\n▸ {d} — {spec['effect']} ({spec['segments']}): {len(items)} нов., {pressure(d, items)}")
         for score, pub, title, url, sign in sorted(items, reverse=True)[:3]:
-            print(f"   {sign} {pub} [{score}] {title[:110]} — {url}")
+            print(f"   {sign} {pub} [{score}] {title[:110]} — {short(url)}")
     print("\nЕсли в новости есть цифра, меняющая допущение сценария (цена керосина, ставка, пассажиропоток, тарифы), — "
           "python3 market.py set <драйвер> <год> <значение> \"<ссылка>\".")
 
