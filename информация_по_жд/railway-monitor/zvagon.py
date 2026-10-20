@@ -5,7 +5,7 @@
   python3 zvagon.py signals          только светофор (текущие значения показателей)
 
 Данные — ~/railway-monitor/forecast/vagon_data.json (цены, коэффициенты, показатели светофора — обновляет владелец).
-Ставки на 2026–2030: полувагоны — рабочая модель zrate.py (средняя за год), крытые — zmodel.py (рекомендуемые показатели).
+Ставки на 2026–2030: полувагоны — zrate.py, крытые — ztypes.py (средняя за год); без их данных — zmodel.py.
 Цена нового вагона = e^(a + b·ln(средняя ставка за 3 года) + c·(год − 2015)): цена следует за ставкой со сглаживанием
 и растёт вместе с себестоимостью. Б/у = новый × коэффициент возраста × коэффициент фазы рынка, не ниже цены лома.
 """
@@ -45,6 +45,11 @@ def rate_paths(scen):
         R = zrate.load()
         for w in ("gon", "inno"):
             out[w] = {y: round(v) for y, v in zrate.forecast(R, w, scen)["lvl"].items()}
+    except SystemExit:
+        pass
+    try:  # крытые — рабочая модель ztypes.py; нет месячных ставок в базе — прежний расчёт
+        import ztypes
+        out["kr158"] = {y: round(v) for y, v in ztypes.forecast("kr158", scen)["lvl"].items()}
     except SystemExit:
         pass
     return out

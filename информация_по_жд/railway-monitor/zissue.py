@@ -241,7 +241,7 @@ def build(a):
               "с вагонами на балансе РЖД.</small>", ""]
     # 5. Прогноз
     if rz:
-        L += [f"## 5. Прогноз ставки аренды полувагона (модель ЖДуши, данные на {R['as_of']})", "",
+        L += [f"## 5. Прогноз ставки аренды (модель ЖДуши, данные на {R['as_of']})", "",
               "| Вагон, сценарий | октябрь* | ноябрь* | декабрь* | средняя за 2026 г.** | средняя за 2027 г.*** | средняя за 2030 г.*** |",
               "|---|---|---|---|---|---|---|"]
         for w in ("inno", "gon"):
@@ -249,7 +249,17 @@ def build(a):
                 r = rz[w][sc]
                 L.append(f"| {zrate.WAGONS[w]}, {zrate.SCN[sc].lower()} | " + " | ".join(n(q) for q in r["q4"]) +
                          f" | {n(r['lvl'][2026])} | {n(r['lvl'][2027])} | {n(r['lvl'][2030])} |")
-        L += ["", f"<small>* {zrate.AVG['month']}. ** {zrate.AVG['2026']}. *** {zrate.AVG['year']}.</small>", ""]
+        try:  # крытые — та же схема (ztypes.py)
+            import ztypes
+            for w in ("kr158", "kr138"):
+                for sc in ("base", "opt", "pess"):
+                    r = ztypes.forecast(w, sc)
+                    L.append(f"| {ztypes.TYPES[w]['name']}, {ztypes.SCN[sc].lower()} | " + " | ".join(n(q) for q in r["q4"]) +
+                             f" | {n(r['lvl'][2026])} | {n(r['lvl'][2027])} | {n(r['lvl'][2030])} |")
+        except SystemExit:
+            pass
+        L += ["", f"<small>* {zrate.AVG['month']}. ** {zrate.AVG['2026']}. *** {zrate.AVG['year']}. Крытые: пессимистичный — по "
+              "факторам спада (стройка, ипотека), не выше «средняя прошлого года + инфляция».</small>", ""]
         need = [f"{n(t)} ₽ — рабочий парк −{n(zrate.need(R, 'inno', t)[0], 1)}% (≈{n(zrate.need(R, 'inno', t)[1], 1)} тыс. вагонов)"
                 for t in R["targets"]]
         L += ["Что нужно для роста ставки инновационного полувагона: " + "; ".join(need) + ". Полный расчёт с вкладом "
