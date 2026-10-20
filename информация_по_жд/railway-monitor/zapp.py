@@ -4,7 +4,7 @@
   python3 zapp.py serve [--port 8787]     запустить (слушает только 127.0.0.1; снаружи — через Caddy с HTTPS)
   python3 zapp.py sort                    показать, какие старые файлы saved/ в какой раздел лягут (ничего не меняет)
   python3 zapp.py sort --apply            разложить (только после «да» владельца; файлы переносятся, не удаляются)
-  python3 zapp.py hide prognoz [--date 2026-10-19] [--keep <часть имени>]... [--apply]
+  python3 zapp.py hide prognoz [--date 2026-10-19] [--keep <часть имени>]... [--only <часть имени>]... [--apply]
                                           убрать из раздела файлы за день (дата в имени, иначе дата файла; по умолчанию —
                                           сегодня): сначала список, с --apply — перенос в archive/<дата>/ (не удаляются);
                                           файлы модели и сводки рынка остаются
@@ -398,7 +398,7 @@ def cmd_sort(apply):
 KEEP = {"Модель_ставки_полувагона_2030.pdf", "Модель_ставки_полувагона_2030.xlsx"}  # рабочая модель, не запросы
 
 
-def cmd_hide(key, day, apply, keep=()):
+def cmd_hide(key, day, apply, keep=(), only=()):
     """Убрать из раздела приложения файлы, сохранённые за день: перенос в archive/<дата>/, без удаления."""
     roots = [SAVED, FORECAST, FORECAST / "guest"] + sorted(BASE.glob("saved_*"))
     found = []
@@ -408,7 +408,7 @@ def cmd_hide(key, day, apply, keep=()):
         dated = re.match(r"\d{4}-\d{2}-\d{2}", p.name)  # дата в имени важнее даты файла (файлы могли переложить)
         when = dated.group() if dated else time.strftime("%Y-%m-%d", time.localtime(p.stat().st_mtime))
         if (section_of(p, root) == key and p.name not in KEEP and not p.name.startswith("сводка_") and when == day
-                and not any(k in p.name for k in keep)):
+                and not any(k in p.name for k in keep) and (not only or any(o in p.name for o in only))):
             for x in (p, p.with_suffix(".md")):
                 if x.is_file() and (root, x) not in found:
                     found.append((root, x))
@@ -418,7 +418,7 @@ def cmd_hide(key, day, apply, keep=()):
         print(f"   {root.name}/{p.relative_to(root).as_posix()}")
     if not apply:
         return print(f"\nВсего {len(found)}. Ничего не перенесено. Убрать: python3 zapp.py hide {key} --date {day}"
-                     + "".join(f" --keep {k}" for k in keep) + " --apply")
+                     + "".join(f" --keep {k}" for k in keep) + "".join(f" --only {o}" for o in only) + " --apply")
     arch = BASE / "archive" / day
     for root, p in found:
         dst = arch / root.relative_to(BASE) / p.relative_to(root)
@@ -450,7 +450,8 @@ if __name__ == "__main__":
         cmd_sort("--apply" in a)
     elif a[:1] == ["hide"] and len(a) > 1 and a[1] in KEYS:
         cmd_hide(a[1], a[a.index("--date") + 1] if "--date" in a else time.strftime("%Y-%m-%d"), "--apply" in a,
-                 [a[i + 1] for i, x in enumerate(a[:-1]) if x == "--keep"])
+                 [a[i + 1] for i, x in enumerate(a[:-1]) if x == "--keep"],
+                 [a[i + 1] for i, x in enumerate(a[:-1]) if x == "--only"])
     elif a[:1] == ["check"]:
         cmd_check()
     else:
