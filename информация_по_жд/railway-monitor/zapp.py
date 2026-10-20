@@ -24,6 +24,7 @@
 import hashlib
 import hmac
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -48,6 +49,8 @@ SHOW = {".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".csv", ".png", ".jpg", ".jpe
 SECTIONS = [
     ("Рынок", "poluvagony", "Полувагоны", ["полуваг"]),
     ("Рынок", "krytye", "Крытые вагоны", ["крыт"]),
+    ("Рынок", "zerno", "Зерновозы", ["зерновоз"]),
+    ("Рынок", "fiting", "Фитинговые платформы", ["фитинг"]),
     ("Рынок", "market", "Новости рынка", ["новост", "рынок", "market"]),
     ("Рынок", "rates", "Ставки", ["ставки_аренд", "_ставки"]),
     ("Рынок", "loading", "Погрузка", ["погрузк"]),
@@ -228,8 +231,73 @@ def run_task(agent, uid, text):
 LIMITS = {"coal": (-20, 20), "load": (-20, 20), "stroy": (-30, 30), "buy": (0, 80), "off": (0, 80), "pace": (-5, 5)}
 
 
+TLIMITS = {"stroy": (-30, 30), "mortgage": (-60, 60), "export": (-40, 40), "park": (-10, 30), "balance": (-20, 20),
+           "pace": (-5, 5)}
+
+
+def vagon_value(t, lvl):
+    """Стоимость вагона по модели zvagon.py для ставок выбранного сценария: новый, б/у 14 лет, доход к цене."""
+    try:
+        import zvagon
+        V = zvagon.load()
+        p, _ = zvagon.price_path(V, t, {y: lvl[y] for y in range(2027, 2031)})
+    except (SystemExit, KeyError):
+        return None
+    k = zvagon.age_factor(V, 14)
+    return {"new": {str(y): round(v, 1) for y, v in p.items()}, "used": {str(y): round(v * k, 1) for y, v in p.items()},
+            "cap": {str(y): round(lvl[y] * 365 / (v * 1e6) * 100, 1) for y, v in p.items()}}
+
+
+def forecast_type(w, sc, body):
+    """«Построить прогноз» для крытых, зерновоза, платформ — ztypes.py (та же схема, что у полувагона)."""
+    import ztypes as T
+    ov = {}
+    for k, v in (body.get("set") or {}).items():
+        if k in TLIMITS and v not in (None, ""):
+            try:
+                lo, hi = TLIMITS[k]
+                ov[k] = str(min(hi, max(lo, float(str(v).replace(",", ".")))))
+            except ValueError:
+                return {"error": "Не число в поле фактора"}
+    try:
+        res = {s_: T.forecast(w, s_, ov if s_ == sc else None) for s_ in T.SCN}
+    except SystemExit as e:
+        return {"error": str(e) or "Данных по этому типу ещё нет на сервере."}
+    TY, r = T.TYPES[w], res[sc]
+    fk = T.fkeys(TY)
+    units = {"pace": "% в месяц"}
+    factors = {k: (T.fname(TY, k), "% за год") for k in fk}
+    factors["pace"] = ("Темп ставки в IV кв.", units["pace"])
+    defaults = {T.SCN[s_]: {**{k: res[s_]["scen"][k][0] for k in fk}, "pace": res[s_]["pace"]} for s_ in T.SCN}
+    lm = r["last_m"]
+    lvl = r["months"][lm]
+    price = {f"{T.fname(TY, k)} +1%": lvl * (math.exp(r["fit"]["b"][k] * T.xval(TY, k, 1) / 100) - 1) for k in fk}
+    v = T.value(w, sc)
+    out = {"wagon": TY["name"], "scenario": T.SCN[sc], "as_of": f"{T.MONTHS[lm - 1]} 2026", "now": round(lvl),
+           "q4": {T.SCN[k]: {"months": [round(x) for x in x_["q4"]],
+                             "delta": [round(a - b) for a, b in zip(x_["q4"], [x_["months"][lm]] + x_["q4"][:-1])],
+                             "avg": round(x_["lvl"][2026]), "pace": x_["pace"]} for k, x_ in res.items()},
+           "years": {T.SCN[k]: {str(y): round(x_["lvl"][y]) for y in [2026] + T.YEARS} for k, x_ in res.items()},
+           "parts": {str(y): {k: round(x) for k, x in r["parts"][y].items()} for y in T.YEARS},
+           "end": {str(y): round(r["end"][y]) for y in T.YEARS}, "parts_scenario": T.SCN[sc],
+           "price": {k: round(x) for k, x in price.items()}, "need": [], "factors": factors, "cap": [],
+           "defaults": defaults, "pace_label": "темп", "fields": fk + ["pace"],
+           "accuracy": r["fit"]["bt"] or {}}
+    if v:
+        out["value"] = {"new": {str(y): round(x, 1) for y, x in v["new"].items()},
+                        "used": {str(y): round(x, 1) for y, x in v["used"].items()},
+                        "cap": {str(y): round(x, 1) for y, x in v["cap"].items()}}
+    elif w == "kr158":
+        out["value"] = vagon_value("kr158", r["lvl"])
+    return out
+
+
 def forecast(body):
-    """«Построить прогноз»: модель ставки полувагона (zrate.py) с факторами из формы. Без нейросети."""
+    """«Построить прогноз»: полувагоны — zrate.py, остальные типы — ztypes.py; факторы из формы. Без нейросети."""
+    import ztypes
+    if body.get("wagon") in ztypes.TYPES:
+        sc = body.get("scenario") if body.get("scenario") in ztypes.SCN else "base"
+        return forecast_type(body["wagon"], sc, body)
     import zrate as Z
     try:
         D = Z.load()
@@ -257,7 +325,8 @@ def forecast(body):
             "end": {str(y): round(r["end"][y]) for y in Z.YEARS}, "parts_scenario": Z.SCN[sc if sc != "pess" else "base"],
             "price": {k: round(v) for k, v in up.items()},
             "need": [{"target": t, "pct": round(Z.need(D, w, t)[0], 1), "k": round(Z.need(D, w, t)[1], 1)} for t in D["targets"]],
-            "defaults": defaults, "factors": {k: Z.FACTORS[k] for k in LIMITS}, "cap": r["cap"]}
+            "defaults": {Z.SCN[k]: v for k, v in defaults.items()}, "factors": {k: Z.FACTORS[k] for k in LIMITS}, "cap": r["cap"],
+            "pace_label": "парк", "fields": ["pace", "coal", "load", "stroy", "buy", "off"], "value": vagon_value(w, r["lvl"])}
 
 
 class App(BaseHTTPRequestHandler):

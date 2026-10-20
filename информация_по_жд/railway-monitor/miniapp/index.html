@@ -57,7 +57,7 @@ opacity:0;transform:translateY(20px);transition:.2s;pointer-events:none;z-index:
 #toast.on{opacity:1;transform:none}
 .err{padding:40px 20px;text-align:center;color:var(--hint)}
 .card.build{grid-column:1/-1;background:var(--btn);color:var(--btn-text)}.card.build small{color:var(--btn-text);opacity:.85}
-.seg{display:flex;gap:6px;margin-bottom:8px}.seg button{flex:1;border:1px solid var(--sep);background:var(--bg2);color:var(--text);
+.seg{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}.seg button{flex:1 1 30%;border:1px solid var(--sep);background:var(--bg2);color:var(--text);
 border-radius:10px;padding:8px 4px;font:inherit;font-size:13px;cursor:pointer}.seg button.on{background:var(--btn);color:var(--btn-text);border-color:var(--btn)}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.f2 div small{margin:0 0 3px}
 .tbl{width:100%;border-collapse:collapse;font-size:13px;margin:4px 0}.tbl th,.tbl td{padding:5px 4px;border-bottom:1px solid var(--sep);text-align:right;white-space:nowrap}
@@ -129,7 +129,7 @@ function render() {
   if (S.build) return renderBuild();
   const secs = S.data.sections.filter(s => s.group === S.tab);
   const build = S.tab === "Прогнозы" ? `<button class="card build" data-build><b>Построить прогноз ставки</b>
-    <small>полувагон обычный или инновационный · свои значения факторов · октябрь–декабрь 2026 и до 2030</small></button>` : "";
+    <small>полувагоны, крытые, зерновоз, фитинговые платформы · свои значения факторов · октябрь–декабрь 2026 и до 2030</small></button>` : "";
   $("view").innerHTML = `<div class="grid">${build}${secs.map(card).join("")}</div>`;
 }
 function card(s) {
@@ -194,7 +194,7 @@ function renderBuild() {
   tg?.BackButton.show();
   const r = F.res;
   if (!r) { $("view").innerHTML = `<div class="err">Считаю…</div>`; return calc(); }
-  const d = r.defaults[{"Пессимистичный": "pess", "Базовый": "base", "Оптимистичный": "opt"}[r.scenario]];
+  const d = r.defaults[r.scenario];
   const inp = (k, step) => { const [name, unit] = r.factors[k]; const v = F.set[k] ?? d[k];
     return `<div><small>${esc(name)}, ${esc(unit)}</small><input inputmode="decimal" data-f="${k}" value="${esc(String(v).replace(".", ","))}"></div>`; };
   const seg = (key, opts) => `<div class="seg">${opts.map(([v, t]) => `<button data-${key}="${v}" class="${F[key] === v ? "on" : ""}">${t}</button>`).join("")}</div>`;
@@ -202,7 +202,7 @@ function renderBuild() {
   const yrs = Object.keys(r.years[sc[0]]);
   const months = ["октябрь", "ноябрь", "декабрь"];
   const q4 = `<table class="tbl"><tr><th>Сценарий</th>${months.map(m => `<th>${m.slice(0, 3)}</th>`).join("")}<th>средняя за 2026 г.*</th></tr>${sc.map(k =>
-    `<tr class="${k === r.scenario ? "me" : ""}"><td>${k.replace("истичный", "ист.")}<br><small style="color:var(--hint)">парк ${String(r.q4[k].pace).replace(".", ",")}%/мес</small></td>${r.q4[k].months.map((m, i) =>
+    `<tr class="${k === r.scenario ? "me" : ""}"><td>${k.replace("истичный", "ист.")}<br><small style="color:var(--hint)">${r.pace_label} ${String(r.q4[k].pace).replace(".", ",")}%/мес</small></td>${r.q4[k].months.map((m, i) =>
     `<td>${fmt(m)}<br><small style="color:var(--hint)">${sgn(r.q4[k].delta[i])}</small></td>`).join("")}<td>${fmt(r.q4[k].avg)}</td></tr>`).join("")}</table>`;
   const years = `<table class="tbl"><tr><th>Сценарий</th>${yrs.map(y => `<th>${y}</th>`).join("")}</tr>${sc.map(k =>
     `<tr class="${k === r.scenario ? "me" : ""}"><td>${k}</td>${yrs.map(y => `<td>${fmt(r.years[k][y])}</td>`).join("")}</tr>`).join("")}</table>`;
@@ -216,9 +216,9 @@ function renderBuild() {
     <td>−${String(n.pct).replace(".", ",")}% (−${String(n.k).replace(".", ",")} тыс.)</td><td>−${(n.k / 3).toFixed(1).replace(".", ",")} тыс.</td></tr>`).join("")}</table>
     <div class="note">В августе рабочий парк сократился на 6,4 тыс. вагонов за месяц.</div></div>` : "";
   $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Прогноз ставки</h2>
-    <div class="box">${seg("wagon", [["inno", "Инновационный"], ["gon", "Обычный"]])}${seg("scenario", [["pess", "Пессимист."], ["base", "Базовый"], ["opt", "Оптимист."]])}
-    <label>Факторы сценария «${esc(r.scenario)}»</label><small>Годовые — на 2027–2030; рабочий парк — % в месяц в IV кв. 2026 (минус — сокращение)</small>
-    <div class="f2">${inp("pace")}${inp("coal")}${inp("load")}${inp("stroy")}${inp("buy")}${inp("off")}</div>
+    <div class="box"><label>Тип вагона</label>${seg("wagon", [["inno", "Полувагон иннов."], ["gon", "Полувагон тип."], ["kr158", "Крытый 158"], ["kr138", "Крытый 138"], ["hop_grain", "Зерновоз"], ["fit80", "Фитинг 80'"]])}${seg("scenario", [["pess", "Пессимист."], ["base", "Базовый"], ["opt", "Оптимист."]])}
+    <label>Факторы сценария «${esc(r.scenario)}»</label><small>Годовые — на 2027–2030 (значение первого года, можно задать одно на все годы); IV кв. 2026 — % в месяц</small>
+    <div class="f2">${r.fields.map(k => inp(k)).join("")}</div>
     <button class="main-btn" data-calc>Рассчитать</button><button class="main-btn ghost" data-reset>Вернуть значения сценария</button></div>
     <div class="box"><label>${esc(r.wagon)}: октябрь — декабрь 2026, ₽/сут</label><div class="note">Ставка месяца — середина диапазона ставок рынка за месяц. Сентябрь — ${fmt(r.now)} ₽. Под ставкой — изменение за месяц.</div><div class="wrap">${q4}</div>
     <div class="note">* Средняя за 2026 г. — январь–декабрь: январь–сентябрь — факт, октябрь–декабрь — прогноз (сумма 12 месяцев / 12).</div></div>
@@ -227,6 +227,12 @@ function renderBuild() {
     ${r.cap.length ? `<div class="note">⚠ Выше рекорда 2024 г. в ${r.cap.join(", ")} г. — заложен рост выпуска вагонов.</div>` : ""}</div>
     <div class="box"><label>Из чего складывается рост (${esc(r.parts_scenario)}): изменение от декабря к декабрю</label><div class="wrap">${parts}</div></div>
     ${need}<div class="box"><label>Цена фактора, ₽/сут</label>${price}</div>
+    ${r.value ? `<div class="box"><label>Стоимость вагона, млн ₽ без НДС (${esc(r.scenario.toLowerCase())})</label><div class="wrap"><table class="tbl">
+      <tr><th></th>${Object.keys(r.value.new).map(y => `<th>${y}</th>`).join("")}</tr>
+      <tr><td>Новый</td>${Object.values(r.value.new).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr>
+      <tr><td>Б/у 14 лет</td>${Object.values(r.value.used).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr>
+      <tr><td>Доход к цене, %</td>${Object.values(r.value.cap).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr></table></div></div>` : ""}
+    ${r.accuracy && r.accuracy.ratio > 0.9 ? `<div class="note">⚠ На прошлых годах модель этого типа не точнее прогноза «средний рост» — смотрите сценарии.</div>` : ""}
     <div class="note">Данные рынка на ${esc(r.as_of)}. Оценка рынка, не инвестиционная рекомендация. Средняя ошибка модели по проверочным годам ±22–31% в год; 2029–2030 — ориентир.</div>`;
 }
 
