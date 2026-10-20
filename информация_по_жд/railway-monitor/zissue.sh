@@ -31,6 +31,8 @@ for pair in kr158:krytye:крытый_158 kr138:krytye:крытый_138 hop_grai
 done
 python3 zevents.py --days 30 --out saved/market/${D}_события_рынка.md && ~/pw/bin/python zreport.py saved/market/${D}_события_рынка.md >/dev/null
 echo "== 5. Отправка владельцу"
-python3 send.py saved/market/${D}_обзор_рынка_вагонов.pdf saved/market/${D}_обзор_рынка_вагонов_демо.pdf
+for f in saved/market/${D}_обзор_рынка_вагонов.pdf saved/market/${D}_обзор_рынка_вагонов_демо.pdf saved/market/${D}_события_рынка.pdf; do
+  [ -f "$f" ] && python3 send.py "$f" || echo "!! нет $f — выпуск не собрался, пришли вывод выше"
+done
 systemctl restart zhdusha-app 2>/dev/null && echo "мини-приложение перезапущено"
 echo "== Готово. В ЖДуше: /new, затем «обзор рынка вагонов» или /prognoz (вагоны 1–10)"

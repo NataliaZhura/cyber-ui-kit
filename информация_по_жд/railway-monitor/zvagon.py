@@ -36,10 +36,13 @@ def n(v, d=1):
 
 def rate_paths(scen):
     """Ставки 2024–2030 по типам: история + рабочая модель (рекомендуемые показатели)."""
-    D = zmodel.load()
-    g = zmodel.forecast_one(D, "gon", D["default"]["gon"], scen, {})
-    k = zmodel.forecast_one(D, "kr", D["default"]["kr"], scen, {}, gon_path=g["path"])
-    out = zmodel.paths(D, {"gon": g, "kr": k}, ["gon", "inno", "kr158"])
+    try:  # прежний расчёт (zmodel.py) — запасной: в старом model_data.json нет части полей
+        D = zmodel.load()
+        g = zmodel.forecast_one(D, "gon", D["default"]["gon"], scen if scen in D["scenarios"] else "base", {})
+        k = zmodel.forecast_one(D, "kr", D["default"]["kr"], scen if scen in D["scenarios"] else "base", {}, gon_path=g["path"])
+        out = zmodel.paths(D, {"gon": g, "kr": k}, ["gon", "inno", "kr158"])
+    except (KeyError, SystemExit):
+        out = {}
     try:  # полувагоны — та же модель, что в /prognoz и «Обзоре рынка» (zrate.py); нет её данных — прежний расчёт
         import zrate
         R = zrate.load()
@@ -52,6 +55,9 @@ def rate_paths(scen):
         out["kr158"] = {y: round(v) for y, v in ztypes.forecast("kr158", scen)["lvl"].items()}
     except SystemExit:
         pass
+    miss = [w for w in ("gon", "inno", "kr158") if w not in out]
+    if miss:
+        sys.exit(f"Нет ставок для {', '.join(miss)} — не загружены данные моделей (rate_data.json, observations.csv).")
     return out
 
 
