@@ -2,6 +2,10 @@
 """Светофор событий рынка по типам вагонов: что в новостях за последние дни тянет спрос на вагон вверх или вниз. 0 токенов.
 
   python3 zevents.py [--wagon hop_grain|fit80|kr158|gon|all] [--days 14] [--out файл.md]
+  python3 zevents.py set grain.quota_cut=20 grain.port=Тамань:1 grain.freight=30 grain.truck=5
+                         fit.to_gondola=10 fit.port=Владивосток:30:1 fit.import=6 fit.discount=0
+                                                параметры рынка с цифрами из новостей → рубли в прогнозе (ztypes.py)
+  python3 zevents.py show | clear [grain|fit]   что сейчас учтено / сбросить
 
 Цепочка «вагон → порт → судно»: проблема в море или порту (закрытие, атака, нет судов, рост фрахта), квота или пошлина
 снижают спрос на вагон, который везёт груз к порту, — вагоны встают в отстой, груз уходит на автотранспорт или в обход.
@@ -52,6 +56,84 @@ RULES = [
     ("gon", +1, r"контейнер\w*.{0,40}полувагон|полувагон\w*.{0,40}контейнер", "полувагоны получают контейнеры — дополнительный груз"),
     ("all", 0, r"тариф\w*.{0,60}(фитинг|платформ|полувагон|крыт|зерновоз|хоппер|порожн)", "тариф РЖД по типу вагона или порожнему пробегу — проверить, кому выгоднее"),
 ]
+
+
+# ---------- Параметры рынка: события → рубли (forecast/market_params.json, на сервере) ----------
+# Квота, закрытые порты, фрахт, автотранспорт (зерно); контейнеры в полувагонах, порты, импорт, скидки РЖД (платформы).
+# Бот заполняет их по новостям командой `set` (только с цифрой из новости), ztypes.py переводит в рубли:
+#   потеря экспорта за сезон, % = квота + Σ доля порта × месяцы/12 + автотранспорт + 0,1 × рост фрахта;
+#   IV кв.: ставка месяца × (1 − 0,9 × потеря отгрузок в этот месяц, %) — 0,9: в авг.–сент. 2026 г. погрузка зерна +55%,
+#   ставка +51% (одно наблюдение — уточняется по журналу); 2027 г.: потеря экспорта — в фактор «экспорт зерна».
+#   Платформы: баланс контейнеров = импорт − уход в полувагоны − порты + 0,5 × скидка РЖД; IV кв. — коэффициент 0,5.
+PARAMS = BASE / "forecast" / "market_params.json"
+EMPTY = {"grain": {"quota_cut": 0, "ports": [], "freight": 0, "truck": 0},
+         "fit": {"to_gondola": 0, "ports": [], "import": 0, "discount": 0}, "port_shares": {}, "updated": "", "notes": []}
+PNAME = {"quota_cut": "квота на экспорт зерна, % недобора к ожидаемому экспорту", "freight": "рост фрахта судов, %",
+         "truck": "доля зерна, ушедшая на автотранспорт, %", "to_gondola": "контейнеры, ушедшие в полувагоны и крытые, %",
+         "import": "импорт контейнеров к прошлому году, %", "discount": "скидка РЖД на тариф/порожний пробег платформ, %"}
+
+
+def params():
+    import json
+    P = json.loads(json.dumps(EMPTY))
+    if PARAMS.exists():
+        got = json.loads(PARAMS.read_text(encoding="utf-8"))
+        for k, v in got.items():
+            P[k] = {**P[k], **v} if isinstance(P.get(k), dict) and isinstance(v, dict) else v
+    return P
+
+
+def effects(kind):
+    """kind: grain | fit → {'comp': {строка: % к экспорту/балансу 2027}, 'q4': [множители 3 месяцев], 'text': [...]}"""
+    P = params()
+    g = P[kind]
+    ports = g.get("ports", [])
+    share = lambda x: float(x.get("share") or P["port_shares"].get(x["port"], 0))
+    port_year = sum(share(x) * min(float(x["months"]), 12) / 12 for x in ports)
+    port_m = lambda i: sum(share(x) for x in ports if float(x["months"]) >= i)
+    if kind == "grain":
+        comp = {"Квота на экспорт зерна": -g["quota_cut"], "Порты и море (закрытия, атаки)": -port_year,
+                "Фрахт и нехватка судов": -0.1 * g["freight"], "Зерно на автотранспорт": -g["truck"]}
+        dis = [port_m(i) + g["truck"] + 0.1 * g["freight"] + g["quota_cut"] for i in (1, 2, 3)]
+        q4 = [max(0.5, 1 - 0.9 * d / 100) for d in dis]
+    else:
+        comp = {"Импорт контейнеров": g["import"], "Контейнеры в полувагонах и крытых": -g["to_gondola"],
+                "Порты и море (закрытия, перегрузка)": -port_year, "Скидки РЖД для платформ": 0.5 * g["discount"]}
+        dis = [g["import"] - g["to_gondola"] - port_m(i) + 0.5 * g["discount"] for i in (1, 2, 3)]
+        q4 = [max(0.5, 1 + 0.5 * d / 100) for d in dis]
+    text = [f"{PNAME[k]}: {v:g}" for k, v in g.items() if k != "ports" and v]
+    text += [f"порт {x['port']}: доля {share(x):g}%, {x['months']} мес." for x in ports]
+    return {"comp": {k: v for k, v in comp.items() if v}, "q4": q4, "text": text, "updated": P.get("updated", "")}
+
+
+def cmd_set(pairs):
+    """set grain.quota_cut=20 grain.port=Тамань:1 grain.port=Новый:7:2 fit.to_gondola=10 fit.port=Владивосток:30:1 …"""
+    import json
+    P = params()
+    for kv in pairs:
+        k, _, v = kv.partition("=")
+        kind, _, key = k.partition(".")
+        if kind not in ("grain", "fit") or not (key == "port" or key in P[kind]):
+            sys.exit(f"Не понял «{kv}». Пример: grain.quota_cut=20 grain.port=Тамань:1 fit.to_gondola=10 fit.port=Владивосток:30:1")
+        if key == "port":
+            parts = v.split(":")
+            item = {"port": parts[0], "months": float(parts[-1])}
+            if len(parts) == 3:
+                item["share"] = float(parts[1].replace(",", "."))
+            P[kind]["ports"] = [x for x in P[kind]["ports"] if x["port"] != parts[0]] + ([item] if item["months"] > 0 else [])
+        else:
+            P[kind][key] = float(v.replace(",", "."))
+    P["updated"] = datetime.now(MSK).strftime("%Y-%m-%d %H:%M")
+    PARAMS.parent.mkdir(parents=True, exist_ok=True)
+    PARAMS.write_text(json.dumps(P, ensure_ascii=False, indent=1), encoding="utf-8")
+    cmd_show()
+
+
+def cmd_show():
+    for kind, nm in (("grain", "Зерновоз"), ("fit", "Фитинговые платформы")):
+        e = effects(kind)
+        print(f"{nm}: " + ("; ".join(e["text"]) or "событий с цифрами нет") +
+              f" → 2027: {', '.join(f'{k} {v:+.1f}%' for k, v in e['comp'].items()) or '0'}; IV кв. ×{', ×'.join(f'{x:.2f}' for x in e['q4'])}")
 
 
 def events(wagon="all", days=14):
@@ -108,6 +190,17 @@ def report(wagon, days):
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["set"]:
+        sys.exit(cmd_set(sys.argv[2:]))
+    if sys.argv[1:2] == ["show"]:
+        sys.exit(cmd_show())
+    if sys.argv[1:2] == ["clear"]:
+        import json
+        P = params()
+        for kind in (sys.argv[2:] or ["grain", "fit"]):
+            P[kind] = EMPTY[kind]
+        PARAMS.write_text(json.dumps(P, ensure_ascii=False, indent=1), encoding="utf-8")
+        sys.exit(cmd_show())
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--wagon", default="all", choices=["all"] + list(NAMES))
     ap.add_argument("--days", type=int, default=14)

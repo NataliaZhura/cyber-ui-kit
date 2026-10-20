@@ -172,13 +172,24 @@ def forecast(w, scen="base", ov=None):
     last_m = max(m)
     pace = float((ov or {}).get("pace", T["pace"][scen]))
     q = [m[last_m] * (1 + pace / 100) ** k for k in range(1, 13 - last_m)]
+    kind = {"hop_grain": "grain", "fit80": "fit"}.get(T.get("data"))
+    ev = None
+    if kind:
+        import zevents
+        ev = zevents.effects(kind)
+    dec_base = q[-1]  # декабрь без поправки на события: от него — 2027–2030 (события 2027 г. — отдельными строками)
+    if ev:
+        q = [x * (ev["q4"][i] if i < 3 else 1) for i, x in enumerate(q)]  # события: месяцы закрытия и потери отгрузок
     year = list(m.values()) + q
-    avg26, dec = sum(year) / 12, year[-1]
-    lvl, end, parts = {2026: avg26}, {2026: dec}, {}
+    avg26 = sum(year) / 12
+    lvl, end, parts = {2026: avg26}, {2026: dec_base}, {}
     s = scenario(D, T, scen, ov)
     for i, y in enumerate(YEARS):
         comp = {FNAME["const"]: f["b"]["const"]}
         comp.update({fname(T, k): f["b"][k] * xval(T, k, s[k][i]) for k in fkeys(T)})
+        if ev and i == 0:  # события 2026 г. — в фактор спроса 2027 г. (экспорт зерна / баланс контейнеров)
+            fk = fkeys(T)[0]
+            comp.update({name: f["b"][fk] * xval(T, fk, v) for name, v in ev["comp"].items()})
         ch = sum(comp.values())
         end[y] = end[y - 1] * math.exp(ch / 100)
         lvl[y] = math.sqrt(end[y - 1] * end[y])
@@ -188,7 +199,7 @@ def forecast(w, scen="base", ov=None):
             end[y] = lvl[y] ** 2 / end[y - 1]
             parts[y] = {"Инфляция (верхняя граница)": end[y] - end[y - 1]}
     return {"lvl": lvl, "end": end, "parts": parts, "fit": f, "months": m,
-            "real": real, "q4": q[-3:], "last_m": last_m, "pace": pace, "scen": s}
+            "real": real, "q4": q[-3:], "last_m": last_m, "pace": pace, "scen": s, "events": ev}
 
 
 AGE = [(3, 0.88), (8, 0.75), (14, 0.62), (19, 0.5), (99, 0.38)]  # цена б/у к новому по возрасту (как в zvagon)
@@ -252,6 +263,13 @@ def report(w, a):
               "|---|" + "---|" * len(r0["months"]),
               f"| {T['name']} | " + " | ".join(n(v) for v in r0["months"].values()) + " |", "",
               "<small>* по прямой между соседними месяцами с данными.</small>"]
+    ev = r0.get("events")
+    if ev:
+        L += ["", "**Факторы рынка сейчас (события с цифрами из новостей)** — " + ("; ".join(ev["text"]) if ev["text"] else
+              "событий с цифрами нет: прогноз без поправок") + (f" (обновлено {ev['updated']})" if ev["updated"] else "") + "."]
+        if ev["text"]:
+            L.append("Поправка к ставкам октября–декабря: " + ", ".join(f"{MONTHS[lm + i]} ×{f1(k)}" for i, k in enumerate(ev["q4"]))
+                     + ". В 2027 г. эти события — отдельными строками в разделе 3.")
     L += ["", "<small>Темп IV кв.: пессимистичный — сезонное снижение, как в начале года; базовый — по инфляции; "
           "оптимистичный — темп сентября.</small>", "", "## 2. 2027–2030: средняя ставка за год (январь–декабрь)", "",
           "| Сценарий | 2026 | " + " | ".join(map(str, YEARS)) + " |", "|---|" + "---|" * 5]
