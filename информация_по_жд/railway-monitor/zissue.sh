@@ -6,9 +6,11 @@ set -u
 REPO=~/zhd-repo; KIT=~/railway-monitor
 echo "== 1. Обновление комплекта"
 cd "$REPO" && git pull -q && cp информация_по_жд/railway-monitor/*.md информация_по_жд/railway-monitor/*.py \
-  информация_по_жд/railway-monitor/*.sh "$KIT"/ && cp -r информация_по_жд/railway-monitor/miniapp "$KIT"/ && echo "ok"
+  информация_по_жд/railway-monitor/*.sh информация_по_жд/railway-monitor/sources.json "$KIT"/ && \
+  cp -r информация_по_жд/railway-monitor/miniapp "$KIT"/ && echo "ok"
 cd "$KIT" || exit 1
 python3 openclaw_setup.py sync >/dev/null && echo "правила ЖДуши обновлены"
+python3 collector.py rescore >/dev/null 2>&1 && echo "архив новостей переразмечен (зерновозы, фитинги, море и порты)"
 echo "== 2. База наблюдений из выпусков партнёра"
 ls private/argus/*.pdf >/dev/null 2>&1 || { echo "СТОП: нет PDF в ~/railway-monitor/private/argus/"; exit 1; }
 ~/pw/bin/python zobs.py pdf private/argus/*.pdf
@@ -27,6 +29,7 @@ for pair in kr158:krytye:крытый_158 kr138:krytye:крытый_138 hop_grai
   f=saved/$sec/${D}_прогноз_ставки_$nm.md
   python3 ztypes.py run --wagon $w --out $f >/dev/null && ~/pw/bin/python zreport.py $f >/dev/null && echo "готово: $f" || echo "!! $w — не посчитано"
 done
+python3 zevents.py --days 30 --out saved/market/${D}_события_рынка.md && ~/pw/bin/python zreport.py saved/market/${D}_события_рынка.md >/dev/null
 echo "== 5. Отправка владельцу"
 python3 send.py saved/market/${D}_обзор_рынка_вагонов.pdf saved/market/${D}_обзор_рынка_вагонов_демо.pdf
 systemctl restart zhdusha-app 2>/dev/null && echo "мини-приложение перезапущено"
