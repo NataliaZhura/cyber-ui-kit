@@ -89,7 +89,13 @@ def price_path(V, typ, rates):
     fit = {y: math.exp(c["a"] + c["b"] * math.log(sum(allr[y - i] for i in range(3)) / 3) + c["c"] * (y - 2015)) / 1000
            for y in range(2026, 2031)}
     k = V["market_2026"][typ] / fit[2026]  # насколько рынок 2026 г. выше/ниже модели — разрыв закрывается за 3 года
-    return {y: fit[y] * (k ** max(0, 1 - (y - 2026) / 3)) for y in fit}, fit[2026]
+    out = {y: fit[y] * (k ** max(0, 1 - (y - 2026) / 3)) for y in fit}
+    for y in range(2027, 2031):  # нижняя граница — себестоимость завода: цена нового падает не больше чем на 5% в год
+        out[y] = max(out[y], out[y - 1] * (1 - FLOOR / 100))  # (допущение: из окна средней выпадает пик 2024 г.)
+    return out, fit[2026]
+
+
+FLOOR = 5  # % — максимальное снижение цены нового вагона за год
 
 
 def age_factor(V, age):
