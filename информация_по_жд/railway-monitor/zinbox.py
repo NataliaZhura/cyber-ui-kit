@@ -89,7 +89,14 @@ def cmd_sort():
             shutil.move(p, dst)
             proc.append(dst)
             continue
-        i = argus_id(first_page(p)) if p.suffix.lower() == ".pdf" else None
+        fp = first_page(p) if p.suffix.lower() == ".pdf" else ""
+        if p.suffix.lower() == ".pdf" and ("zakupki.gov.ru" in fp or "Начальная цена" in fp) and "Argus" not in fp:
+            PROC.mkdir(parents=True, exist_ok=True)  # страница поиска закупок, сохранённая в PDF с телефона
+            dst = PROC / p.name
+            shutil.move(p, dst)
+            proc.append(dst)
+            continue
+        i = argus_id(fp) if fp else None
         if i:
             key = (i[0], i[1][:7])
             if key in known:

@@ -132,6 +132,26 @@ def save(rows):
         w.writerows(sorted(rows, key=lambda r: "".join(reversed((r.get("published") or "").split("."))), reverse=True))
 
 
+def parse_text(text):
+    """Текст страницы поиска ЕИС (PDF «Печать → Сохранить как PDF» или скопированный текст): карточка начинается с
+    «№ <номер>»; внутри — «Объект закупки», «Заказчик», «Начальная цена», «Размещено»."""
+    flat = " ".join(text.split())
+    parts = re.split(r"(?=№\s?\d{11,19}\b)", flat)
+    out = []
+    for c in parts:
+        num = re.match(r"№\s?(\d{11,19})", c)
+        if not num:
+            continue
+        g = lambda rx: (re.search(rx, c).group(1).strip() if re.search(rx, c) else "")
+        price = g(r"Начальная цена\s*([\d\s]+(?:,\d{2})?)\s*₽")
+        out.append({"number": num.group(1), "subject": g(r"Объект закупки\s*(.*?)\s*(?:Заказчик|Организация|Начальная|Размещено|$)")[:300],
+                    "customer": g(r"(?:Заказчик|Организация, осуществляющая[^А-Я]*)\s*(.*?)\s*(?:Начальная|Размещено|Обновлено|$)")[:200],
+                    "price": price.replace(" ", "").replace(",", "."), "currency": "₽" if price else "",
+                    "published": g(r"Размещено\s*(\d{2}\.\d{2}\.\d{4})"), "law": g(r"(44-ФЗ|223-ФЗ)"),
+                    "url": f"https://zakupki.gov.ru/epz/order/notice/rpec/search-results.html?orderNum={num.group(1)}"})
+    return out
+
+
 def wagon_of(text):
     low = text.lower()
     for k, rx in (("hop_grain", r"зерновоз"), ("fit", r"фитинг|платформ"), ("kr", r"крыт"), ("gon", r"полуваг")):
@@ -146,8 +166,13 @@ def cmd_import(files):
     got = new = 0
     for f in files:
         raw = Path(f).read_bytes()
-        page = raw.decode("utf-8", "replace") if b"charset=windows-1251" not in raw[:3000] else raw.decode("cp1251", "replace")
-        rows = parse(page)
+        if f.lower().endswith(".pdf"):  # сохранено с телефона: «Поделиться → Печать → Сохранить как PDF»
+            import pdfplumber
+            with pdfplumber.open(f) as pdf:
+                rows = parse_text("\n".join(pg.extract_text() or "" for pg in pdf.pages))
+        else:
+            page = raw.decode("utf-8", "replace") if b"charset=windows-1251" not in raw[:3000] else raw.decode("cp1251", "replace")
+            rows = parse(page) or parse_text(clean(page))  # HTML или скопированный текст
         got += len(rows)
         for x in rows:
             new += x["number"] not in old
