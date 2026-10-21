@@ -48,6 +48,24 @@ D_FIT = [("park_fit_work", "Рабочий парк платформ", "mm"), ("
          ("flow_fit_new", "Новые платформы за месяц", "lvl"), ("flow_fit_out", "Выбыло платформ", "lvl"),
          ("gon69_spot", "Ставка полувагона (контейнеры уходят в полувагоны)", "mm"), ("teu", "Перевозки контейнеров, TEU", "yy"),
          ("load_total", "Погрузка на сети", "yy"), ("key", "Ключевая ставка", "lvl")]
+def _extra(g, nm):
+    """Производные показатели парка: доля в работе (остальное — отстой), сальдо поступления и выбытия, доля вагонов
+    с истёкшим сроком службы."""
+    return [(f"share_{g}", f"Доля {nm} в работе, %", "lvl"), (f"net_{g}", f"Новые минус выбывшие {nm}", "lvl"),
+            (f"expshare_{g}", f"Доля {nm} с истёкшим сроком, %", "lvl")]
+
+
+D_GON += _extra("gon", "полувагонов") + [("op_met", "Ставка оперирования (металлы)", "mm"),
+                                         ("tr_kuz_vost", "Техрейс Кузбасс — Восточный", "mm"),
+                                         ("load_scrap", "Погрузка лома", "yy"), ("load_fert", "Погрузка удобрений", "yy")]
+D_KR += _extra("kr", "крытых") + [("gon69_spot", "Ставка полувагона (заменитель)", "mm"), ("hop_grain", "Ставка зерновоза", "mm"),
+                                  ("load_metal", "Погрузка чёрных металлов", "yy")]
+D_GRAIN += _extra("hop_grain", "зерновозов") + [("hop_min", "Ставка хоппера-минераловоза", "mm"),
+                                                 ("load_total", "Погрузка на сети", "yy")]
+D_FIT += _extra("fit", "платформ") + [("load_metal", "Погрузка чёрных металлов", "yy")]
+# Как показатель влияет на ставку: +1 — растёт показатель, растёт ставка; −1 — наоборот (для разбора обвала)
+EXPECT = {"load": 1, "share": 1, "expshare": 1, "op_": 1, "tr_": 1, "teu": 1, "gon69_spot": 1, "kr158": 1, "hop_grain": 1,
+          "hop_min": 1, "flow_": -1, "net": -1, "key": -1, "park_": -1}
 DRIVERS = {"gon": D_GON, "inno": D_GON, "kr158": D_KR, "kr138": D_KR, "hop_grain": D_GRAIN,
            "fit80": D_FIT, "fit40": D_FIT, "fit60": D_FIT}
 CARGO = {"gon": "load_coal", "inno": "load_coal", "kr158": "load_build", "kr138": "load_build", "hop_grain": "load_grain",
@@ -70,7 +88,79 @@ def data():
         S.update(zmacro.series())
     except ImportError:
         pass
+    for g in ("gon", "kr", "hop_grain", "fit"):  # производные ряды парка
+        reg, wk, ex = S.get(f"park_{g}_reg", {}), S.get(f"park_{g}_work", {}), S.get(f"park_{g}_exp", {})
+        nw, out = S.get(f"flow_{g}_new", {}), S.get(f"flow_{g}_out", {})
+        S[f"share_{g}"] = {m: wk[m] / reg[m] * 100 for m in reg if m in wk and reg[m]}
+        S[f"expshare_{g}"] = {m: ex[m] / reg[m] * 100 for m in reg if m in ex and reg[m]}
+        S[f"net_{g}"] = {m: nw[m] - out[m] for m in nw if m in out}
     return S
+
+
+def expect(key):
+    return next((v for k, v in EXPECT.items() if key.startswith(k)), 0)
+
+
+def collapse(w, S):
+    """Обвал и восстановление: пик (декабрь 2024 — июнь 2025), дно — в течение года после пика, восстановление до
+    последнего месяца.
+    По каждому показателю — среднее до пика (до 6 мес.), во время падения и в восстановлении; совпало ли с падением."""
+    r = S.get(RATE[w], {})
+    early = [m for m in r if "2024-12" <= m <= "2025-06"]
+    if not early:
+        return None
+    peak = max(early, key=lambda m: r[m])
+    after = [m for m in r if peak < m <= zobs.shift(peak, 12)]  # дно — в пределах года после пика (не сезонный провал 2026 г.)
+    if not after:
+        return None
+    low = min(after, key=lambda m: r[m])
+    last = max(r)
+    pre = [zobs.shift(peak, -k) for k in range(5, -1, -1)]
+    fall, rec = months(peak, low), months(low, last)
+    rows = []
+    for key, nm, how in DRIVERS[w]:
+        def avg(ms):
+            v = [val(S, key, m, how) for m in ms]
+            v = [x for x in v if x is not None]
+            return statistics.mean(v) if v else None
+        a, b, c = avg(pre), avg(fall), avg(rec)
+        e = expect(key.split("#")[0])
+        if how == "lvl":  # уровень: важно, куда сдвинулся
+            move_f = (b - a) if (a is not None and b is not None) else None
+            move_r = (c - b) if (b is not None and c is not None) else None
+        else:             # изменения в %: важен знак самого изменения
+            move_f, move_r = b, c
+        hit = None if move_f is None or not e else (move_f * e < 0)
+        hit_r = None if move_r is None or not e else (move_r * e > 0)
+        rows.append({"name": nm, "how": how, "pre": a, "fall": b, "rec": c, "hit": hit, "hit_r": hit_r, "e": e})
+    return {"peak": peak, "low": low, "last": last, "drop": (r[low] / r[peak] - 1) * 100,
+            "up": (r[last] / r[low] - 1) * 100, "rows": rows, "rp": r[peak], "rl": r[low], "rn": r[last]}
+
+
+def collapse_md(w, S):
+    c = collapse(w, S)
+    if not c:
+        return ["Нет ставок 2025 г. — разбор обвала невозможен.", ""]
+    mm = lambda m: f"{MON[int(m[5:]) - 1]} {m[:4]}"
+    unit = {"mm": "% к мес.", "yy": "% к году", "lvl": ""}
+    L = [f"Пик — {mm(c['peak'])} ({n0(c['rp'])} ₽), дно — {mm(c['low'])} ({n0(c['rl'])} ₽): {p1(c['drop'])}%. "
+         f"Восстановление к {mm(c['last'])}: {n0(c['rn'])} ₽, {p1(c['up'])}% от дна.", "",
+         "| Показатель | до пика (6 мес.) | во время падения | в восстановлении | сработал на падение? | на восстановление? |",
+         "|---|---|---|---|---|---|"]
+    fmt = lambda v, how: "—" if v is None else (p1(v) + (f" {unit[how]}" if unit[how] else "") if how != "lvl" else
+                                                 (f"{v:,.1f}".replace(",", " ").replace(".", ",").replace("-", "−")))
+    yes = lambda h: "—" if h is None else ("✅ да" if h else "нет")
+    rows = sorted(c["rows"], key=lambda x: (x["hit"] is not True, x["hit_r"] is not True))
+    for x in rows:
+        L.append(f"| {x['name']} | {fmt(x['pre'], x['how'])} | {fmt(x['fall'], x['how'])} | {fmt(x['rec'], x['how'])} | "
+                 f"{yes(x['hit'])} | {yes(x['hit_r'])} |")
+    both = [x["name"] for x in rows if x["hit"] and x["hit_r"]]
+    L += ["", f"**Сработали и на падение, и на восстановление:** {', '.join(both) or 'нет'} — их отслеживать первыми.",
+          "", "<small>«Сработал» — показатель двигался в ту сторону, что тянет ставку вниз (при падении) или вверх (при "
+          "восстановлении): погрузка ниже прошлого года, доля вагонов в работе падает, новых вагонов больше, чем выбывших, "
+          "ключевая ставка растёт и т. п. Уровни (доля в работе, сальдо вагонов) сравниваются со средним до пика. Это "
+          "совпадение по времени, а не доказательство причины: проверяется следующими месяцами.</small>", ""]
+    return L
 
 
 def val(S, key, m, how):
@@ -371,8 +461,11 @@ def report(w):
     if t1 and t1.get("err"):
         best = min(t1["err"], key=t1["err"].get)
         L.append(f"- Для IV квартала точнее был способ {({'m1': '① ровный темп', 'm2': '② сезонность груза', 'm3': '③ по показателю'})[best]}.")
+    L += ["## 6. Обвал 2025 г. и восстановление: какие показатели сработали", ""] + collapse_md(w, S)
+    import zfactors
+    L += ["## 7. Полный список факторов ставки и стоимости", ""] + zfactors.md(w)
     import zmacro  # рыночный фон по типу: контейнеры в полувагонах, зерно, металл (открытые данные с источниками)
-    L += ["", "## 6. Рыночный фон (открытые данные)", ""]
+    L += ["", "## 8. Рыночный фон (открытые данные)", ""]
     if w in ("hop_grain",) or w.startswith("kr"):
         L += [zmacro.grain_md().replace("## ", "### ")]
     if w.startswith("fit") or w in ("gon", "inno"):
