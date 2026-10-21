@@ -4,7 +4,8 @@
   python3 zrates.py table [--json]        ставки аренды, оперирования, техрейса и рабочий парк: последний месяц,
                                           к прошлому месяцу и к году назад, история 13 месяцев (вкладка «Ставки» мини-приложения)
   python3 zrates.py alerts [--send]       оповещения: ставка за месяц ±5% и больше, рабочий парк −1% и больше, факт вне
-                                          коридора прогноза (пессимистичный — оптимистичный); --send — владельцу в Telegram,
+                                          коридора прогноза, главные показатели по типам (WATCH — по разбору обвала
+                                          2025 г.: уголь, зерно, стройгрузы, сальдо вагонов, доля в работе); --send — в Telegram,
                                           каждое оповещение один раз (forecast/alerts_sent.json)
   python3 zrates.py snap                  записать прогноз IV кв. по всем типам в журнал (forecast/fcst_journal.csv) —
                                           после каждого нового выпуска; повтор за тот же месяц данных заменяет запись
@@ -84,8 +85,55 @@ def journal():
         return list(csv.DictReader(f, delimiter=";"))
 
 
+# Главные показатели по типам (разбор обвала 2025 г., zretro.py): (тип, ряд, как считать, знак, порог, текст {v}).
+# mm/yy — % к месяцу/году, pp — изменение доли за месяц в п.п., lvl — значение месяца.
+WATCH = [
+    ("Полувагоны", "load_coal", "yy", "<=", -3, "погрузка угля {v}% к году — спрос слабеет (перед обвалом 2025 г. было до −7%)"),
+    ("Полувагоны", "load_coal", "yy", ">=", 5, "погрузка угля {v}% к году — поддержка ставки (весной 2026 г. +5…+11%)"),
+    ("Полувагоны", "op_coal", "mm", "<=", -5, "ставка оперирования на угле {v}% за месяц — в 2025 г. падала вместе с арендой"),
+    ("Полувагоны", "net_gon", "lvl", ">=", 0, "новых полувагонов больше, чем выбывших ({v}) — парк снова растёт"),
+    ("Полувагоны", "share_gon", "pp", "<=", -1, "доля полувагонов в работе {v} п.п. за месяц — больше в отстое или ремонте"),
+    ("Зерновозы", "load_grain", "yy", "<=", -15, "погрузка зерна {v}% к году — как перед обвалом 2025 г. (−18…−27%)"),
+    ("Зерновозы", "flow_hop_grain_new", "lvl", ">=", 500,
+     "новых зерновозов {v} за месяц — приток, как перед обвалом (около 1 000 в месяц в конце 2024 г.)"),
+    ("Платформы", "gon69_spot", "mm", "<=", -5,
+     "ставка полувагона {v}% за месяц — контейнеры уходят в полувагоны (в падение 2025 г. до −14% в месяц)"),
+    ("Платформы", "flow_fit_new", "lvl", ">=", 300, "новых платформ {v} за месяц — предложение растёт"),
+    ("Крытые", "load_build", "yy", "<=", -10, "погрузка стройгрузов {v}% к году — в 2025 г. −15%, не восстановилась"),
+    ("Крытые", "hop_grain", "mm", "<=", -10, "ставка зерновоза {v}% за месяц — крытые теряют спрос на зерно в мешках"),
+]
+
+
+def watch():
+    """Сработавшие главные показатели по последнему месяцу каждого ряда."""
+    try:
+        import zretro
+        S = zretro.data()  # с производными рядами: доля в работе, сальдо вагонов
+    except Exception:  # noqa: BLE001
+        S = series()
+    out = []
+    for typ, key, how, op, thr, text in WATCH:
+        d = S.get(key, {})
+        if len(d) < 2:
+            continue
+        m = max(d)
+        if how == "lvl":
+            v = d[m]
+        elif how == "pp":
+            p = d.get(zobs.shift(m, -1))
+            v = d[m] - p if p is not None else None
+        else:
+            p = d.get(zobs.shift(m, -1 if how == "mm" else -12))
+            v = (d[m] / p - 1) * 100 if p else None
+        if v is None or not (v <= thr if op == "<=" else v >= thr):
+            continue
+        vs = (f"{v:+.1f}" if how != "lvl" else f"{v:,.0f}").replace(",", " ").replace(".", ",").replace("-", "−")
+        out.append({"key": f"{m}:{key}:{op}", "text": f"{typ}: {text.format(v=vs)} ({m})"})
+    return out
+
+
 def alerts():
-    S, out = series(), []
+    S, out = series(), watch()
     for _, items in GROUPS[:1]:
         for it in items:
             d = S.get(it, {})
@@ -93,7 +141,7 @@ def alerts():
                 last = max(d)
                 ch = pct(d[last], d.get(zobs.shift(last, -1)))
                 if ch is not None and abs(ch) >= 5:
-                    out.append({"key": f"{last}:{it}:mm", "text": f"{zobs.ITEMS[it][1]}: {ch:+.1f}".replace(".", ",") + f"% за месяц ({last}, {round(d[last])} ₽)"})
+                    out.append({"key": f"{last}:{it}:mm", "text": f"{zobs.ITEMS[it][1]}: {ch:+.1f}".replace(".", ",").replace("-", "−") + f"% за месяц ({last}, {round(d[last])} ₽)"})
     for it in GROUPS[3][1]:
         d = S.get(it, {})
         if len(d) >= 2:
@@ -101,7 +149,7 @@ def alerts():
             ch = pct(d[last], d.get(zobs.shift(last, -1)))
             if ch is not None and ch <= -1:
                 out.append({"key": f"{last}:{it}:park", "text": f"{zobs.ITEMS[it][1].replace(': рабочие', '')}: рабочий парк "
-                                                             f"{ch:+.1f}".replace(".", ",") + f"% за месяц ({last}) — вагоны уходят в отстой"})
+                                                             f"{ch:+.1f}".replace(".", ",").replace("-", "−") + f"% за месяц ({last}) — вагоны уходят в отстой"})
     for r in journal():  # факт вне коридора прогноза
         f = S.get(FACT.get(r["wagon"], ""), {}).get(r["target"])
         if f is None:

@@ -64,7 +64,7 @@ D_GRAIN += _extra("hop_grain", "зерновозов") + [("hop_min", "Став�
                                                  ("load_total", "Погрузка на сети", "yy")]
 D_FIT += _extra("fit", "платформ") + [("load_metal", "Погрузка чёрных металлов", "yy")]
 # Как показатель влияет на ставку: +1 — растёт показатель, растёт ставка; −1 — наоборот (для разбора обвала)
-EXPECT = {"load": 1, "share": 1, "expshare": 1, "op_": 1, "tr_": 1, "teu": 1, "gon69_spot": 1, "kr158": 1, "hop_grain": 1,
+EXPECT = {"load": 1, "share": 0, "expshare": 0, "op_": 1, "tr_": 1, "teu": 1, "gon69_spot": 1, "kr158": 1, "hop_grain": 1,
           "hop_min": 1, "flow_": -1, "net": -1, "key": -1, "park_": -1}
 DRIVERS = {"gon": D_GON, "inno": D_GON, "kr158": D_KR, "kr138": D_KR, "hop_grain": D_GRAIN,
            "fit80": D_FIT, "fit40": D_FIT, "fit60": D_FIT}
@@ -130,8 +130,9 @@ def collapse(w, S):
             move_r = (c - b) if (b is not None and c is not None) else None
         else:             # изменения в %: важен знак самого изменения
             move_f, move_r = b, c
-        hit = None if move_f is None or not e else (move_f * e < 0)
-        hit_r = None if move_r is None or not e else (move_r * e > 0)
+        tiny = lambda mv, base: mv is None or abs(mv) < (0.5 if how != "lvl" else max(0.05 * abs(base or 0), 1e-9))
+        hit = None if not e or move_f is None else (None if tiny(move_f, a) else move_f * e < 0)
+        hit_r = None if not e or move_r is None else (None if tiny(move_r, b) else move_r * e > 0)
         rows.append({"name": nm, "how": how, "pre": a, "fall": b, "rec": c, "hit": hit, "hit_r": hit_r, "e": e})
     return {"peak": peak, "low": low, "last": last, "drop": (r[low] / r[peak] - 1) * 100,
             "up": (r[last] / r[low] - 1) * 100, "rows": rows, "rp": r[peak], "rl": r[low], "rn": r[last]}
@@ -150,12 +151,22 @@ def collapse_md(w, S):
     fmt = lambda v, how: "—" if v is None else (p1(v) + (f" {unit[how]}" if unit[how] else "") if how != "lvl" else
                                                  (f"{v:,.1f}".replace(",", " ").replace(".", ",").replace("-", "−")))
     yes = lambda h: "—" if h is None else ("✅ да" if h else "нет")
+    sup = {x["name"]: x for x in c["rows"]}
     rows = sorted(c["rows"], key=lambda x: (x["hit"] is not True, x["hit_r"] is not True))
     for x in rows:
         L.append(f"| {x['name']} | {fmt(x['pre'], x['how'])} | {fmt(x['fall'], x['how'])} | {fmt(x['rec'], x['how'])} | "
                  f"{yes(x['hit'])} | {yes(x['hit_r'])} |")
     both = [x["name"] for x in rows if x["hit"] and x["hit_r"]]
-    L += ["", f"**Сработали и на падение, и на восстановление:** {', '.join(both) or 'нет'} — их отслеживать первыми.",
+    net = next((x for x in c["rows"] if x["name"].startswith("Новые минус")), None)
+    shr = next((x for x in c["rows"] if x["name"].startswith("Доля") and "в работе" in x["name"]), None)
+    if net and net["rec"] is not None:
+        L += ["", f"**Предложение вагонов:** сальдо «новые минус выбывшие» — {fmt(net['pre'], 'lvl')} в месяц до пика, "
+              f"{fmt(net['fall'], 'lvl')} во время падения, {fmt(net['rec'], 'lvl')} в восстановлении"
+              + (f"; доля в работе {fmt(shr['pre'], 'lvl')} → {fmt(shr['fall'], 'lvl')} → {fmt(shr['rec'], 'lvl')}%" if shr and shr["rec"] else "")
+              + "." + (" Доля в работе падает в обе фазы по разным причинам: в падение — лишние вагоны в отстое, в "
+                       "восстановление — неисправные (недоремонт) и списание; это сжимает предложение и поднимает ставку."
+                       if shr and shr["pre"] and shr["fall"] and shr["rec"] and shr["fall"] < shr["pre"] and shr["rec"] < shr["fall"] else "")]
+    L += ["", f"**Сработали и на падение, и на восстановление:** {', '.join(both) + ' — их отслеживать первыми' if both else 'нет'}.",
           "", "<small>«Сработал» — показатель двигался в ту сторону, что тянет ставку вниз (при падении) или вверх (при "
           "восстановлении): погрузка ниже прошлого года, доля вагонов в работе падает, новых вагонов больше, чем выбывших, "
           "ключевая ставка растёт и т. п. Уровни (доля в работе, сальдо вагонов) сравниваются со средним до пика. Это "
