@@ -399,15 +399,15 @@ class App(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/upload":
             name = Path(urllib.parse.unquote(self.headers.get("X-File-Name", ""))).name
-            if not name or Path(name).suffix.lower() not in SHOW:
-                return self.reply(400, {"error": "Такой тип файла не принимаю: PDF, Word, Excel, картинки, CSV."})
+            if not name or Path(name).suffix.lower() not in SHOW | {".html", ".htm"}:  # html — страницы закупок (zprocure)
+                return self.reply(400, {"error": "Такой тип файла не принимаю: PDF, Word, Excel, картинки, CSV, HTML."})
             dest = own / "upload" / f"{time.strftime('%Y-%m-%d')}_{name}"
             dest.parent.mkdir(parents=True, exist_ok=True)
             n = 1
             while dest.exists():
                 dest, n = dest.with_name(f"{time.strftime('%Y-%m-%d')}_{n}_{name}"), n + 1
             dest.write_bytes(raw)
-            if own == SAVED and dest.suffix.lower() == ".pdf":  # владелец: выпуски Argus и материалы — по папкам (zinbox.py)
+            if own == SAVED and dest.suffix.lower() in (".pdf", ".html", ".htm"):  # владелец: выпуски Argus и материалы — по папкам (zinbox.py)
                 subprocess.Popen([sys.executable, str(BASE / "zinbox.py"), "--wait"], cwd=BASE, start_new_session=True,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return self.reply(200, {"ok": True, "name": dest.name})

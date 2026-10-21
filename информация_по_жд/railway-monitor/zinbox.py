@@ -20,6 +20,7 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
 UP, ARG, MAT, DUP = BASE / "saved" / "upload", BASE / "private" / "argus", BASE / "private" / "materials", BASE / "private" / "duplicates"
+PROC = BASE / "private" / "procure"  # сохранённые страницы закупок ЕИС (zprocure.py)
 GEN = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6, "июля": 7, "августа": 8,
        "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
 RU = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"]
@@ -80,8 +81,14 @@ def cmd_sort():
         return print("В «Мои загрузки» новых файлов нет.")
     ARG.mkdir(parents=True, exist_ok=True)
     known = have()
-    new_argus, mats, dups = [], [], []
+    new_argus, mats, dups, proc = [], [], [], []
     for p in files:
+        if p.suffix.lower() in (".html", ".htm"):  # сохранённая страница поиска закупок ЕИС → zprocure.py import
+            PROC.mkdir(parents=True, exist_ok=True)
+            dst = PROC / p.name
+            shutil.move(p, dst)
+            proc.append(dst)
+            continue
         i = argus_id(first_page(p)) if p.suffix.lower() == ".pdf" else None
         if i:
             key = (i[0], i[1][:7])
@@ -104,8 +111,13 @@ def cmd_sort():
         # новый месяц: сначала сверка с прошлым прогнозом и оповещения, потом новый прогноз — в журнал
         subprocess.run([sys.executable, str(BASE / "zrates.py"), "alerts", "--send"])
         subprocess.run([sys.executable, str(BASE / "zrates.py"), "snap"])
+    pr = ""
+    if proc:
+        r = subprocess.run([sys.executable, str(BASE / "zprocure.py"), "import"] + [str(p) for p in proc],
+                           capture_output=True, text=True)
+        pr = " Закупки: " + (r.stdout.strip().splitlines() or ["нет"])[-1]
     msg = (f"Принято: выпусков Argus — {len(new_argus)} ({', '.join(p.name[:7] for p in new_argus) or '—'}), "
-           f"повторов пропущено — {len(dups)}, материалов — {len(mats)}.")
+           f"повторов пропущено — {len(dups)}, материалов — {len(mats)}.{pr}")
     print(msg)
     subprocess.run([sys.executable, str(BASE / "send.py"), "--note", msg[:200]], capture_output=True)
     cmd_status()

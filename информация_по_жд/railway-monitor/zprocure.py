@@ -7,7 +7,9 @@
                                             поиск закупок по 4 типам вагонов → forecast/procure.csv (номер, заказчик,
                                             предмет, начальная цена, дата, ссылка); повтор не дублирует
   python3 zprocure.py show [--wagon gon]    что найдено
-  python3 zprocure.py dump <файл.html>      разобрать сохранённую страницу (если сайт отдаёт только браузеру)
+  python3 zprocure.py import <файл.html> …  страницы поиска, сохранённые в браузере (сайт закрыт для зарубежного
+                                            сервера): «Мои загрузки» → раскладка zinbox.py вызывает это сама
+  python3 zprocure.py dump <файл.html>      показать, что программа видит на странице
 
 Это открытые сведения: закупки и протоколы публикуются по закону, для чтения регистрация не нужна. Цена победителя —
 в протоколе подведения итогов (следующий шаг, после проверки формата). Файл procure.csv — только на сервере.
@@ -118,12 +120,41 @@ def cmd_search(pages, days):
             if len(rows) < 50:
                 break
             time.sleep(2)  # бережно к площадке
+    save(list(old.values()))
+    print(f"Новых закупок: {new}; всего в файле: {len(old)} → {OUT}")
+
+
+def save(rows):
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with OUT.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, COLS, delimiter=";", extrasaction="ignore")
         w.writeheader()
-        w.writerows(sorted(old.values(), key=lambda r: r.get("published", ""), reverse=True))
-    print(f"Новых закупок: {new}; всего в файле: {len(old)} → {OUT}")
+        w.writerows(sorted(rows, key=lambda r: "".join(reversed((r.get("published") or "").split("."))), reverse=True))
+
+
+def wagon_of(text):
+    low = text.lower()
+    for k, rx in (("hop_grain", r"зерновоз"), ("fit", r"фитинг|платформ"), ("kr", r"крыт"), ("gon", r"полуваг")):
+        if re.search(rx, low):
+            return k
+    return "any"
+
+
+def cmd_import(files):
+    """Страницы поиска ЕИС, сохранённые в браузере (Ctrl+S) и загруженные через «Мои загрузки»."""
+    old = {r["number"]: r for r in read()}
+    got = new = 0
+    for f in files:
+        raw = Path(f).read_bytes()
+        page = raw.decode("utf-8", "replace") if b"charset=windows-1251" not in raw[:3000] else raw.decode("cp1251", "replace")
+        rows = parse(page)
+        got += len(rows)
+        for x in rows:
+            new += x["number"] not in old
+            old[x["number"]] = {**old.get(x["number"], {}), **x, "wagon": wagon_of(x["subject"]), "query": "страница из браузера"}
+        print(f"{Path(f).name}: закупок {len(rows)}")
+    save(list(old.values()))
+    print(f"разобрано {got}, новых {new}, всего {len(old)}")
 
 
 def cmd_show(wagon):
@@ -142,6 +173,8 @@ if __name__ == "__main__":
         cmd_search(opt("--pages", 2), opt("--days", 365))
     elif a[:1] == ["show"]:
         cmd_show(opt("--wagon", ""))
+    elif a[:1] == ["import"] and len(a) > 1:
+        cmd_import(a[1:])
     elif a[:1] == ["dump"] and len(a) > 1:
         for x in parse(Path(a[1]).read_text(encoding="utf-8")):
             print(x)
