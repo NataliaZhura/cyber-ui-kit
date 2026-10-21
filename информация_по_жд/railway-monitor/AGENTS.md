@@ -146,6 +146,11 @@
 `python3 ~/railway-monitor/zreports.py <тип> rate|factors|value|deal` (ставка / факторы / стоимость / сделка и выход) →
 `zreport.py` → PDF; в чат — «Коротко» или «Что делать» из файла.
 
+**Ремонты и отстой — вручную.** Новость с цифрой о неисправных вагонах, ремонтах, отстое, профиците, списании или
+оценке ставки ПГК → `python3 ~/railway-monitor/zobs.py add <ГГГГ-ММ> fleet_bad|fleet_repair|fleet_stoy|fleet_surplus|fleet_off
+<тыс.> --source media --note "<источник, ссылка>"` (ставка ПГК — `gon69_spot|gon75_spot <₽> ... --note "оценка ПГК: …"`).
+«Что по ПГК» → `python3 ~/railway-monitor/zpgk.py scan` и `compare` — вывод дословно владельцу.
+
 ## Прогноз ставок до 2030 (`/prognoz`, «прогноз ставок», «прогноз до 2030»)
 
 **Перед ответом прочитай `~/railway-monitor/PROGNOZ.md`** и делай строго по нему: рабочая модель (тип вагона, год,

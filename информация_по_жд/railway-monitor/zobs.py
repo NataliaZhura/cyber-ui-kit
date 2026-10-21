@@ -7,6 +7,8 @@
                                               ручной ввод: ответ участника рынка, ремонт, отстой, цена вагона
   python3 zobs.py show [месяц]                что есть за месяц (по умолчанию — последний)
   python3 zobs.py months                      какие месяцы есть по каждой группе показателей
+  python3 zobs.py seed                        известные точки из СМИ (ремонты, неисправные, отстой, профицит, оценки ПГК)
+  python3 zobs.py add 2026-03 fleet_bad 150 --source media --note "РЖД, ссылка"   новая цифра из новости — вручную
   python3 zobs.py diag <выпуск.pdf> [ещё …]    почему раздел не прочитался: заголовок таблицы, похожие строки
 
 Наблюдение = месяц;показатель;мин;макс;источник;пометка. Источник: partner (данные партнёра — пока вместо опроса),
@@ -56,6 +58,12 @@ ITEMS = {
     "price_new_gon": ("price", "Новый полувагон типовой", "руб."),
     "price_new_inno": ("price", "Новый полувагон инновационный", "руб."),
     "price_new_fit80": ("price", "Новая фитинговая платформа 80'", "руб."),
+    # Состояние парка — вручную из СМИ и оценок отрасли (источник media): ремонты, неисправные, отстой, профицит
+    "fleet_repair": ("fleet", "Ремонтов вагонов в месяц", "тыс. ваг."),
+    "fleet_bad": ("fleet", "Неисправные вагоны на сети", "тыс. ваг."),
+    "fleet_stoy": ("fleet", "Вагоны в длительном отстое", "тыс. ваг."),
+    "fleet_surplus": ("fleet", "Лишние вагоны (оценка профицита)", "тыс. ваг."),
+    "fleet_off": ("fleet", "Списано вагонов за период", "тыс. ваг."),
     "load_total": ("load", "Погрузка на сети РЖД, всего", "млн т"),
     "load_coal": ("load", "Каменный уголь", "млн т"),
     "load_build": ("load", "Строительные грузы", "млн т"),
@@ -306,7 +314,7 @@ def cmd_months():
     for r in read():
         by.setdefault(ITEMS.get(r["item"], ("?",))[0], set()).add(r["month"])
     names = {"lease": "аренда", "oper": "оперирование", "trip": "техрейс", "repair": "ремонт/отстой", "price": "цены вагонов",
-             "load": "погрузка", "park": "парк", "flow": "поступление/выбытие"}
+             "load": "погрузка", "park": "парк", "flow": "поступление/выбытие", "fleet": "ремонты/отстой (СМИ)"}
     for g, ms in by.items():
         print(f"{names.get(g, g):20s} {', '.join(sorted(ms))}")
 
@@ -319,6 +327,30 @@ def cmd_show(month):
             nm, unit = ITEMS.get(r["item"], ("", r["item"], ""))[1:]
             val = r["low"] if r["low"] == r["high"] else f"{r['low']}—{r['high']}"
             print(f"{nm:55s} {val:>15s} {unit:10s} {r['source']}")
+
+
+# Известные точки из СМИ (поисковая выдача 22.10.2026, страницы не открывались — сверить по ссылке). Повтор не дублирует.
+SEED = [
+    ("2024-12", "fleet_repair", 38, 39, "ИПЕМ: ремонт 38–39 тыс. вагонов в месяц в конце 2024 г. (Коммерсантъ, kommersant.ru/doc/8782122)"),
+    ("2026-02", "fleet_repair", 20, 23, "ИПЕМ: 20–23 тыс. в месяц в начале 2026 г. (Коммерсантъ, kommersant.ru/doc/8782122)"),
+    ("2026-02", "fleet_bad", 158, 158, "неисправных 158 тыс. к концу февраля 2026 г. (Коммерсантъ, kommersant.ru/doc/8572406)"),
+    ("2024-12", "fleet_stoy", 75, 75, "из движения выведено около 75 тыс. к концу 2024 г. (vgudok.com, infranews.ru)"),
+    ("2025-02", "fleet_stoy", 116, 116, "более 116 тыс. в длительном отстое на путях необщего пользования, начало 2025 г. (vgudok.com)"),
+    ("2024-12", "fleet_surplus", 250, 250, "оценка РЖД, 2024 г. (rzd-partner.ru)"),
+    ("2025-02", "fleet_surplus", 400, 400, "оценка РЖД, февраль 2025 г. (rzd-partner.ru)"),
+    ("2025-06", "fleet_off", 16, 16, "списано за I пол. 2025 г., +66% к году (expert.ru)"),
+    ("2025-12", "fleet_off", 38.3, 38.3, "списано за 2025 г. (vgudok.com)"),
+    ("2026-07", "fleet_off", 16, 16, "списано за 7 мес. 2026 г. (vgudok.com)"),
+    ("2026-06", "gon69_spot", 750, 750, "оценка аналитиков ПГК: типовой +15% с начала года (Коммерсантъ 03.07.2026, kommersant.ru/doc/8782122)"),
+    ("2026-06", "gon75_spot", 1200, 1200, "оценка аналитиков ПГК: инновационный +20% (Коммерсантъ 03.07.2026)"),
+    ("2025-09", "gon69_spot", 880, 880, "СОЖТ: 880 ₽/сут в сентябре 2025 г. (vgudok.com)"),
+]
+
+
+def cmd_seed():
+    """Известные точки из СМИ — в базу (источник media). Одинаковый месяц и показатель: последняя запись из списка."""
+    added, total = merge([(m, it, lo, hi, "media", note) for m, it, lo, hi, note in SEED])
+    print(f"Из СМИ: записано {len(SEED)} точек (новых {added}); всего в базе {total}")
 
 
 def cmd_add(a):
@@ -337,6 +369,7 @@ if __name__ == "__main__":
     s = sub.add_parser("show")
     s.add_argument("month", nargs="?")
     sub.add_parser("months")
+    sub.add_parser("seed")
     sub.add_parser("diag").add_argument("files", nargs="+")
     d = sub.add_parser("add")
     d.add_argument("month")
@@ -347,5 +380,5 @@ if __name__ == "__main__":
     d.add_argument("--note", default="")
     x = ap.parse_args()
     {"pdf": lambda: cmd_pdf(x.files), "show": lambda: cmd_show(x.month), "months": cmd_months,
-     "diag": lambda: cmd_diag(x.files),
+     "diag": lambda: cmd_diag(x.files), "seed": cmd_seed,
      "add": lambda: cmd_add(x)}[x.cmd]()

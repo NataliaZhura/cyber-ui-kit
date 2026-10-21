@@ -16,6 +16,7 @@ ls private/argus/*.pdf >/dev/null 2>&1 || { echo "СТОП: нет PDF в ~/rail
 # выпуски читаются при загрузке (zinbox.py); перечитать все заново (5–10 минут) — FULL=1 bash zissue.sh
 [ "${FULL:-0}" = 1 ] && ~/pw/bin/python zobs.py pdf private/argus/*.pdf
 ~/pw/bin/python zinbox.py >/dev/null 2>&1   # то, что лежит в «Мои загрузки», — разложить
+python3 zobs.py seed >/dev/null   # известные цифры из СМИ: ремонты, отстой, профицит, оценки ПГК
 python3 zobs.py months
 echo "== 3. Выпуск"
 M=${1:+--month $1}
@@ -36,6 +37,7 @@ python3 ztypes.py check
 python3 zretro.py test all
 python3 zrates.py score | sed -n '1,4p;/^| Тип/,/^$/p'
 python3 zrates.py alerts --send
+python3 zpgk.py compare
 echo "== 5. Отправка владельцу"
 for f in saved/market/${D}_обзор_рынка_вагонов.pdf saved/market/${D}_обзор_рынка_вагонов_демо.pdf saved/market/${D}_события_рынка.pdf; do
   [ -f "$f" ] && python3 send.py "$f" || echo "!! нет $f — выпуск не собрался, пришли вывод выше"
