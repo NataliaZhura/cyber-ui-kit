@@ -10,6 +10,7 @@
 и даты не копируется второй раз. Файлы не удаляются: обработанные из saved/upload/ переносятся, дубликаты — в
 private/duplicates/.
 """
+import os
 import re
 import shutil
 import subprocess
@@ -115,7 +116,21 @@ def cmd_status():
             print(f"  {y}: не хватает — {', '.join(miss) if miss else 'нет пропусков'}")
 
 
+def ensure_pdf_reader():
+    """Нет pdftotext и pdfplumber в этом Python — перезапуск через ~/pw/bin/python (там pdfplumber, как у zreport.py)."""
+    if shutil.which("pdftotext"):
+        return
+    try:
+        import pdfplumber  # noqa: F401
+    except ImportError:
+        pw = Path.home() / "pw" / "bin" / "python"
+        if pw.exists() and Path(sys.executable).resolve() != pw.resolve():
+            os.execv(str(pw), [str(pw), __file__] + sys.argv[1:])
+        sys.exit("Нечем читать PDF: нет pdftotext и pdfplumber (~/pw/bin/python).")
+
+
 if __name__ == "__main__":
+    ensure_pdf_reader()
     if sys.argv[1:2] == ["status"]:
         sys.exit(cmd_status())
     import fcntl
