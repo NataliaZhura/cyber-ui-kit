@@ -242,13 +242,17 @@ def events(wagon="all", days=14):
                        (since,)).fetchall()
     found, seen = {}, set()
     for pub, src, title, summ, url in rows:
-        low = f"{title} {summ or ''}".lower()
+        low = f"{title}. {summ or ''}".lower()
+        sents = [s for s in re.split(r"(?<=[.!?])\s+|\n+", low) if s.strip()]  # правило — внутри одного предложения
         for typ, sign, pat, why, *ctx in RULES:
             if wagon not in ("all", typ) and typ != "all":
                 continue
             key = (typ, title.lower()[:60])
-            if key in seen or not re.search(pat, low) or (ctx and not re.search(ctx[0], low)):
+            hit = next((s for s in sents if re.search(pat, s)), None)
+            if key in seen or not hit or (ctx and not re.search(ctx[0], low)):
                 continue
+            if "закрыт" in why and re.search(r"поддержк|субсид|льгот", hit):
+                continue  # «меры поддержки портов» — не закрытие
             seen.add(key)
             found.setdefault(typ, []).append({"date": pub[:10], "title": title, "url": url, "sign": sign, "why": why})
     return found

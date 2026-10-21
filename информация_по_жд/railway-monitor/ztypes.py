@@ -270,8 +270,7 @@ def value(w, scen="base", age=14):
     lv = dict(r["lvl"])
     a25, n25 = year_avg(T["month_item"], 2025)  # 2025 г. — ставки партнёра (12 месяцев), 2024 г. — по изменению ряда
     lv[2025] = a25 * T.get("ratio", 1) if n25 == 12 else lv[2026]
-    rate = json.loads(TDATA.read_text(encoding="utf-8"))[T["data"]]["rate"]
-    lv[2024] = lv[2025] * rate["2024"] / rate["2025"] if rate.get("2024") and rate.get("2025") and n25 == 12 else lv[2025]
+    lv[2024] = lv[2025]  # 2024 г. — ставок партнёра нет; ряд презентации для уровня не берём (точка 2025 г. под сомнением)
     avg3 = {y: sum(lv[y - i] for i in range(3)) / 3 for y in range(2026, 2031)}
     if P["model"] == "rate":
         new = {2026: P["new_2026"] or lv[2026] * 365 / (P["cap"] / 100) / 1e6}
