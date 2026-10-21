@@ -124,8 +124,9 @@ def ensure_pdf_reader():
         import pdfplumber  # noqa: F401
     except ImportError:
         pw = Path.home() / "pw" / "bin" / "python"
-        if pw.exists() and Path(sys.executable).resolve() != pw.resolve():
-            os.execv(str(pw), [str(pw), __file__] + sys.argv[1:])
+        if pw.exists() and not os.environ.get("ZINBOX_PW"):  # ~/pw/bin/python — ссылка на тот же python, но своё окружение
+            os.environ["ZINBOX_PW"] = "1"
+            os.execv(str(pw), [str(pw), str(Path(__file__).resolve())] + sys.argv[1:])
         sys.exit("Нечем читать PDF: нет pdftotext и pdfplumber (~/pw/bin/python).")
 
 
