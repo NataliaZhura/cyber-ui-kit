@@ -276,7 +276,7 @@ def forecast_type(w, sc, body):
     lvl = r["months"][lm]
     price = {f"{T.fname(TY, k)} +1%": lvl * (math.exp(r["fit"]["b"][k] * T.xval(TY, k, 1) / 100) - 1) for k in fk}
     v = T.value(w, sc)
-    out = {"wagon": TY["name"], "scenario": T.SCN[sc], "as_of": f"{T.MONTHS[lm - 1]} 2026", "now": round(lvl),
+    out = {"wagon": TY["name"], "scenario": T.SCN[sc], "as_of": f"{T.MNAME[lm - 1]} 2026", "now": round(lvl),
            "q4": {T.SCN[k]: {"months": [round(x) for x in x_["q4"]],
                              "delta": [round(a - b) for a, b in zip(x_["q4"], [x_["months"][lm]] + x_["q4"][:-1])],
                              "avg": round(x_["lvl"][2026]), "pace": x_["pace"]} for k, x_ in res.items()},

@@ -254,7 +254,8 @@ def events(wagon="all", days=14):
             if "закрыт" in why and re.search(r"поддержк|субсид|льгот", hit):
                 continue  # «меры поддержки портов» — не закрытие
             seen.add(key)
-            found.setdefault(typ, []).append({"date": pub[:10], "title": title, "url": url, "sign": sign, "why": why})
+            shown = title if len(title) >= 20 else f"{title}: «{hit[:140]}»"  # пост-подборка — видно, что сработало
+            found.setdefault(typ, []).append({"date": pub[:10], "title": shown, "url": url, "sign": sign, "why": why})
     return found
 
 
