@@ -7,6 +7,7 @@
                                             поиск закупок по 4 типам вагонов → forecast/procure.csv (номер, заказчик,
                                             предмет, начальная цена, дата, ссылка); повтор не дублирует
   python3 zprocure.py show [--wagon gon]    что найдено
+  python3 zprocure.py links [--n 8]         завершённые закупки: ссылки на «Договор» и «Документы» (следующий шаг)
   python3 zprocure.py import <файл.html> …  страницы поиска, сохранённые в браузере (сайт закрыт для зарубежного
                                             сервера): «Мои загрузки» → раскладка zinbox.py вызывает это сама
   python3 zprocure.py dump <файл.html>      показать, что программа видит на странице
@@ -33,7 +34,8 @@ QUERIES = [("gon", "предоставление полувагонов"), ("gon
            ("kr", "предоставление крытых вагонов"), ("hop_grain", "предоставление вагонов-зерновозов"),
            ("hop_grain", "предоставление хопперов-зерновозов"), ("fit", "предоставление фитинговых платформ"),
            ("fit", "предоставление платформ для перевозки контейнеров"), ("any", "предоставление подвижного состава")]
-COLS = ["number", "wagon", "query", "customer", "subject", "price", "currency", "published", "law", "url"]
+COLS = ["number", "wagon", "query", "customer", "subject", "price", "currency", "published", "law", "status", "url",
+        "contract", "docs"]
 
 
 def get(url, timeout=40):
@@ -55,22 +57,23 @@ def clean(s):
 
 
 def parse(page):
-    """Карточки результатов поиска ЕИС. Разметка сайта меняется — разбор терпимый: что не нашлось, остаётся пустым."""
+    """Карточки результатов поиска ЕИС (разметка проверена на страницах октября 2026 г.). Что не нашлось — пусто."""
     out = []
     for block in re.split(r'class="search-registry-entry-block', page)[1:]:
-        num = re.search(r"№\s*([0-9]{8,})", block)
-        href = re.search(r'href="(/epz/order/notice/[^"]+?(?:regNumber|noticeInfoId)=[^"]+)"', block)
-        subj = re.search(r'registry-entry__body-value">(.*?)</div>', block, re.S)
-        cust = re.search(r'registry-entry__body-href">(.*?)</div>', block, re.S)
-        price = re.search(r'price-block__value">(.*?)</div>', block, re.S)
-        pub = re.search(r"Размещено</div>\s*<div[^>]*>([\d.]+)", block)
-        law = re.search(r"(44-ФЗ|223-ФЗ)", block)
-        pr = clean(price.group(1)) if price else ""
-        out.append({"number": num.group(1) if num else "", "subject": clean(subj.group(1)) if subj else "",
-                    "customer": clean(cust.group(1)) if cust else "",
-                    "price": re.sub(r"[^\d,]", "", pr).replace(",", "."), "currency": "₽" if "₽" in pr else "",
-                    "published": pub.group(1) if pub else "", "law": law.group(1) if law else "",
-                    "url": "https://zakupki.gov.ru" + html.unescape(href.group(1)) if href else ""})
+        block = re.sub(r"</?span[^>]*>", "", block)  # подсветка слов поиска рвёт слова
+        g = lambda rx: (re.search(rx, block, re.S).group(1) if re.search(rx, block, re.S) else "")
+        num = g(r"№\s*([0-9]{8,})")
+        href = g(r'registry-entry__header-mid__number">\s*<a[^>]*href="([^"]+)"')
+        pr = clean(g(r'price-block__value"[^>]*>(.*?)</div>'))
+        amp = lambda s: s.replace("&amp;", "&")  # не html.unescape: «&noticeGuid» он превращает в «¬iceGuid»
+        rel = lambda part: ("https://zakupki.gov.ru" + amp(part)) if part.startswith("/") else amp(part)
+        out.append({"number": num, "subject": clean(g(r'registry-entry__body-value"[^>]*>(.*?)</div>')),
+                    "customer": clean(g(r'registry-entry__body-href"[^>]*>(.*?)</div>')),
+                    "price": re.sub(r"[^\d,]", "", pr).replace(",", "."), "currency": "₽" if ("₽" in pr or "8381" in pr) else "",
+                    "published": g(r"Размещено</div>\s*<div[^>]*>([\d.]+)"),
+                    "law": g(r"(44-ФЗ|223-ФЗ)"), "status": clean(g(r'registry-entry__header-mid__title[^"]*"[^>]*>(.*?)</div>')),
+                    "url": rel(href) if href else "",
+                    "contract": rel(g(r'href="([^"]*contract-info[^"]*)"')), "docs": rel(g(r'href="([^"]*documents\.html[^"]*)"'))})
     return [x for x in out if x["number"]]
 
 
@@ -182,10 +185,18 @@ def cmd_import(files):
     print(f"разобрано {got}, новых {new}, всего {len(old)}")
 
 
+def cmd_links(n=8):
+    """Завершённые закупки с ценой — ссылки на «Договор» (поставщик и цена договора) и «Документы» (объём, срок, ставка)."""
+    rows = [r for r in read() if "заверш" in r.get("status", "").lower() and float(r.get("price") or 0) > 0]
+    for r in rows[:n]:
+        print(f"{r['number']} | {r['wagon']} | {float(r['price']):,.0f} ₽ | {r['customer'][:40]}\n  договор: {r['contract']}\n  документы: {r['docs']}".replace(",", " "))
+
+
 def cmd_show(wagon):
     rows = [r for r in read() if not wagon or r["wagon"] == wagon]
-    for r in rows[:40]:
-        print(f"{r['published']} | {r['wagon']} | {r['price']} {r['currency']} | {r['customer'][:45]} | {r['subject'][:90]} | {r['url']}")
+    for r in rows[:60]:
+        pr = "цена не указана" if not r["price"] or float(r["price"] or 0) == 0 else f"{float(r['price']):,.0f} ₽".replace(",", " ")
+        print(f"{r['published']} | {r['wagon']} | {r.get('status', '')} | {pr} | {r['customer'][:40]} | {r['subject'][:110]}")
     print(f"Всего: {len(rows)}")
 
 
@@ -198,6 +209,8 @@ if __name__ == "__main__":
         cmd_search(opt("--pages", 2), opt("--days", 365))
     elif a[:1] == ["show"]:
         cmd_show(opt("--wagon", ""))
+    elif a[:1] == ["links"]:
+        cmd_links(opt("--n", 8))
     elif a[:1] == ["import"] and len(a) > 1:
         cmd_import(a[1:])
     elif a[:1] == ["dump"] and len(a) > 1:
