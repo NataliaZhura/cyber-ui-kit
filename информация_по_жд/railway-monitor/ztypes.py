@@ -224,6 +224,15 @@ def forecast(w, scen="base", ov=None):
         import zevents
         ev = zevents.effects(kind)
     dec_base = q[-1]  # декабрь без поправки на события: от него — 2027–2030 (события 2027 г. — отдельными строками)
+    mode = "pace"
+    if T.get("data") in SEASONAL and "pace" not in (ov or {}):
+        k25 = season_k(T, last_m)
+        if k25:  # проверка на прошлом (zretro.py): у зерновоза «как в те же месяцы 2025 г.» ошибка ±6% против ±74% у ровного темпа
+            base = [m[last_m] * k for k in k25]
+            q = {"base": base, "opt": [x * (1 + SEASON_OPT / 100) ** (i + 1) for i, x in enumerate(base)],
+                 "pess": [m[last_m] * (1 + T["pace"]["base"] / 100) ** (i + 1) for i in range(len(k25))]}[scen]
+            pace = ((q[-1] / m[last_m]) ** (1 / len(q)) - 1) * 100  # средний темп в месяц — для таблиц
+            mode = "season" if scen != "pess" else "flat"
     if ev:
         q = [x * (ev["q4"][i] if i < 3 else 1) for i, x in enumerate(q)]  # события: месяцы закрытия и потери отгрузок
     year = list(m.values()) + q
@@ -244,8 +253,23 @@ def forecast(w, scen="base", ov=None):
             lvl[y] = lvl[y - 1] * (1 + INFL[y] / 100)
             end[y] = lvl[y] ** 2 / end[y - 1]
             parts[y] = {"Инфляция (верхняя граница)": end[y] - end[y - 1]}
-    return {"lvl": lvl, "end": end, "parts": parts, "fit": f, "months": m,
+    return {"mode": mode, "lvl": lvl, "end": end, "parts": parts, "fit": f, "months": m,
             "real": real, "q4": q[-3:], "last_m": last_m, "pace": pace, "scen": s, "events": ev}
+
+
+SEASONAL = {"hop_grain"}  # типы, у которых IV кв. считается по сезонности прошлого года (выбрано проверкой на прошлом)
+SEASON_OPT = 1.5          # оптимистичный: сезонный путь + 1,5% в месяц
+
+
+def season_k(T, lm):
+    """Как менялась ставка в 2025 г. от месяца lm к каждому следующему месяцу до декабря; нет данных — None."""
+    if not any(x["item"] == T["month_item"] and x["month"].startswith("2025-") for x in zobs.read()):
+        return None
+    m25, real25 = months(T["month_item"], 2025)
+    tgt = list(range(lm + 1, 13))
+    if not tgt or lm not in real25 or not all(k in real25 for k in tgt):
+        return None
+    return [m25[x] / m25[lm] for x in tgt]
 
 
 def seasonal_path(T, r):
@@ -318,9 +342,16 @@ def report(w, a):
           "| Сценарий | Темп, % в месяц | октябрь* | ноябрь* | декабрь* | средняя за 2026 г.** |", "|---|---|---|---|---|---|"]
     for sc in SCN:
         r = res[sc]
-        L.append(f"| {SCN[sc]} | {sg(r['pace'], 1)} | " + " | ".join(n(x) for x in r["q4"]) + f" | {n(r['lvl'][2026])} |")
+        tag = {"season": " (сезон 2025 г.)", "flat": " (без сезонного роста)"}.get(r["mode"], "")
+        L.append(f"| {SCN[sc]} | {sg(r['pace'], 1)}{tag} | " + " | ".join(n(x) for x in r["q4"]) + f" | {n(r['lvl'][2026])} |")
     sp = seasonal_path(T, r0)
-    if sp:
+    if r0["mode"] == "season":
+        L += ["", f"<small>IV кв. {T['name'].lower()} — по сезонности 2025 г.: ставка {MGEN[lm - 1]} 2026 г. × как менялась "
+              f"ставка в те же месяцы 2025 г. ({', '.join(sg((k - 1) * 100) + '%' for k in season_k(T, lm)[-3:])}). Проверка на "
+              "прошлом: средние ставки кварталов 2026 г. по этому способу — ошибка ±6%, по ровному темпу — ±74%. "
+              f"Оптимистичный — сезон + {f1(SEASON_OPT)}% в месяц, пессимистичный — сезонного роста нет. 2027–2030 гг. "
+              "считаются от декабря без сезонного пика.</small>"]
+    elif sp:
         L.append(f"| С сезонностью 2025 г.**** | — | " + " | ".join(n(x) for x in sp["q4"]) + f" | {n(sp['avg'])} |")
         L += ["", f"<small>**** ставка {MGEN[lm - 1]} 2026 г. × как менялась ставка от {MGEN[lm - 1]} к октябрю, ноябрю, "
               f"декабрю 2025 г. ({', '.join(sg((k - 1) * 100) + '%' for k in sp['k'])}) — проверка этого способа на прошлом: "

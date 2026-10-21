@@ -403,12 +403,14 @@ def api(w):
 
 def summary():
     S = data()
-    L = ["| Тип | Тест 1: ① ровный темп | ② сезонность | ③ по показателю | Тест 2 (кв. 2026): ① | ② | ③ |", "|---|---|---|---|---|---|---|"]
+    L = ["| Тип | Окт–дек 2025: ровный темп | сезонность груза | по показателю* | Кварталы 2026: ровный темп | как в 2025 г. × тренд | "
+         "сезонность груза |", "|---|---|---|---|---|---|---|"]
     for w in RATE:
         t1, t2 = test_q4(w, S), test_2026(w, S)
         e1 = [statistics.mean(err(f, p) for f, p in zip(t1["fact"], t1[k])) if t1 and t1.get(k) else None for k in ("m1", "m2", "m3")]
         e2 = [statistics.mean(err(x["fact"], x[k]) for x in t2["rows"] if x[k]) if t2 and t2["rows"] else None for k in ("m1", "m2", "m3")]
         L.append(f"| {NAMES[w]} | " + " | ".join("—" if v is None else f"±{v:.0f}%" for v in e1 + e2) + " |")
+    L += ["", "* «если бы знали показатель заранее» — сила связи, а не прогноз. Чем меньше ошибка, тем лучше способ."]
     return "\n".join(L)
 
 
