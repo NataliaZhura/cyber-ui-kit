@@ -119,10 +119,15 @@ def num(s):
 
 def parse_text(text):
     """Текст выпуска (pdfplumber или pdftotext) → наблюдения. Месяц выпуска — из даты в колонтитуле."""
-    m = re.search(r"Логистика сухих грузов\s+(\d{1,2})\s+([а-я]+)\s+(\d{4})", text)
-    if not m or m.group(2) not in GEN:
-        raise ValueError("не найдена дата выпуска («Логистика сухих грузов ДД месяца ГГГГ»)")
-    cur = ym(int(m.group(3)), GEN[m.group(2)])
+    flat = " ".join(text[:20000].split())
+    m = re.search(r"(20\d\d),\s*выпуск\s+[IVXLC]+,\s*№\s*(\d{1,2})\b", flat)  # обложка: № выпуска = месяц
+    if m and 1 <= int(m.group(2)) <= 12:
+        cur = ym(int(m.group(1)), int(m.group(2)))
+    else:
+        m = re.search(r"Логистика сухих грузов\s+(\d{1,2})\s+([а-я]+)\s+(\d{4})", text)
+        if not m or m.group(2) not in GEN:
+            raise ValueError("не найдена дата выпуска (обложка «ГГГГ, выпуск …, № N» или колонтитул)")
+        cur = ym(int(m.group(3)), GEN[m.group(2)])
     prev, obs, group = shift(cur, -1), [], None
     lines = [" ".join(x.split()) for x in text.splitlines()]
     for i, line in enumerate(lines):

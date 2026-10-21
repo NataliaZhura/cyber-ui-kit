@@ -4,6 +4,7 @@
   python3 zinbox.py            разложить: выпуски Argus → private/argus/ (имя по дате выпуска, повтор пропускается) и
                                сразу в базу наблюдений (zobs.py); прочее — private/materials/; итог — строкой владельцу
   python3 zinbox.py status     какие месяцы выпусков есть и каких не хватает (по private/argus/)
+  python3 zinbox.py rescan     заново узнать все выпуски (private/argus/ и duplicates/), переименовать, в базу наблюдений
 Мини-приложение запускает раскладку само через 30 секунд после загрузки PDF владельцем.
 
 Выпуск узнаётся по первой странице («Argus … ДД месяца ГГГГ»), а не по имени файла. Уже лежащий выпуск того же номера
@@ -42,17 +43,21 @@ def first_page(p):
 
 
 def argus_id(text):
-    """('logistics' | 'oil' | …, 'ГГГГ-ММ-ДД') или None."""
+    """('логистика' | 'нефтетранспорт' | 'прочее', 'ГГГГ-ММ-01') или None. Месяц — по номеру выпуска на обложке
+    («2026, выпуск VIII, № 9» — № совпадает с месяцем), иначе по колонтитулу «Логистика сухих грузов ДД месяца ГГГГ»."""
     if "Argus" not in text:
         return None
-    kind = "логистика" if "Логистика сухих грузов" in text else "нефтетранспорт" if "Нефтетранспорт" in text else "прочее"
-    m = re.search(r"(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+(\d{4})", text)
-    if not m:
-        m2 = re.search(r"(Январь|Февраль|Март|Апрель|Май|Июнь|Июль|Август|Сентябрь|Октябрь|Ноябрь|Декабрь)\s+(\d{4})", text)
-        if not m2:
-            return None
-        return kind, f"{m2.group(2)}-{RU.index(m2.group(1).lower()) + 1:02d}-01"
-    return kind, f"{m.group(3)}-{GEN[m.group(2)]:02d}-{int(m.group(1)):02d}"
+    flat = " ".join(text.split())
+    kind = "логистика" if "сухих грузов" in flat else "нефтетранспорт" if "Нефтетранспорт" in flat else "прочее"
+    m = re.search(r"(20\d\d),\s*выпуск\s+[IVXLC]+,\s*№\s*(\d{1,2})\b", flat)
+    if m and 1 <= int(m.group(2)) <= 12:
+        return kind, f"{m.group(1)}-{int(m.group(2)):02d}-01"
+    m = re.search(r"(?:сухих грузов|Нефтетранспорт)\s+(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|"
+                  r"октября|ноября|декабря)\s+(20\d\d)", flat)
+    if m:
+        return kind, f"{m.group(3)}-{GEN[m.group(2)]:02d}-01"
+    m = re.search(r"(Январь|Февраль|Март|Апрель|Май|Июнь|Июль|Август|Сентябрь|Октябрь|Ноябрь|Декабрь)\s+(20\d\d),\s*выпуск", flat)
+    return (kind, f"{m.group(2)}-{RU.index(m.group(1).lower()) + 1:02d}-01") if m else None
 
 
 def have():
@@ -103,6 +108,47 @@ def cmd_sort():
     cmd_status()
 
 
+def cmd_rescan():
+    """Заново узнать все выпуски в private/argus/ и private/duplicates/: правильные имена, по одному на месяц (больший
+    файл), остальное — в повторы; затем все «Логистика» — в базу наблюдений."""
+    files = [p for d in (ARG, DUP) if d.is_dir() for p in sorted(d.glob("*.pdf"))]
+    best, other = {}, []
+    for p in files:
+        i = argus_id(first_page(p))
+        if not i:
+            other.append(p)
+            continue
+        key = (i[0], i[1][:7])
+        if key not in best or p.stat().st_size > best[key][0].stat().st_size:
+            if key in best:
+                other.append(best[key][0])
+            best[key] = (p, i[1])
+        else:
+            other.append(p)
+    ARG.mkdir(parents=True, exist_ok=True)
+    DUP.mkdir(parents=True, exist_ok=True)
+    tmp = []
+    for (kind, _), (p, date) in best.items():  # через временные имена: два файла могли поменяться местами
+        t_ = p.with_name(f"_rescan_{len(tmp)}.pdf")
+        p.rename(t_)
+        tmp.append((t_, ARG / f"{date}_argus_{kind}.pdf"))
+    for t_, dst in tmp:
+        t_.rename(dst)
+    moved = 0
+    for p in other:
+        if p.exists() and p.parent != DUP:
+            n, dst = 1, DUP / p.name
+            while dst.exists():
+                dst, n = DUP / f"{p.stem}_{n}{p.suffix}", n + 1
+            p.rename(dst)
+            moved += 1
+    logi = sorted(dst for _, dst in tmp if "логистика" in dst.name)
+    print(f"Выпусков: {len(best)}, в повторы и неопознанные: {moved}.")
+    if logi:
+        subprocess.run([sys.executable, str(BASE / "zobs.py"), "pdf"] + [str(p) for p in logi])
+    cmd_status()
+
+
 def cmd_status():
     known = have()
     for kind in ("логистика", "нефтетранспорт"):
@@ -134,6 +180,8 @@ if __name__ == "__main__":
     ensure_pdf_reader()
     if sys.argv[1:2] == ["status"]:
         sys.exit(cmd_status())
+    if sys.argv[1:2] == ["rescan"]:
+        sys.exit(cmd_rescan())
     import fcntl
     import time
     if "--wait" in sys.argv:  # вызов из мини-приложения: подождать, пока догрузятся остальные файлы пачки
