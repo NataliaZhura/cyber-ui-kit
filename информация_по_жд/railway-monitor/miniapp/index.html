@@ -140,7 +140,9 @@ function render() {
     : S.tab === "Рынок" && S.data.role === "owner" ? `<button class="card build" data-rates><b>Ставки и парк по месяцам</b>
     <small>аренда, оперирование, техрейс, рабочий парк · к прошлому месяцу и году · оповещения</small></button>
     <button class="card build" data-retro><b>Анализ ставки по месяцам</b>
-    <small>2025–2026 по каждому типу: рынок рядом со ставкой, что двигало ставку, проверка прогноза на прошлом</small></button>` : "";
+    <small>2025–2026 по каждому типу: рынок рядом со ставкой, что двигало ставку, проверка прогноза на прошлом</small></button>
+    <button class="card build" data-second><b>Второе мнение GPT</b>
+    <small>ЖДуша на GPT проверяет наши прогнозы: с чем не согласна, что не учли, свой прогноз — PDF в чат</small></button>` : "";
   $("view").innerHTML = `<div class="grid">${build}${secs.map(card).join("")}</div>`;
 }
 function card(s) {
@@ -353,6 +355,10 @@ async function task(text) {
       : toast("Скопировано: вставь в чат");
   } catch (e) { toast(e.message); }
 }
+async function second() {
+  try { const r = await api("/api/second", {}); toast(r.msg || "Задача ушла ЖДуше"); setTimeout(() => tg?.close(), 1500); }
+  catch (e) { toast(e.message); }
+}
 async function copy(t) {
   try { await navigator.clipboard.writeText(t); return; } catch (e) {}
   const a = document.createElement("textarea"); a.value = t; document.body.append(a); a.select();
@@ -363,6 +369,7 @@ document.addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const d = b.dataset;
   if (d.build !== undefined) { S.build = true; F.res = null; render(); window.scrollTo(0, 0); }
+  else if (d.second !== undefined) second();
   else if (d.retro !== undefined) { S.retro = true; RO.res = null; render(); window.scrollTo(0, 0); }
   else if (d.rw) { RO.wagon = d.rw; RO.res = null; renderRetro(); }
   else if (d.rates !== undefined) { S.rates = true; RT.res = null; render(); window.scrollTo(0, 0); }

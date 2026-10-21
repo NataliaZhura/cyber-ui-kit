@@ -476,6 +476,12 @@ class App(BaseHTTPRequestHandler):
                 return self.reply(400, {"error": str(e) or "Нет данных модели"})
             except Exception as e:  # noqa: BLE001
                 return self.reply(400, {"error": f"Расчёт не удался: {type(e).__name__}"})
+        if path == "/api/second":  # второе мнение GPT по прогнозам — только владельцу
+            if role != "owner":
+                return self.reply(403, {"error": "Второе мнение доступно владельцу."})
+            subprocess.Popen([sys.executable, str(BASE / "zsecond.py"), "run"], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+            return self.reply(200, {"msg": "Задача ушла ЖДуше (GPT) — PDF придёт в чат через 5–15 минут"})
         if path == "/api/task":
             text = " ".join(str(body.get("text", "")).split())[:1500]
             if not text:
