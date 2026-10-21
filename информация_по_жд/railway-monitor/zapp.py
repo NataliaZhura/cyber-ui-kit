@@ -403,6 +403,9 @@ class App(BaseHTTPRequestHandler):
             while dest.exists():
                 dest, n = dest.with_name(f"{time.strftime('%Y-%m-%d')}_{n}_{name}"), n + 1
             dest.write_bytes(raw)
+            if own == SAVED and dest.suffix.lower() == ".pdf":  # владелец: выпуски Argus и материалы — по папкам (zinbox.py)
+                subprocess.Popen([sys.executable, str(BASE / "zinbox.py"), "--wait"], cwd=BASE, start_new_session=True,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return self.reply(200, {"ok": True, "name": dest.name})
         try:
             body = json.loads(raw or b"{}")
