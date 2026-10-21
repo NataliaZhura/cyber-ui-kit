@@ -26,13 +26,14 @@ echo "== 4. Отчёты по типам вагонов: ставка, факт�
 [ -f forecast/types_data.json ] || echo "!! нет forecast/types_data.json — зерновоз и платформа без рядов (команда cat > … из чата)"
 for w in inno gon kr158 kr138 hop_grain hop_grain_inno fit80 fit40 fit60; do
   out=$(python3 zreports.py $w all 2>&1 | sed -n 's/^Файл: //p')
-  if [ -n "$out" ]; then for f in $out; do ~/pw/bin/python zreport.py $f >/dev/null; done; echo "готово: $w (4 отчёта)"
+  if [ -n "$out" ]; then for f in $out; do ~/pw/bin/python zreport.py $f >/dev/null; done; echo "готово: $w (отчётов: $(echo $out | wc -w))"
   else echo "!! $w — отчёты не собрались: python3 zreports.py $w all"; fi
 done
 python3 zevents.py --days 30 --out saved/market/${D}_события_рынка.md && ~/pw/bin/python zreport.py saved/market/${D}_события_рынка.md >/dev/null
 echo "== 4б. Журнал «прогноз — факт», сверка рядов, оповещения"
 python3 zrates.py snap
 python3 ztypes.py check
+python3 zretro.py test all
 python3 zrates.py score | sed -n '1,4p;/^| Тип/,/^$/p'
 python3 zrates.py alerts --send
 echo "== 5. Отправка владельцу"

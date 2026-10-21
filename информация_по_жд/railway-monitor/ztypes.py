@@ -246,6 +246,19 @@ def forecast(w, scen="base", ov=None):
             "real": real, "q4": q[-3:], "last_m": last_m, "pace": pace, "scen": s, "events": ev}
 
 
+def seasonal_path(T, r):
+    """IV кв. по сезонности прошлого года: ставка последнего месяца × отношение ставок тех же месяцев 2025 г."""
+    lm = r["last_m"]
+    m25, real25 = months(T["month_item"], 2025) if any(x["item"] == T["month_item"] and x["month"].startswith("2025-")
+                                                       for x in zobs.read()) else ({}, set())
+    tgt = list(range(lm + 1, 13))
+    if not tgt or lm not in real25 or not all(k in real25 for k in tgt):
+        return None
+    k = [m25[x] / m25[lm] for x in tgt]
+    q = [r["months"][lm] * x for x in k]
+    return {"q4": q[-3:], "k": k[-3:], "avg": (sum(r["months"].values()) + sum(q)) / 12}
+
+
 AGE = [(3, 0.88), (8, 0.75), (14, 0.62), (19, 0.5), (99, 0.38)]  # цена б/у к новому по возрасту (как в zvagon)
 
 
@@ -304,6 +317,12 @@ def report(w, a):
     for sc in SCN:
         r = res[sc]
         L.append(f"| {SCN[sc]} | {sg(r['pace'], 1)} | " + " | ".join(n(x) for x in r["q4"]) + f" | {n(r['lvl'][2026])} |")
+    sp = seasonal_path(T, r0)
+    if sp:
+        L.append(f"| С сезонностью 2025 г.**** | — | " + " | ".join(n(x) for x in sp["q4"]) + f" | {n(sp['avg'])} |")
+        L += ["", f"<small>**** ставка {MONTHS[lm - 1]} 2026 г. × как менялась ставка от {MONTHS[lm - 1]} к октябрю, ноябрю, "
+              f"декабрю 2025 г. ({', '.join(sg((k - 1) * 100) + '%' for k in sp['k'])}) — проверка этого способа на прошлом: "
+              "отчёт «Анализ по месяцам» (zretro.py).</small>"]
     if not a.guest:
         L += ["", "| 2026 | " + " | ".join(f"{MONTHS[k - 1]}{'' if k in r0['real'] else '*'}" for k in r0["months"]) + " |",
               "|---|" + "---|" * len(r0["months"]),

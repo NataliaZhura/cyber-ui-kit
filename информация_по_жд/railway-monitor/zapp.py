@@ -445,6 +445,17 @@ class App(BaseHTTPRequestHandler):
                 return self.reply(200, zrates.table())
             except Exception as e:  # noqa: BLE001
                 return self.reply(400, {"error": f"Нет базы наблюдений: {type(e).__name__}"})
+        if path == "/api/retro":  # анализ ставки по месяцам — данные партнёра, только владельцу
+            if role != "owner":
+                return self.reply(403, {"error": "Анализ по месяцам доступен владельцу."})
+            import zretro
+            w = body.get("wagon") or "inno"
+            if w not in zretro.RATE:
+                return self.reply(400, {"error": "Нет такого типа вагона"})
+            try:
+                return self.reply(200, zretro.api(w))
+            except Exception as e:  # noqa: BLE001
+                return self.reply(400, {"error": f"Нет данных для анализа: {type(e).__name__}"})
         if path == "/api/deal":  # расчёт сделки: лизинг 20 лет, без аванса, ключевая + 3,5 п.п.
             import zdeal
             if body.get("wagon", "inno") not in zdeal.NAMES or body.get("scenario", "base") not in zdeal.SCN:

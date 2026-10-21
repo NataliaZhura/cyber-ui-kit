@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Четыре отдельных отчёта по типу вагона (0 токенов): ① прогноз ставки, ② факторы ставки, ③ стоимость вагона и её
-факторы, ④ сделка в лизинг и выход из неё (калькулятор, предложения с обоснованием по рынку).
+"""Отдельные отчёты по типу вагона (0 токенов): ① прогноз ставки, ② факторы ставки, ③ стоимость вагона и её
+факторы, ④ сделка в лизинг и выход из неё (калькулятор, предложения с обоснованием по рынку), ⑤ анализ ставки по
+месяцам 2025–2026 (zretro.py; только владельцу — данные партнёра).
 
-  python3 zreports.py <вагон> [rate|factors|value|deal|all] [--scenario base|opt|pess] [--guest] [--dir saved/<раздел>]
+  python3 zreports.py <вагон> [rate|factors|value|deal|retro|all] [--scenario base|opt|pess] [--guest] [--dir saved/<раздел>]
   вагон: inno|gon|kr158|kr138|hop_grain|hop_grain_inno|fit80|fit40|fit60
 
 Файлы: <папка>/ГГГГ-ММ-ДД_<отчёт>_<вагон>.md → PDF: ~/pw/bin/python zreport.py <файл.md>. Цифры — только из моделей
@@ -141,7 +142,7 @@ def build(w, what, sc, guest, folder):
     folder = Path(folder or BASE / "saved" / SECTION[w])
     folder.mkdir(parents=True, exist_ok=True)
     nm, d, out = zdeal.NAMES[w], date.today().isoformat(), []
-    todo = ["rate", "factors", "value", "deal"] if what == "all" else [what]
+    todo = ["rate", "factors", "value", "deal", "retro"] if what == "all" else [what]
     md_full = model_md(w, sc, guest) if {"rate", "factors"} & set(todo) else ""
     for t in todo:
         if t == "rate":
@@ -150,6 +151,11 @@ def build(w, what, sc, guest, folder):
             md, f = pick(md_full, FACTOR_KEYS, f"{nm}: факторы ставки — что и насколько её меняет") + "\n" + help_md(w), "факторы_ставки"
         elif t == "value":
             md, f = value_md(w, sc), "стоимость_вагона"
+        elif t == "retro":
+            import zretro
+            if w not in zretro.RATE or guest:  # гостю — нельзя: данные партнёра
+                continue
+            md, f = zretro.report(w), "анализ_по_месяцам"
         else:
             a = zdeal.args(["run", "--wagon", w, "--scenario", sc] + (["--guest"] if guest else []))
             md, f = zdeal.report(a)[1], "сделка_и_выход"
@@ -163,7 +169,7 @@ def build(w, what, sc, guest, folder):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("wagon", choices=list(FILE))
-    ap.add_argument("what", nargs="?", default="all", choices=["rate", "factors", "value", "deal", "all"])
+    ap.add_argument("what", nargs="?", default="all", choices=["rate", "factors", "value", "deal", "retro", "all"])
     ap.add_argument("--scenario", default="base", choices=list(zdeal.SCN))
     ap.add_argument("--guest", action="store_true")
     ap.add_argument("--dir")

@@ -131,13 +131,16 @@ function render() {
   if (S.build) return renderBuild();
   if (S.rates) return renderRates();
   if (S.deal) return renderDeal();
+  if (S.retro) return renderRetro();
   const secs = S.data.sections.filter(s => s.group === S.tab);
   const build = S.tab === "Прогнозы" ? `<button class="card build" data-build><b>Построить прогноз ставки</b>
     <small>полувагоны, крытые, зерновоз, фитинговые платформы · свои значения факторов · октябрь–декабрь 2026 и до 2030</small></button>
     <button class="card build" data-deal><b>Расчёт сделки: вагон в лизинг</b>
     <small>20 лет без аванса, ключевая + 3,5 п.п. · окупаемость, предельная цена, когда выходить и докупать</small></button>`
     : S.tab === "Рынок" && S.data.role === "owner" ? `<button class="card build" data-rates><b>Ставки и парк по месяцам</b>
-    <small>аренда, оперирование, техрейс, рабочий парк · к прошлому месяцу и году · оповещения</small></button>` : "";
+    <small>аренда, оперирование, техрейс, рабочий парк · к прошлому месяцу и году · оповещения</small></button>
+    <button class="card build" data-retro><b>Анализ ставки по месяцам</b>
+    <small>2025–2026 по каждому типу: рынок рядом со ставкой, что двигало ставку, проверка прогноза на прошлом</small></button>` : "";
   $("view").innerHTML = `<div class="grid">${build}${secs.map(card).join("")}</div>`;
 }
 function card(s) {
@@ -279,6 +282,27 @@ async function renderRates() {
     `<tr><td>${esc(x.name)}</td><td>${fmt(x.value)}</td><td>${pc(x.mm)}</td><td>${pc(x.yy)}</td><td>${spark(x.hist)}</td></tr>`).join("")}</table></div></div>`).join("") +
     `<div class="note">Данные на ${esc(r.as_of)} — середина диапазона рынка за месяц. Данные рынка, только для внутреннего использования.</div>`;
 }
+const RO = {wagon: "inno", res: null};
+async function renderRetro() {
+  tg?.BackButton.show();
+  if (!RO.res) { $("view").innerHTML = `<div class="err">Считаю…</div>`;
+    try { RO.res = await api("/api/retro", {wagon: RO.wagon}); } catch (e) { $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Анализ по месяцам</h2><div class="err">${esc(e.message)}</div>`; return; } }
+  const r = RO.res, pcx = v => v === null || v === undefined ? "—" : (Math.abs(v) >= 100 ? fmt(v) : pc(v));
+  const seg = `<div class="seg">${[["inno", "Полувагон иннов."], ["gon", "Полувагон тип."], ["kr158", "Крытый 158"], ["kr138", "Крытый 138"], ["hop_grain", "Зерновоз"], ["fit80", "Фитинг 80'"], ["fit40", "Фитинг 40'"], ["fit60", "Фитинг 60'"]].map(([v, t]) =>
+    `<button data-rw="${v}" class="${RO.wagon === v ? "on" : ""}">${t}</button>`).join("")}</div>`;
+  const mn = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+  const drv = y => (r.drivers[y] || []).map(d => `<tr><td>${esc(d.name)}${d.lag ? " (месяцем раньше)" : ""}</td><td>${String(d.r).replace(".", ",")}</td><td>${String(d.b).replace(".", ",")} на 1 ${esc(d.unit)}</td></tr>`).join("") || `<tr><td colspan="3">мало данных</td></tr>`;
+  const tst = (k, t) => r.tests[k] ? `<tr><td>${t}</td>${["m1", "m2", "m3"].map(m => `<td>${r.tests[k][m] === undefined ? "—" : "±" + Math.round(r.tests[k][m]) + "%"}</td>`).join("")}</tr>` : "";
+  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Анализ ставки по месяцам</h2><div class="box">${seg}</div>
+    <div class="box"><label>${esc(r.wagon)}: ставка и рынок</label><div class="wrap"><table class="tbl"><tr><th>Месяц</th><th>Ставка</th><th>к мес.</th><th>к году</th>${r.cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>${r.rows.map(x =>
+    `<tr><td>${mn[+x.m.slice(5) - 1]} ${x.m.slice(2, 4)}</td><td>${fmt(x.rate)}</td><td>${pc(x.mm)}</td><td>${pc(x.yy)}</td>${x.x.map(v => `<td>${pcx(v)}</td>`).join("")}</tr>`).join("")}</table></div></div>
+    <div class="box"><label>Что двигало ставку</label><div class="note">Связь от −1 до +1: ближе к ±1 — сильнее; слабее ±0,6 — может быть случайной (мало точек).</div>
+    <b>2025</b><table class="tbl"><tr><th>Показатель</th><th>Связь</th><th>% ставки</th></tr>${drv(2025)}</table>
+    <b>2026</b><table class="tbl"><tr><th>Показатель</th><th>Связь</th><th>% ставки</th></tr>${drv(2026)}</table></div>
+    <div class="box"><label>Проверка прогноза на прошлом: средняя ошибка</label><table class="tbl"><tr><th>Тест</th><th>① ровный темп</th><th>② сезонность</th><th>③ по показателю</th></tr>
+    ${tst("q4_2025", "Окт–дек 2025 по янв–сен 2025")}${tst("q_2026", "Кварталы 2026 по 2025")}</table>
+    <div class="note">В тесте кварталов ② — «тот же квартал 2025 × годовой тренд», ③ — сезонность погрузки груза. Подробно — PDF «Анализ по месяцам» на полке типа вагона.</div></div>`;
+}
 const DL = {wagon: "inno", scenario: "base", set: {}, res: null, exitY: 2031};
 async function dcalc() {
   try { DL.res = await api("/api/deal", {wagon: DL.wagon, scenario: DL.scenario, ...DL.set}); }
@@ -339,6 +363,8 @@ document.addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const d = b.dataset;
   if (d.build !== undefined) { S.build = true; F.res = null; render(); window.scrollTo(0, 0); }
+  else if (d.retro !== undefined) { S.retro = true; RO.res = null; render(); window.scrollTo(0, 0); }
+  else if (d.rw) { RO.wagon = d.rw; RO.res = null; renderRetro(); }
   else if (d.rates !== undefined) { S.rates = true; RT.res = null; render(); window.scrollTo(0, 0); }
   else if (d.deal !== undefined) { S.deal = true; S.build = false; if (d.dw) { DL.wagon = d.dw; DL.set = {}; } DL.res = null; render(); window.scrollTo(0, 0); }
   else if (d.dwagon || d.dscenario) { if (d.dwagon) { DL.wagon = d.dwagon; DL.set = {}; } if (d.dscenario) DL.scenario = d.dscenario; DL.res = null; renderDeal(); }
@@ -350,9 +376,9 @@ document.addEventListener("click", async e => {
   else if (d.wagon || d.scenario) { if (d.wagon) F.wagon = d.wagon; if (d.scenario) F.scenario = d.scenario; calc(true); }
   else if (d.calc !== undefined) { document.querySelectorAll("[data-f]").forEach(i => F.set[i.dataset.f] = i.value.trim()); calc(); }
   else if (d.reset !== undefined) calc(true);
-  else if (d.tab) { S.tab = d.tab; S.section = null; S.build = false; S.rates = false; S.deal = false; $("q").value = ""; try { localStorage.setItem("ztab", d.tab); } catch (e) {} render(); }
+  else if (d.tab) { S.tab = d.tab; S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; $("q").value = ""; try { localStorage.setItem("ztab", d.tab); } catch (e) {} render(); }
   else if (d.sec) { S.section = d.sec; render(); window.scrollTo(0, 0); }
-  else if (d.back !== undefined) { S.section = null; S.build = false; S.rates = false; S.deal = false; render(); }
+  else if (d.back !== undefined) { S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; render(); }
   else if (d.send) { try { await api("/api/send", {id: d.send}); toast("Файл отправлен в чат"); } catch (er) { toast(er.message); } }
   else if (d.open) {
     try { const r = await api("/api/link", {id: d.open}); const url = location.origin + r.url; tg?.openLink ? tg.openLink(url) : window.open(url); }
@@ -374,7 +400,7 @@ $("file").addEventListener("change", async e => {
   if (fs.length) { toast(`Загружено ${ok} из ${fs.length}. Выпуски Argus разложатся сами через минуту`); await load(); }
 });
 $("q").addEventListener("input", render);
-tg?.BackButton.onClick(() => { S.section = null; S.build = false; S.rates = false; S.deal = false; render(); });
+tg?.BackButton.onClick(() => { S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; render(); });
 // Кнопки пульта в чате (zmenu.py panel) открывают приложение сразу на расчёте: ?go=build&w=…, ?go=rates, ?go=deal, ?go=sec&s=…
 (() => { const q = new URLSearchParams(location.search), go = q.get("go");
   if (go === "build") { S.tab = "Прогнозы"; S.build = true; if (q.get("w")) F.wagon = q.get("w"); }
