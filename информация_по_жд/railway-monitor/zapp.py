@@ -433,6 +433,34 @@ class App(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001 — ошибка расчёта не должна ронять приложение
                 out = {"error": f"Расчёт не удался: {type(e).__name__}"}
             return self.reply(400 if "error" in out else 200, out)
+        if path == "/api/rates":  # ставки и парк по месяцам — данные партнёра, только владельцу
+            if role != "owner":
+                return self.reply(403, {"error": "Ставки по месяцам доступны владельцу."})
+            try:
+                import zrates
+                return self.reply(200, zrates.table())
+            except Exception as e:  # noqa: BLE001
+                return self.reply(400, {"error": f"Нет базы наблюдений: {type(e).__name__}"})
+        if path == "/api/deal":  # расчёт сделки: лизинг 20 лет, без аванса, ключевая + 3,5 п.п.
+            import zdeal
+            if body.get("wagon", "inno") not in zdeal.NAMES or body.get("scenario", "base") not in zdeal.SCN:
+                return self.reply(400, {"error": "Нет такого типа вагона или сценария"})
+            argv = ["run", "--wagon", str(body.get("wagon") or "inno"), "--scenario", str(body.get("scenario") or "base")]
+            for k, lim in (("price", (0.5, 30)), ("spread", (0, 15)), ("util", (30, 100)), ("opex", (0, 60))):
+                v = str(body.get(k) or "").replace(",", ".").strip()
+                if v:
+                    try:
+                        argv += [f"--{k}", str(min(lim[1], max(lim[0], float(v))))]
+                    except ValueError:
+                        return self.reply(400, {"error": f"Не число: {k}"})
+            try:
+                a = zdeal.args(argv)
+                D, _ = zdeal.report(a)
+                return self.reply(200, zdeal.as_json(D, a))
+            except SystemExit as e:
+                return self.reply(400, {"error": str(e) or "Нет данных модели"})
+            except Exception as e:  # noqa: BLE001
+                return self.reply(400, {"error": f"Расчёт не удался: {type(e).__name__}"})
         if path == "/api/task":
             text = " ".join(str(body.get("text", "")).split())[:1500]
             if not text:

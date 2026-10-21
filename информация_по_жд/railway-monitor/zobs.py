@@ -7,6 +7,7 @@
                                               ручной ввод: ответ участника рынка, ремонт, отстой, цена вагона
   python3 zobs.py show [месяц]                что есть за месяц (по умолчанию — последний)
   python3 zobs.py months                      какие месяцы есть по каждой группе показателей
+  python3 zobs.py diag <выпуск.pdf> [ещё …]    почему раздел не прочитался: заголовок таблицы, похожие строки
 
 Наблюдение = месяц;показатель;мин;макс;источник;пометка. Источник: partner (данные партнёра — пока вместо опроса),
 survey (опрос участников), rzd (РЖД), media (СМИ), own (свой расчёт). Файл — forecast/observations.csv (только на сервере,
@@ -268,6 +269,38 @@ def cmd_pdf(files):
         print(f"{Path(f).name}: выпуск {cur}, наблюдений {len(obs)} (новых {added}), разделы: {', '.join(groups)}; всего в базе {total}")
 
 
+TITLES = {"lease": "Ставки аренды подвижного состава в России", "oper": "Ставка оперирования подвижным составом в России",
+          "trip": "Ставки предоставления типового полувагона на технический рейс", "park": "Парк частных вагонов",
+          "flow": "Поступление и выбытие частных вагонов", "load": "Погрузка основных сухих грузов на сети РЖД"}
+
+
+def cmd_diag(files):
+    """Почему из выпуска не прочитался раздел: есть ли заголовок таблицы; если нет — похожие строки; если есть, но строк
+    нет, — первые строки таблицы (видно, сколько в них чисел)."""
+    for f in files:
+        text = pdf_text(Path(f).expanduser())
+        try:
+            cur, obs = parse_text(text)
+        except ValueError as e:
+            print(f"== {Path(f).name}: {e}")
+            continue
+        got = {ITEMS[o[1]][0] for o in obs}
+        lines = [" ".join(x.split()) for x in text.splitlines()]
+        print(f"== {Path(f).name}: выпуск {cur}, прочитано: {', '.join(sorted(got)) or '—'}")
+        for g, title in TITLES.items():
+            if g in got:
+                continue
+            hit = [i for i, x in enumerate(lines) if x.startswith(title)]
+            if not hit:
+                word = title.split()[0][:6]
+                like = [x[:90] for x in lines if x.startswith(word)][:4]
+                print(f"  {g}: заголовка «{title[:40]}…» нет; похожие: {' | '.join(like) or 'нет'}")
+                continue
+            print(f"  {g}: заголовок есть (стр. текста {hit[0]}), строки таблицы не распознаны:")
+            for x in lines[hit[0] + 1:hit[0] + 9]:
+                print(f"     [{len(cells(x))} чисел] {x[:100]}")
+
+
 def cmd_months():
     by = {}
     for r in read():
@@ -304,6 +337,7 @@ if __name__ == "__main__":
     s = sub.add_parser("show")
     s.add_argument("month", nargs="?")
     sub.add_parser("months")
+    sub.add_parser("diag").add_argument("files", nargs="+")
     d = sub.add_parser("add")
     d.add_argument("month")
     d.add_argument("item")
@@ -313,4 +347,5 @@ if __name__ == "__main__":
     d.add_argument("--note", default="")
     x = ap.parse_args()
     {"pdf": lambda: cmd_pdf(x.files), "show": lambda: cmd_show(x.month), "months": cmd_months,
+     "diag": lambda: cmd_diag(x.files),
      "add": lambda: cmd_add(x)}[x.cmd]()

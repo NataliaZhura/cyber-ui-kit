@@ -5,7 +5,9 @@
   python3 zevents.py set grain.quota_cut=20 grain.port=Тамань:1 grain.freight=30 grain.truck=5
                          fit.to_gondola=10 fit.port=Владивосток:30:1 fit.import=6 fit.discount=0
                                                 параметры рынка с цифрами из новостей → рубли в прогнозе (ztypes.py)
-  python3 zevents.py show | clear [grain|fit]   что сейчас учтено / сбросить
+                         kr.bag=5 kr.truck=3 kr.box=2 gon.box_in=2 gon.port=Восточный:15:1
+  python3 zevents.py show | clear [grain|fit|kr|gon]   что сейчас учтено / сбросить
+  python3 zevents.py suggest [--days 7]          цифры из новостей → готовые строки `set` (владелец подтверждает)
 
 Цепочка «вагон → порт → судно»: проблема в море или порту (закрытие, атака, нет судов, рост фрахта), квота или пошлина
 снижают спрос на вагон, который везёт груз к порту, — вагоны встают в отстой, груз уходит на автотранспорт или в обход.
@@ -66,11 +68,20 @@ RULES = [
 #   ставка +51% (одно наблюдение — уточняется по журналу); 2027 г.: потеря экспорта — в фактор «экспорт зерна».
 #   Платформы: баланс контейнеров = импорт − уход в полувагоны − порты + 0,5 × скидка РЖД; IV кв. — коэффициент 0,5.
 PARAMS = BASE / "forecast" / "market_params.json"
+#   Крытые: зерно и удобрения в таре + штучные грузы − уход на автотранспорт − уход в контейнеры; полувагоны: контейнеры,
+#   перешедшие в полувагоны, − закрытия угольных портов. Эластичность ставки 0,5 (как у платформ, допущение — уточняется
+#   по журналу «прогноз — факт», zrates.py score): IV кв. × (1 + 0,5 × баланс, %), 2027 г. — +0,5 × баланс к изменению ставки.
 EMPTY = {"grain": {"quota_cut": 0, "ports": [], "freight": 0, "truck": 0},
-         "fit": {"to_gondola": 0, "ports": [], "import": 0, "discount": 0}, "port_shares": {}, "updated": "", "notes": []}
+         "fit": {"to_gondola": 0, "ports": [], "import": 0, "discount": 0},
+         "kr": {"bag": 0, "truck": 0, "box": 0, "ports": []},
+         "gon": {"box_in": 0, "ports": []}, "port_shares": {}, "updated": "", "notes": []}
+KINDS = {"grain": "Зерновоз", "fit": "Фитинговые платформы", "kr": "Крытые вагоны", "gon": "Полувагоны"}
+ELAST = 0.5
 PNAME = {"quota_cut": "квота на экспорт зерна, % недобора к ожидаемому экспорту", "freight": "рост фрахта судов, %",
          "truck": "доля зерна, ушедшая на автотранспорт, %", "to_gondola": "контейнеры, ушедшие в полувагоны и крытые, %",
-         "import": "импорт контейнеров к прошлому году, %", "discount": "скидка РЖД на тариф/порожний пробег платформ, %"}
+         "import": "импорт контейнеров к прошлому году, %", "discount": "скидка РЖД на тариф/порожний пробег платформ, %",
+         "bag": "перевозки зерна, удобрений и штучных грузов в крытых к прошлому году, %",
+         "box": "грузы крытых, ушедшие в контейнеры, %", "box_in": "контейнеры, перешедшие в полувагоны, % к погрузке полувагонов"}
 
 
 def params():
@@ -96,6 +107,15 @@ def effects(kind):
                 "Фрахт и нехватка судов": -0.1 * g["freight"], "Зерно на автотранспорт": -g["truck"]}
         dis = [port_m(i) + g["truck"] + 0.1 * g["freight"] + g["quota_cut"] for i in (1, 2, 3)]
         q4 = [max(0.5, 1 - 0.9 * d / 100) for d in dis]
+    elif kind == "kr":
+        comp = {"Зерно и удобрения в таре, штучные грузы": ELAST * g["bag"], "Грузы ушли на автотранспорт": -ELAST * g["truck"],
+                "Грузы ушли в контейнеры": -ELAST * g["box"], "Порты (закрытия)": -ELAST * port_year}
+        dis = [g["bag"] - g["truck"] - g["box"] - port_m(i) for i in (1, 2, 3)]
+        q4 = [max(0.5, 1 + ELAST * d / 100) for d in dis]
+    elif kind == "gon":
+        comp = {"Контейнеры в полувагонах": ELAST * g["box_in"], "Угольные порты (закрытия)": -ELAST * port_year}
+        dis = [g["box_in"] - port_m(i) for i in (1, 2, 3)]
+        q4 = [max(0.5, 1 + ELAST * d / 100) for d in dis]
     else:
         comp = {"Импорт контейнеров": g["import"], "Контейнеры в полувагонах и крытых": -g["to_gondola"],
                 "Порты и море (закрытия, перегрузка)": -port_year, "Скидки РЖД для платформ": 0.5 * g["discount"]}
@@ -103,7 +123,8 @@ def effects(kind):
         q4 = [max(0.5, 1 + 0.5 * d / 100) for d in dis]
     text = [f"{PNAME[k]}: {v:g}" for k, v in g.items() if k != "ports" and v]
     text += [f"порт {x['port']}: доля {share(x):g}%, {x['months']} мес." for x in ports]
-    return {"comp": {k: v for k, v in comp.items() if v}, "q4": q4, "text": text, "updated": P.get("updated", "")}
+    return {"comp": {k: v for k, v in comp.items() if v}, "q4": q4, "text": text, "updated": P.get("updated", ""),
+            "direct": kind in ("kr", "gon")}  # direct: comp — уже % к изменению ставки (не через фактор модели)
 
 
 def cmd_set(pairs):
@@ -113,8 +134,9 @@ def cmd_set(pairs):
     for kv in pairs:
         k, _, v = kv.partition("=")
         kind, _, key = k.partition(".")
-        if kind not in ("grain", "fit") or not (key == "port" or key in P[kind]):
-            sys.exit(f"Не понял «{kv}». Пример: grain.quota_cut=20 grain.port=Тамань:1 fit.to_gondola=10 fit.port=Владивосток:30:1")
+        if kind not in KINDS or not (key == "port" or key in P[kind]):
+            sys.exit(f"Не понял «{kv}». Пример: grain.quota_cut=20 grain.port=Тамань:1 fit.to_gondola=10 fit.port=Владивосток:30:1 "
+                     "kr.bag=5 kr.truck=3 gon.box_in=2 gon.port=Восточный:15:1")
         if key == "port":
             parts = v.split(":")
             item = {"port": parts[0], "months": float(parts[-1])}
@@ -130,10 +152,70 @@ def cmd_set(pairs):
 
 
 def cmd_show():
-    for kind, nm in (("grain", "Зерновоз"), ("fit", "Фитинговые платформы")):
+    for kind, nm in KINDS.items():
         e = effects(kind)
         print(f"{nm}: " + ("; ".join(e["text"]) or "событий с цифрами нет") +
               f" → 2027: {', '.join(f'{k} {v:+.1f}%' for k, v in e['comp'].items()) or '0'}; IV кв. ×{', ×'.join(f'{x:.2f}' for x in e['q4'])}")
+
+
+NUMP = r"(\d+(?:[,.]\d+)?)\s*%"
+DOWN = r"(сниз|упал|сократ|паден|уменьш|минус)"
+# (параметр, шаблон с числом в последней группе, обязательный контекст, знак: +1 / −1 / 0 — по словам «снизился» и т.п.)
+SUGGEST = [
+    ("grain.freight", rf"фрахт\w*.{{0,60}}?(вырос|подорож|увелич|рост)\w*.{{0,40}}?{NUMP}", None, +1),
+    ("grain.truck", rf"зерн\w*.{{0,60}}(автотранспорт|автомобил|фур)\w*.{{0,60}}?{NUMP}", None, +1),
+    ("grain.quota_cut", rf"(экспорт\w* зерн|квот\w*).{{0,60}}?(сниз|сократ|меньше|ниже)\w*.{{0,40}}?{NUMP}", GRAIN, +1),
+    ("fit.import", rf"(импорт|перевоз|оборот|погрузк)\w*.{{0,30}}контейнер\w*.{{0,80}}?{NUMP}", None, 0),
+    ("fit.to_gondola", rf"контейнер\w*.{{0,60}}(полувагон|крыт)\w*.{{0,80}}?{NUMP}", None, +1),
+    ("gon.box_in", rf"контейнер\w*.{{0,60}}полувагон\w*.{{0,80}}?{NUMP}", None, +1),
+    ("kr.bag", rf"(зерн|удобрен|сахар|мук)\w*.{{0,30}}(в таре|в мешк|биг-?бэг|тарно)\w*.{{0,80}}?{NUMP}", None, 0),
+    ("fit.discount", rf"(скидк|понижающ)\w*.{{0,60}}(фитинг|платформ|контейнер)\w*.{{0,60}}?{NUMP}", None, +1),
+]
+PORTS = ["Новороссийск", "Тамань", "Туапсе", "Ростов", "Азов", "Кавказ", "Усть-Луга", "Приморск", "Высоцк", "Восточный",
+         "Находка", "Ванино", "Мурманск", "Владивосток", "Санкт-Петербург"]
+
+
+def cmd_suggest(days=7):
+    """Цифры из новостей → готовые строки `set`. Программа только предлагает: записывает владелец (или бот после «да»)."""
+    if not DB.exists():
+        sys.exit(f"Нет {DB} — сначала: python3 collector.py collect")
+    since = (datetime.now(MSK) - timedelta(days=days)).isoformat(timespec="seconds")
+    rows = sqlite3.connect(DB).execute("SELECT published, title, summary, url FROM news WHERE published >= ? "
+                                       "ORDER BY published DESC", (since,)).fetchall()
+    out, best = [], {}
+    for pub, title, summ, url in rows:
+        low = f"{title}. {summ or ''}".lower()
+        for key, pat, ctx, sign in SUGGEST:
+            m = re.search(pat, low)
+            if not m or (ctx and not re.search(ctx, low)):
+                continue
+            if key == "fit.import" and re.search(r"полувагон|крыт", m.group(0)):
+                continue  # «контейнеры в полувагонах выросли» — это уход с платформ, а не импорт
+            v = float(m.groups()[-1].replace(",", "."))
+            if sign == 0 and re.search(DOWN, m.group(0)):
+                v = -v
+            if abs(v) > 60:  # годовые рекорды и доли рынка — не параметр события
+                continue
+            out.append((pub[:10], key, v, title, url))
+            best.setdefault(key, v)
+        if re.search(rf"{STOP}.{{0,80}}{PORT}|{PORT}.{{0,80}}{STOP}", low):
+            port = next((x for x in PORTS if x.lower()[:6] in low), None)
+            d = re.search(r"(\d+)\s*(дн|сут)", low)
+            if port:
+                kind = "grain" if re.search(GRAIN, low) else "fit" if re.search(BOX, low) else "gon" if "угл" in low else None
+                if kind:
+                    mon = round(int(d.group(1)) / 30, 2) if d else 0.25
+                    out.append((pub[:10], f"{kind}.port", f"{port}:{mon:g}", title, url))
+                    best.setdefault(f"{kind}.port", f"{port}:{mon:g}")
+    if not out:
+        return print(f"За {days} дн. цифр для параметров рынка в новостях не найдено — параметры не меняются.")
+    print(f"Найдено в новостях за {days} дн. (свежие сверху):")
+    for d, key, v, title, url in out[:25]:
+        print(f"  {d[8:10]}.{d[5:7]} {key}={v} — {title[:90]} {url}")
+    print("\nПредложение (по самой свежей новости на каждый параметр) — проверь и, если согласна, выполни:")
+    print("  python3 zevents.py set " + " ".join(f"{k}={v}" for k, v in best.items()))
+    print("Доля порта без цифры берётся из таблицы долей; срок закрытия без цифры — 0,25 мес. (неделя). Рост объёма "
+          "(«выросли на 12%») — не доля: для to_gondola и box_in проверь, какая это доля от перевозок.")
 
 
 def events(wagon="all", days=14):
@@ -192,12 +274,15 @@ def report(wagon, days):
 if __name__ == "__main__":
     if sys.argv[1:2] == ["set"]:
         sys.exit(cmd_set(sys.argv[2:]))
+    if sys.argv[1:2] == ["suggest"]:
+        dd = sys.argv[sys.argv.index("--days") + 1] if "--days" in sys.argv else 7
+        sys.exit(cmd_suggest(int(dd)))
     if sys.argv[1:2] == ["show"]:
         sys.exit(cmd_show())
     if sys.argv[1:2] == ["clear"]:
         import json
         P = params()
-        for kind in (sys.argv[2:] or ["grain", "fit"]):
+        for kind in (sys.argv[2:] or list(KINDS)):
             P[kind] = EMPTY[kind]
         PARAMS.write_text(json.dumps(P, ensure_ascii=False, indent=1), encoding="utf-8")
         sys.exit(cmd_show())

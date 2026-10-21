@@ -13,7 +13,9 @@ python3 openclaw_setup.py sync >/dev/null && echo "правила ЖДуши о�
 python3 collector.py rescore >/dev/null 2>&1 && echo "архив новостей переразмечен (зерновозы, фитинги, море и порты)"
 echo "== 2. База наблюдений из выпусков партнёра"
 ls private/argus/*.pdf >/dev/null 2>&1 || { echo "СТОП: нет PDF в ~/railway-monitor/private/argus/"; exit 1; }
-~/pw/bin/python zobs.py pdf private/argus/*.pdf
+# выпуски читаются при загрузке (zinbox.py); перечитать все заново (5–10 минут) — FULL=1 bash zissue.sh
+[ "${FULL:-0}" = 1 ] && ~/pw/bin/python zobs.py pdf private/argus/*.pdf
+~/pw/bin/python zinbox.py >/dev/null 2>&1   # то, что лежит в «Мои загрузки», — разложить
 python3 zobs.py months
 echo "== 3. Выпуск"
 M=${1:+--month $1}
@@ -30,9 +32,20 @@ for pair in kr158:krytye:крытый_158 kr138:krytye:крытый_138 hop_grai
   python3 ztypes.py run --wagon $w --out $f >/dev/null && ~/pw/bin/python zreport.py $f >/dev/null && echo "готово: $f" || echo "!! $w — не посчитано"
 done
 python3 zevents.py --days 30 --out saved/market/${D}_события_рынка.md && ~/pw/bin/python zreport.py saved/market/${D}_события_рынка.md >/dev/null
+echo "== 4а. Сделка в лизинг по 4 типам (полка «Финмодели» в мини-приложении)"
+mkdir -p saved/model
+for pair in inno:полувагон_инновационный kr158:крытый_158 hop_grain:зерновоз fit80:фитинговая_платформа_80; do
+  w=${pair%%:*}; f=saved/model/${D}_сделка_лизинг_${pair#*:}.md
+  python3 zdeal.py run --wagon $w --out $f >/dev/null && ~/pw/bin/python zreport.py $f >/dev/null && echo "готово: $f" || echo "!! сделка $w — не посчитана"
+done
+echo "== 4б. Журнал «прогноз — факт», сверка рядов, оповещения"
+python3 zrates.py snap
+python3 ztypes.py check
+python3 zrates.py score | sed -n '1,4p;/^| Тип/,/^$/p'
+python3 zrates.py alerts --send
 echo "== 5. Отправка владельцу"
 for f in saved/market/${D}_обзор_рынка_вагонов.pdf saved/market/${D}_обзор_рынка_вагонов_демо.pdf saved/market/${D}_события_рынка.pdf; do
   [ -f "$f" ] && python3 send.py "$f" || echo "!! нет $f — выпуск не собрался, пришли вывод выше"
 done
 systemctl restart zhdusha-app 2>/dev/null && echo "мини-приложение перезапущено"
-echo "== Готово. В ЖДуше: /new, затем «обзор рынка вагонов» или /prognoz (вагоны 1–10)"
+echo "== Готово. Пульт с кнопками (один раз): python3 zmenu.py panel — прогнозы, ставки, сделка без нейросети"

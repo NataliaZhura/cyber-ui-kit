@@ -127,9 +127,15 @@ function render() {
   tg?.BackButton.hide();
   if (S.tab === "Задача") return renderTask();
   if (S.build) return renderBuild();
+  if (S.rates) return renderRates();
+  if (S.deal) return renderDeal();
   const secs = S.data.sections.filter(s => s.group === S.tab);
   const build = S.tab === "Прогнозы" ? `<button class="card build" data-build><b>Построить прогноз ставки</b>
-    <small>полувагоны, крытые, зерновоз, фитинговые платформы · свои значения факторов · октябрь–декабрь 2026 и до 2030</small></button>` : "";
+    <small>полувагоны, крытые, зерновоз, фитинговые платформы · свои значения факторов · октябрь–декабрь 2026 и до 2030</small></button>
+    <button class="card build" data-deal><b>Расчёт сделки: вагон в лизинг</b>
+    <small>20 лет без аванса, ключевая + 3,5 п.п. · окупаемость, предельная цена, когда выходить и докупать</small></button>`
+    : S.tab === "Рынок" && S.data.role === "owner" ? `<button class="card build" data-rates><b>Ставки и парк по месяцам</b>
+    <small>аренда, оперирование, техрейс, рабочий парк · к прошлому месяцу и году · оповещения</small></button>` : "";
   $("view").innerHTML = `<div class="grid">${build}${secs.map(card).join("")}</div>`;
 }
 function card(s) {
@@ -236,6 +242,54 @@ function renderBuild() {
     <div class="note">Данные рынка на ${esc(r.as_of)}. Оценка рынка, не инвестиционная рекомендация. Средняя ошибка модели по проверочным годам ±22–31% в год; 2029–2030 — ориентир.</div>`;
 }
 
+const RT = {res: null};
+const spark = h => { if (h.length < 2) return ""; const v = h.map(x => x[1]), lo = Math.min(...v), hi = Math.max(...v), w = 70, ht = 18;
+  const pts = v.map((x, i) => `${(i * w / (v.length - 1)).toFixed(1)},${(ht - (hi > lo ? (x - lo) / (hi - lo) * ht : ht / 2)).toFixed(1)}`).join(" ");
+  return `<svg width="${w}" height="${ht + 2}" viewBox="0 -1 ${w} ${ht + 2}"><polyline fill="none" stroke="var(--link)" stroke-width="1.5" points="${pts}"/></svg>`; };
+const pc = v => v === null || v === undefined ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1).replace(".", ",") + "%";
+async function renderRates() {
+  tg?.BackButton.show();
+  if (!RT.res) { $("view").innerHTML = `<div class="err">Загружаю…</div>`;
+    try { RT.res = await api("/api/rates", {}); } catch (e) { $("view").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; } }
+  const r = RT.res;
+  const al = r.alerts.length ? `<div class="box"><label>Оповещения</label>${r.alerts.map(a => `<div class="note">⚠ ${esc(a.text)}</div>`).join("")}</div>` : "";
+  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Ставки и парк по месяцам</h2>${al}` + r.groups.map(g =>
+    `<div class="box"><label>${esc(g.title)}</label><div class="wrap"><table class="tbl"><tr><th>Показатель</th><th>${esc(g.rows[0].month)}</th><th>к мес.</th><th>к году</th><th>13 мес.</th></tr>${g.rows.map(x =>
+    `<tr><td>${esc(x.name)}</td><td>${fmt(x.value)}</td><td>${pc(x.mm)}</td><td>${pc(x.yy)}</td><td>${spark(x.hist)}</td></tr>`).join("")}</table></div></div>`).join("") +
+    `<div class="note">Данные на ${esc(r.as_of)} — середина диапазона рынка за месяц. Данные рынка, только для внутреннего использования.</div>`;
+}
+const DL = {wagon: "inno", scenario: "base", set: {}, res: null};
+async function dcalc() {
+  try { DL.res = await api("/api/deal", {wagon: DL.wagon, scenario: DL.scenario, ...DL.set}); }
+  catch (e) { DL.res = null; toast(e.message); $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Расчёт сделки</h2><div class="err">${esc(e.message)}</div>`; return; }
+  renderDeal();
+}
+function renderDeal() {
+  tg?.BackButton.show();
+  const r = DL.res;
+  if (!r) { $("view").innerHTML = `<div class="err">Считаю…</div>`; return dcalc(); }
+  const f2 = v => v === null || v === undefined ? "—" : Number(v).toFixed(2).replace(".", ",");
+  const seg = (key, opts) => `<div class="seg">${opts.map(([v, t]) => `<button data-d${key}="${v}" class="${DL[key] === v ? "on" : ""}">${t}</button>`).join("")}</div>`;
+  const s = r.summary, me = s[r.scenario];
+  const verdict = me.price <= me.maxp * 0.9 ? "покупка оправдана" : me.price <= me.maxp ? "на грани" : "дорого";
+  const inp = (k, name, ph) => `<div><small>${name}</small><input inputmode="decimal" data-dv="${k}" placeholder="${ph}" value="${esc(DL.set[k] || "")}"></div>`;
+  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Расчёт сделки: вагон в лизинг</h2>
+    <div class="box"><label>Тип вагона</label>${seg("wagon", [["inno", "Полувагон иннов."], ["gon", "Полувагон тип."], ["kr158", "Крытый 158"], ["kr138", "Крытый 138"], ["hop_grain", "Зерновоз"], ["hop_grain_inno", "Зерновоз иннов."], ["fit80", "Фитинг 80'"], ["fit40", "Фитинг 40'"], ["fit60", "Фитинг 60'"]])}
+    ${seg("scenario", [["pess", "Пессимист."], ["base", "Базовый"], ["opt", "Оптимист."]])}
+    <div class="f2">${inp("price", "Цена, млн ₽ без НДС", f2(me.price))}${inp("spread", "Надбавка к ключевой, п.п.", "3,5")}${inp("util", "Загрузка, %", "95")}${inp("opex", "Расходы, % выручки", "12")}</div>
+    <button class="main-btn" data-dcalc>Рассчитать</button><button class="main-btn ghost" data-dreset>Вернуть значения по умолчанию</button></div>
+    <div class="box"><label>${esc(r.wagon)}: ${esc(verdict)}</label><div class="note">Цена ${f2(me.price)} млн ₽ против предельной ${f2(me.maxp)} млн ₽ (${esc(r.scenario.toLowerCase())} сценарий).</div>
+    <div class="wrap"><table class="tbl"><tr><th>Сценарий</th><th>Цена</th><th>Предельная</th><th>Доходность, %</th><th>Окупаемость</th><th>Платёж не покрыт</th><th>Выйти</th></tr>${Object.entries(s).map(([k, x]) =>
+    `<tr class="${k === r.scenario ? "me" : ""}"><td>${esc(k)}</td><td>${f2(x.price)}</td><td>${f2(x.maxp)}</td><td>${x.irr === null ? "—" : String(x.irr).replace(".", ",")}</td><td>${x.payback || "> 20 лет"}</td><td>${x.neg.length ? x.neg.slice(0, 4).join(", ") + (x.neg.length > 4 ? "…" : "") : "нет"}</td><td>${x.exit || "держать"}</td></tr>`).join("")}</table></div>
+    <div class="note">Предельная цена — сегодняшняя стоимость чистого дохода за 20 лет и цены б/у в конце по ставке лизинга. Доходность — сравнивать со ставкой лизинга.</div></div>
+    <div class="box"><label>Денежный поток по годам, млн ₽ (${esc(r.scenario.toLowerCase())})</label><div class="wrap"><table class="tbl"><tr><th>Год</th><th>Ставка, ₽/сут</th><th>Чистый доход</th><th>Лизинг, %</th><th>Платёж</th><th>Покрытие</th><th>Долг</th><th>Цена б/у</th><th>Итог при продаже</th></tr>${r.rows.map(x =>
+    `<tr><td>${x.y}</td><td>${fmt(x.rate)}</td><td>${f2(x.noi)}</td><td>${String(x.r).replace(".", ",")}</td><td>${f2(x.pay)}</td><td>${x.dscr === null ? "—" : f2(x.dscr) + (x.dscr < 1 ? " ⚠" : "")}</td><td>${f2(x.bal)}</td><td>${f2(x.val)}</td><td>${f2(x.exit)}</td></tr>`).join("")}</table></div>
+    <div class="note">Покрытие = чистый доход / платёж: ниже 1 — аренда не покрывает лизинг (банку обычно нужно 1,2+).</div></div>
+    <div class="box"><label>Когда докупать</label><table class="tbl"><tr><th>Покупка, конец года</th><th>Цена нового</th><th>Предельная</th><th>Решение</th></tr>${r.buy.map(b =>
+    `<tr><td>${b.y}</td><td>${f2(b.market)}</td><td>${f2(b.maxp)}</td><td>${esc(b.s)}</td></tr>`).join("")}</table></div>
+    <div class="note">Допущения: ${esc(r.note)}. Цена вагона: ${esc(r.price_note)}. Оценка рынка, не инвестиционная рекомендация.</div>`;
+}
+
 async function task(text) {
   try {
     const r = await api("/api/task", {text});
@@ -255,12 +309,17 @@ document.addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b) return;
   const d = b.dataset;
   if (d.build !== undefined) { S.build = true; F.res = null; render(); window.scrollTo(0, 0); }
+  else if (d.rates !== undefined) { S.rates = true; RT.res = null; render(); window.scrollTo(0, 0); }
+  else if (d.deal !== undefined) { S.deal = true; DL.res = null; render(); window.scrollTo(0, 0); }
+  else if (d.dwagon || d.dscenario) { if (d.dwagon) { DL.wagon = d.dwagon; DL.set = {}; } if (d.dscenario) DL.scenario = d.dscenario; DL.res = null; renderDeal(); }
+  else if (d.dcalc !== undefined) { document.querySelectorAll("[data-dv]").forEach(i => { if (i.value.trim()) DL.set[i.dataset.dv] = i.value.trim(); else delete DL.set[i.dataset.dv]; }); DL.res = null; renderDeal(); }
+  else if (d.dreset !== undefined) { DL.set = {}; DL.res = null; renderDeal(); }
   else if (d.wagon || d.scenario) { if (d.wagon) F.wagon = d.wagon; if (d.scenario) F.scenario = d.scenario; calc(true); }
   else if (d.calc !== undefined) { document.querySelectorAll("[data-f]").forEach(i => F.set[i.dataset.f] = i.value.trim()); calc(); }
   else if (d.reset !== undefined) calc(true);
-  else if (d.tab) { S.tab = d.tab; S.section = null; S.build = false; $("q").value = ""; try { localStorage.setItem("ztab", d.tab); } catch (e) {} render(); }
+  else if (d.tab) { S.tab = d.tab; S.section = null; S.build = false; S.rates = false; S.deal = false; $("q").value = ""; try { localStorage.setItem("ztab", d.tab); } catch (e) {} render(); }
   else if (d.sec) { S.section = d.sec; render(); window.scrollTo(0, 0); }
-  else if (d.back !== undefined) { S.section = null; S.build = false; render(); }
+  else if (d.back !== undefined) { S.section = null; S.build = false; S.rates = false; S.deal = false; render(); }
   else if (d.send) { try { await api("/api/send", {id: d.send}); toast("Файл отправлен в чат"); } catch (er) { toast(er.message); } }
   else if (d.open) {
     try { const r = await api("/api/link", {id: d.open}); const url = location.origin + r.url; tg?.openLink ? tg.openLink(url) : window.open(url); }
@@ -282,7 +341,13 @@ $("file").addEventListener("change", async e => {
   if (fs.length) { toast(`Загружено ${ok} из ${fs.length}. Выпуски Argus разложатся сами через минуту`); await load(); }
 });
 $("q").addEventListener("input", render);
-tg?.BackButton.onClick(() => { S.section = null; S.build = false; render(); });
+tg?.BackButton.onClick(() => { S.section = null; S.build = false; S.rates = false; S.deal = false; render(); });
+// Кнопки пульта в чате (zmenu.py panel) открывают приложение сразу на расчёте: ?go=build&w=…, ?go=rates, ?go=deal, ?go=sec&s=…
+(() => { const q = new URLSearchParams(location.search), go = q.get("go");
+  if (go === "build") { S.tab = "Прогнозы"; S.build = true; if (q.get("w")) F.wagon = q.get("w"); }
+  else if (go === "deal") { S.tab = "Прогнозы"; S.deal = true; if (q.get("w")) DL.wagon = q.get("w"); }
+  else if (go === "rates") { S.tab = "Рынок"; S.rates = true; }
+  else if (go === "sec" && q.get("s")) S.section = q.get("s"); })();
 load();
 </script>
 </body>

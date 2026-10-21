@@ -101,6 +101,9 @@ def cmd_sort():
     logi = [p for p in new_argus if "логистика" in p.name]
     if logi:
         subprocess.run([sys.executable, str(BASE / "zobs.py"), "pdf"] + [str(p) for p in logi])
+        # новый месяц: сначала сверка с прошлым прогнозом и оповещения, потом новый прогноз — в журнал
+        subprocess.run([sys.executable, str(BASE / "zrates.py"), "alerts", "--send"])
+        subprocess.run([sys.executable, str(BASE / "zrates.py"), "snap"])
     msg = (f"Принято: выпусков Argus — {len(new_argus)} ({', '.join(p.name[:7] for p in new_argus) or '—'}), "
            f"повторов пропущено — {len(dups)}, материалов — {len(mats)}.")
     print(msg)

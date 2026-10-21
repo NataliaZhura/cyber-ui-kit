@@ -3,6 +3,7 @@
 
   python3 ztypes.py run --wagon kr158|kr138|hop_grain|hop_grain_inno|fit80|fit40|fit60 [--scenario base|opt|pess] [--set stroy=2;3;3;3,mortgage=10] [--guest] [--out файл.md]
   python3 ztypes.py run --wagon kr158 --json        для мини-приложения и «Обзора рынка»
+  python3 ztypes.py check                           сверка рядов зерновоза и платформ с месячными ставками партнёра
 
 Схема (как у полувагона, zrate.py):
   IV кв. текущего года — от ставки последнего месяца (база наблюдений zobs.py) с месячным темпом сценария;
@@ -119,6 +120,49 @@ def months(item, year=2026):
     return out, set(obs)
 
 
+def year_avg(item, year, upto=12):
+    """Средняя ставка партнёра за год по месяцам с данными (январь–upto): (средняя, число месяцев) или (None, 0)."""
+    obs = {}
+    for r in zobs.read():
+        if r["item"] == item and r["month"].startswith(f"{year}-") and r["source"] in ("survey", "partner"):
+            m = int(r["month"][5:])
+            if m <= upto and (r["source"] == "survey" or m not in obs):
+                obs[m] = (float(r["low"]) + float(r["high"])) / 2
+    return (sum(obs.values()) / len(obs), len(obs)) if obs else (None, 0)
+
+
+def check():
+    """Сверка годовых рядов (презентации, forecast/types_data.json) с месячными ставками партнёра (база наблюдений):
+    уровень 2025 г. и направление 2026 к 2025 г. за одни и те же месяцы. 0 токенов."""
+    S = json.loads(TDATA.read_text(encoding="utf-8")) if TDATA.exists() else {}
+    L = ["Сверка рядов зерновоза и платформ с данными партнёра (₽/сут без НДС, средние за год по месяцам с данными)", ""]
+    for w in ("hop_grain", "fit80", "fit40", "fit60", "kr158", "kr138"):
+        T = TYPES[w]
+        a25, n25 = year_avg(T["month_item"], 2025)
+        a26, n26 = year_avg(T["month_item"], 2026)
+        if not a26:
+            L.append(f"{T['name']}: нет ставок партнёра за 2026 г.")
+            continue
+        last = max(int(r["month"][5:]) for r in zobs.read() if r["item"] == T["month_item"] and r["month"].startswith("2026-"))
+        p25, k = year_avg(T["month_item"], 2025, last)
+        dir_p = f"{sg((a26 / p25 - 1) * 100, 1)}%" if p25 and k == last else "нет полного 2025"
+        line = (f"{T['name']}: партнёр 2025 г. — {n(a25) if a25 else '—'} ({n25} мес.), 2026 г. январь–{MONTHS[last - 1]} — "
+                f"{n(a26)}; 2026 к 2025 за те же месяцы — {dir_p}")
+        rate = S.get(T.get("data") or "", {}).get("rate", {}) if w in ("hop_grain", "fit80") else {}
+        if rate:
+            r25, r24, r26 = rate.get("2025"), rate.get("2024"), rate.get("2026")
+            if r25 and a25:
+                line += f"; ряд презентации 2025 г. — {n(r25)} (партнёр / ряд = {f1(a25 / r25)})"
+            if r25 and r26:
+                line += f"; ряд 2026 к 2025 — {sg((r26 / r25 - 1) * 100, 1)}%"
+            if r24 and r25:
+                line += f"; ряд 2025 к 2024 — {sg((r25 / r24 - 1) * 100, 1)}%"
+        L.append(line + ".")
+    L += ["", "Как читать: «партнёр / ряд» около 1 — уровни совпадают; далеко от 1 — ряды разного охвата (модель берёт из "
+          "ряда только годовые изменения, уровень — от партнёра). Направление 2026 к 2025 должно совпадать по знаку."]
+    return "\n".join(L)
+
+
 def rows_of(T):
     """{год: (изменение ставки, % лог., [факторы])} по рядам types_data.json."""
     if not TDATA.exists():
@@ -172,7 +216,7 @@ def forecast(w, scen="base", ov=None):
     last_m = max(m)
     pace = float((ov or {}).get("pace", T["pace"][scen]))
     q = [m[last_m] * (1 + pace / 100) ** k for k in range(1, 13 - last_m)]
-    kind = {"hop_grain": "grain", "fit80": "fit"}.get(T.get("data"))
+    kind = {"hop_grain": "grain", "fit80": "fit"}.get(T.get("data")) or ("kr" if T.get("model") == "kr" else None)
     ev = None
     if kind:
         import zevents
@@ -189,7 +233,7 @@ def forecast(w, scen="base", ov=None):
         comp.update({fname(T, k): f["b"][k] * xval(T, k, s[k][i]) for k in fkeys(T)})
         if ev and i == 0:  # события 2026 г. — в фактор спроса 2027 г. (экспорт зерна / баланс контейнеров)
             fk = fkeys(T)[0]
-            comp.update({name: f["b"][fk] * xval(T, fk, v) for name, v in ev["comp"].items()})
+            comp.update({name: (v if ev.get("direct") else f["b"][fk] * xval(T, fk, v)) for name, v in ev["comp"].items()})
         ch = sum(comp.values())
         end[y] = end[y - 1] * math.exp(ch / 100)
         lvl[y] = math.sqrt(end[y - 1] * end[y])
@@ -224,7 +268,10 @@ def value(w, scen="base", age=14):
         return None
     r = forecast(w, scen)
     lv = dict(r["lvl"])
-    lv[2025] = lv[2024] = lv[2026]  # до 2026 г. ряда ставок партнёра нет — средняя за 3 года начинается с уровня 2026 г.
+    a25, n25 = year_avg(T["month_item"], 2025)  # 2025 г. — ставки партнёра (12 месяцев), 2024 г. — по изменению ряда
+    lv[2025] = a25 * T.get("ratio", 1) if n25 == 12 else lv[2026]
+    rate = json.loads(TDATA.read_text(encoding="utf-8"))[T["data"]]["rate"]
+    lv[2024] = lv[2025] * rate["2024"] / rate["2025"] if rate.get("2024") and rate.get("2025") and n25 == 12 else lv[2025]
     avg3 = {y: sum(lv[y - i] for i in range(3)) / 3 for y in range(2026, 2031)}
     if P["model"] == "rate":
         new = {2026: P["new_2026"] or lv[2026] * 365 / (P["cap"] / 100) / 1e6}
@@ -330,6 +377,7 @@ def report(w, a):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("check")
     r = sub.add_parser("run")
     r.add_argument("--wagon", default="kr158", choices=list(TYPES))
     r.add_argument("--scenario", default="base", choices=list(SCN))
@@ -338,6 +386,8 @@ if __name__ == "__main__":
     r.add_argument("--json", action="store_true")
     r.add_argument("--out")
     x = ap.parse_args()
+    if x.cmd == "check":
+        sys.exit(print(check()))
     res, md = report(x.wagon, x)
     if x.json:
         print(json.dumps({sc: {"year": {str(y): round(v) for y, v in r_["lvl"].items()}, "q4": [round(q) for q in r_["q4"]]}

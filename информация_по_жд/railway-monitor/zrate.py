@@ -103,8 +103,16 @@ def elasticity(D, w):
 
 
 def months(D, w):
-    """Январь–сентябрь 2026; пропуски — по прямой."""
+    """Январь–сентябрь 2026; пропуски — из базы наблюдений, если нет — по прямой."""
     m = list(D["month_2026"][w])
+    try:  # пропуски — из базы наблюдений (выпуски партнёра, zobs.py), если они там есть
+        import zobs
+        item = {"gon": "gon69_spot", "inno": "gon75_spot"}[w]
+        obs = {int(r["month"][5:]): (float(r["low"]) + float(r["high"])) / 2 for r in zobs.read()
+               if r["item"] == item and r["month"].startswith("2026-") and r["source"] in ("partner", "survey")}
+        m = [obs.get(i + 1) if v is None else v for i, v in enumerate(m)]
+    except Exception:  # noqa: BLE001 — нет базы наблюдений: как раньше, по прямой
+        pass
     for i, v in enumerate(m):
         if v is None:
             a = max(j for j in range(i) if m[j] is not None)
@@ -129,8 +137,16 @@ def forecast(D, w, scen, ov=None):
     e, m = elasticity(D, w), months(D, w)
     last = m[-1]
     q4 = [last * math.exp(-e * s["pace"] / 100 * k) for k in (1, 2, 3)]
+    dec = q4[-1]  # декабрь без поправки на события: от него — 2027–2030 (события 2027 г. — отдельной строкой)
+    try:
+        import zevents
+        ev = zevents.effects("gon")  # контейнеры в полувагонах, закрытия угольных портов (forecast/market_params.json)
+    except Exception:  # noqa: BLE001 — без параметров рынка прогноз считается как раньше
+        ev = None
+    if ev and ev["comp"]:
+        q4 = [x * k for x, k in zip(q4, ev["q4"])]
     q4_rub = [q4[0] - last, q4[1] - q4[0], q4[2] - q4[1]]
-    avg26, dec = (sum(m) + sum(q4)) / 12, q4[-1]
+    avg26 = (sum(m) + sum(q4)) / 12
     lvl, end, parts, cap_hit = {2026: avg26}, {2026: dec}, {}, []
     f = fit(D, w)
     if scen == "pess":
@@ -138,7 +154,7 @@ def forecast(D, w, scen, ov=None):
             lvl[y] = lvl[y - 1] * (1 + D["inflation"][str(y)] / 100)
             parts[y] = {"Инфляция": lvl[y] - lvl[y - 1]}
         return {"lvl": lvl, "end": {}, "parts": parts, "fit": f, "months": m, "q4": q4, "q4_rub": q4_rub, "e": e,
-                "scen": s, "cap": cap_hit}
+                "scen": s, "cap": cap_hit, "events": ev}
     b, buy = f["b"], list(s["buy"])
     park = [D["park_start"]]
     rec = D["record"][w]
@@ -149,6 +165,8 @@ def forecast(D, w, scen, ov=None):
         comp = {"Уголь": b["balance"] * pct["coal"] / 2, "Погрузка на сети": b["balance"] * pct["load"] / 2,
                 "Оборот вагона": b["balance"] * pct["turn"], "Парк: выпуск − списания": -b["balance"] * pk,
                 "Стройка (щебень)": b.get("stroy", 0) * pct["stroy"], "Тренд издержек": b["const"]}
+        if ev and i == 1:
+            comp.update(ev["comp"])  # события рынка 2026 г. — % к изменению ставки 2027 г.
         ch = sum(comp.values())
         end[y] = end[y - 1] * math.exp(ch / 100)
         lvl[y] = math.sqrt(end[y - 1] * end[y])
@@ -158,7 +176,7 @@ def forecast(D, w, scen, ov=None):
             buy[i] += 10
             cap_hit.append(y)
     return {"lvl": lvl, "end": end, "parts": parts, "fit": f, "months": m, "q4": q4, "q4_rub": q4_rub, "e": e,
-            "scen": s, "cap": cap_hit}
+            "scen": s, "cap": cap_hit, "events": ev}
 
 
 def need(D, w, target):

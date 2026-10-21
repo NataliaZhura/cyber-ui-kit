@@ -7,6 +7,8 @@
   python3 zmenu.py          (без слов) — вернуть кнопку «Меню» со списком команд
   python3 zmenu.py pin https://<адрес> [ID …]   закреплённое сообщение с кнопкой «Открыть ЖДушу» (для телефона;
                                                 без ID — владельцу)
+  python3 zmenu.py panel [ID …] [--no-pin]     пульт: кнопки прогноза по 4 типам, ставки, сделка, обзор — открывают
+                                                мини-приложение сразу на расчёте (0 токенов); без ID — владельцу
 
 Токен — ~/.secrets/zhdusha_bot; на экран не выводится.
 """
@@ -69,7 +71,38 @@ def pin(url, ids):
         print(f"{cid}: кнопка отправлена{', закреплена' if p.get('ok') else ' (закрепить не удалось — закрепи вручную)'}")
 
 
+URL = "https://zhdusha.duckdns.org"
+# Пульт: кнопки открывают мини-приложение сразу на нужном расчёте — считает программа, нейросеть не участвует (0 токенов).
+PANEL = [[("📈 Полувагон", "?go=build&w=inno"), ("📦 Крытый", "?go=build&w=kr158")],
+         [("🌾 Зерновоз", "?go=build&w=hop_grain"), ("🚢 Платформа", "?go=build&w=fit80")],
+         [("💹 Ставки и парк", "?go=rates"), ("🧮 Сделка: лизинг", "?go=deal")],
+         [("📰 Обзор рынка", "?go=sec&s=market"), ("📂 Все отчёты", "")]]
+
+
+def panel(url, ids, pin_it=True):
+    """Сообщение-пульт с кнопками расчётов (+ закрепить). Нажатие кнопки не пишет боту — токены не тратятся."""
+    kb = json.dumps({"inline_keyboard": [[{"text": t, "web_app": {"url": url + q}} for t, q in row] for row in PANEL]},
+                    ensure_ascii=False)
+    text = ("Пульт ЖДуши — считает программа, мгновенно и без нейросети:\n"
+            "• прогноз ставки по типу вагона (сценарии, факторы, стоимость вагона);\n"
+            "• ставки и парк по месяцам; расчёт сделки в лизинг; обзор рынка.\n"
+            "Вопросы словами — как обычно, в чат.")
+    for cid in ids:
+        r = api("sendMessage", chat_id=cid, text=text, reply_markup=kb)
+        if not r.get("ok"):
+            print(f"{cid}: Telegram не принял — {r}")
+            continue
+        if pin_it:
+            api("pinChatMessage", chat_id=cid, message_id=r["result"]["message_id"], disable_notification=True)
+        print(f"{cid}: пульт отправлен{', закреплён' if pin_it else ''}")
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["panel"]:  # python3 zmenu.py panel [ID …] [--no-pin]
+        owner = (Path.home() / ".secrets" / "zhdusha_owner").read_text(encoding="utf-8").strip()
+        ids = [x for x in sys.argv[2:] if not x.startswith("--")]
+        panel(URL, ids or [owner], "--no-pin" not in sys.argv)
+        sys.exit(0)
     if sys.argv[1:2] == ["pin"]:
         if len(sys.argv) < 3 or not sys.argv[2].startswith("https://"):
             sys.exit("Нужен адрес: python3 zmenu.py pin https://zhdusha.duckdns.org [ID …]")
