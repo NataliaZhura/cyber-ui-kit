@@ -165,7 +165,7 @@ SUGGEST = [
     ("grain.freight", rf"фрахт\w*.{{0,60}}?(вырос|подорож|увелич|рост)\w*.{{0,40}}?{NUMP}", None, +1),
     ("grain.truck", rf"зерн\w*.{{0,60}}(автотранспорт|автомобил|фур)\w*.{{0,60}}?{NUMP}", None, +1),
     ("grain.quota_cut", rf"(экспорт\w* зерн|квот\w*).{{0,60}}?(сниз|сократ|меньше|ниже)\w*.{{0,40}}?{NUMP}", GRAIN, +1),
-    ("fit.import", rf"(импорт|перевоз|оборот|погрузк)\w*.{{0,30}}контейнер\w*.{{0,80}}?{NUMP}", None, 0),
+    ("fit.import", rf"импорт\w*.{{0,40}}контейнер\w*.{{0,60}}?{NUMP}|контейнер\w*.{{0,40}}импорт\w*.{{0,40}}?{NUMP}", None, 0),
     ("fit.to_gondola", rf"контейнер\w*.{{0,60}}(полувагон|крыт)\w*.{{0,80}}?{NUMP}", None, +1),
     ("gon.box_in", rf"контейнер\w*.{{0,60}}полувагон\w*.{{0,80}}?{NUMP}", None, +1),
     ("kr.bag", rf"(зерн|удобрен|сахар|мук)\w*.{{0,30}}(в таре|в мешк|биг-?бэг|тарно)\w*.{{0,80}}?{NUMP}", None, 0),
@@ -175,6 +175,11 @@ PORTS = ["Новороссийск", "Тамань", "Туапсе", "Росто
          "Находка", "Ванино", "Мурманск", "Владивосток", "Санкт-Петербург"]
 
 
+def pnum(m):
+    """Число процентов из совпадения (у шаблона «или» — из той ветки, что сработала)."""
+    return [g for g in m.groups() if g and re.fullmatch(r"\d+(?:[,.]\d+)?", g)][-1]
+
+
 def cmd_suggest(days=7):
     """Цифры из новостей → готовые строки `set`. Программа только предлагает: записывает владелец (или бот после «да»)."""
     if not DB.exists():
@@ -182,38 +187,48 @@ def cmd_suggest(days=7):
     since = (datetime.now(MSK) - timedelta(days=days)).isoformat(timespec="seconds")
     rows = sqlite3.connect(DB).execute("SELECT published, title, summary, url FROM news WHERE published >= ? "
                                        "ORDER BY published DESC", (since,)).fetchall()
-    out, best = [], {}
+    out, best, trend = [], {}, []
     for pub, title, summ, url in rows:
-        low = f"{title}. {summ or ''}".lower()
+        full = f"{title}. {summ or ''}".lower()
+        sents = [s for s in re.split(r"(?<=[.!?])\s+|\n+", full) if s.strip()]  # по предложениям: посты-подборки не склеиваются
         for key, pat, ctx, sign in SUGGEST:
-            m = re.search(pat, low)
-            if not m or (ctx and not re.search(ctx, low)):
+            m = next((x for x in (re.search(pat, s) for s in sents) if x), None)
+            if not m or (ctx and not re.search(ctx, full)):
+                continue
+            if re.search(r"за (\d+|девять|восемь|семь|шесть|полгода|полугоди|год)\w*\s*(месяц|мес\.)?|с начала года|январ\w*\s*[—–-]\s*\w+", m.group(0)):
+                trend.append((pub[:10], key, pnum(m), title))  # рост с начала года — уже в ставках, не событие
                 continue
             if key == "fit.import" and re.search(r"полувагон|крыт", m.group(0)):
                 continue  # «контейнеры в полувагонах выросли» — это уход с платформ, а не импорт
-            v = float(m.groups()[-1].replace(",", "."))
+            v = float(pnum(m).replace(",", "."))
             if sign == 0 and re.search(DOWN, m.group(0)):
                 v = -v
             if abs(v) > 60:  # годовые рекорды и доли рынка — не параметр события
                 continue
             out.append((pub[:10], key, v, title, url))
             best.setdefault(key, v)
-        if re.search(rf"{STOP}.{{0,80}}{PORT}|{PORT}.{{0,80}}{STOP}", low):
-            port = next((x for x in PORTS if x.lower()[:6] in low), None)
-            d = re.search(r"(\d+)\s*(дн|сут)", low)
+        for s in sents:  # закрытие порта: стоп-слово, порт и его название — в одном предложении; «меры поддержки» — не закрытие
+            if not re.search(rf"{STOP}.{{0,80}}{PORT}|{PORT}.{{0,80}}{STOP}", s) or re.search(r"поддержк|субсид|льгот", s):
+                continue
+            port = next((x for x in PORTS if x.lower()[:6] in s), None)
+            d = re.search(r"(\d+)\s*(дн|сут)", s)
             if port:
-                kind = "grain" if re.search(GRAIN, low) else "fit" if re.search(BOX, low) else "gon" if "угл" in low else None
+                kind = "grain" if re.search(GRAIN, full) else "fit" if re.search(BOX, full) else "gon" if "угл" in full else None
                 if kind:
                     mon = round(int(d.group(1)) / 30, 2) if d else 0.25
                     out.append((pub[:10], f"{kind}.port", f"{port}:{mon:g}", title, url))
-                    best.setdefault(f"{kind}.port", f"{port}:{mon:g}")
+                    best.setdefault(f"{kind}.port|{port}", f"{port}:{mon:g}")  # каждый порт — отдельной строкой
+                break
+    if trend:
+        print("Рост или спад с начала года — уже в ставках, в параметры не беру: " +
+              "; ".join(f"{d[8:10]}.{d[5:7]} {k} {v}% ({ti[:50]})" for d, k, v, ti in trend[:5]))
     if not out:
         return print(f"За {days} дн. цифр для параметров рынка в новостях не найдено — параметры не меняются.")
     print(f"Найдено в новостях за {days} дн. (свежие сверху):")
     for d, key, v, title, url in out[:25]:
         print(f"  {d[8:10]}.{d[5:7]} {key}={v} — {title[:90]} {url}")
     print("\nПредложение (по самой свежей новости на каждый параметр) — проверь и, если согласна, выполни:")
-    print("  python3 zevents.py set " + " ".join(f"{k}={v}" for k, v in best.items()))
+    print("  python3 zevents.py set " + " ".join(f"{k.split('|')[0]}={v}" for k, v in best.items()))
     print("Доля порта без цифры берётся из таблицы долей; срок закрытия без цифры — 0,25 мес. (неделя). Рост объёма "
           "(«выросли на 12%») — не доля: для to_gondola и box_in проверь, какая это доля от перевозок.")
 
