@@ -248,6 +248,9 @@ def vagon_value(t, lvl):
             "cap": {str(y): round(lvl[y] * 365 / (v * 1e6) * 100, 1) for y, v in p.items()}}
 
 
+import zhelp  # noqa: E402  — пояснения к факторам («Изменить допущения»)
+
+
 def forecast_type(w, sc, body):
     """«Построить прогноз» для крытых, зерновоза, платформ — ztypes.py (та же схема, что у полувагона)."""
     import ztypes as T
@@ -282,7 +285,7 @@ def forecast_type(w, sc, body):
            "end": {str(y): round(r["end"][y]) for y in T.YEARS}, "parts_scenario": T.SCN[sc],
            "price": {k: round(x) for k, x in price.items()}, "need": [], "factors": factors, "cap": [],
            "defaults": defaults, "pace_label": "темп", "fields": fk + ["pace"],
-           "accuracy": r["fit"]["bt"] or {}}
+           "accuracy": r["fit"]["bt"] or {}, "help": zhelp.for_wagon(w, fk + ["pace"])}
     if v:
         out["value"] = {"new": {str(y): round(x, 1) for y, x in v["new"].items()},
                         "used": {str(y): round(x, 1) for y, x in v["used"].items()},
@@ -326,7 +329,8 @@ def forecast(body):
             "price": {k: round(v) for k, v in up.items()},
             "need": [{"target": t, "pct": round(Z.need(D, w, t)[0], 1), "k": round(Z.need(D, w, t)[1], 1)} for t in D["targets"]],
             "defaults": {Z.SCN[k]: v for k, v in defaults.items()}, "factors": {k: Z.FACTORS[k] for k in LIMITS}, "cap": r["cap"],
-            "pace_label": "парк", "fields": ["pace", "coal", "load", "stroy", "buy", "off"], "value": vagon_value(w, r["lvl"])}
+            "pace_label": "парк", "fields": ["pace", "coal", "load", "stroy", "buy", "off"], "value": vagon_value(w, r["lvl"]),
+            "help": zhelp.for_wagon(w, ["pace", "coal", "load", "stroy", "buy", "off"])}
 
 
 class App(BaseHTTPRequestHandler):

@@ -22,22 +22,14 @@ M=${1:+--month $1}
 D=$(date +%F)
 python3 zissue.py $M --out saved/market/${D}_обзор_рынка_вагонов.md && ~/pw/bin/python zreport.py saved/market/${D}_обзор_рынка_вагонов.md
 python3 zissue.py $M --demo --out saved/market/${D}_обзор_рынка_вагонов_демо.md && ~/pw/bin/python zreport.py saved/market/${D}_обзор_рынка_вагонов_демо.md
-echo "== 4. Прогнозы по типам вагонов (плитки «Рынок» и «Прогнозы» в мини-приложении)"
+echo "== 4. Отчёты по типам вагонов: ставка, факторы, стоимость, сделка и выход (полки «Рынок» в мини-приложении)"
 [ -f forecast/types_data.json ] || echo "!! нет forecast/types_data.json — зерновоз и платформа без рядов (команда cat > … из чата)"
-for pair in kr158:krytye:крытый_158 kr138:krytye:крытый_138 hop_grain:zerno:зерновоз hop_grain_inno:zerno:зерновоз_инновационный \
-            fit80:fiting:фитинговая_платформа_80 fit40:fiting:фитинговая_платформа_40 fit60:fiting:фитинговая_платформа_60; do
-  w=${pair%%:*}; rest=${pair#*:}; sec=${rest%%:*}; nm=${rest#*:}
-  mkdir -p saved/$sec
-  f=saved/$sec/${D}_прогноз_ставки_$nm.md
-  python3 ztypes.py run --wagon $w --out $f >/dev/null && ~/pw/bin/python zreport.py $f >/dev/null && echo "готово: $f" || echo "!! $w — не посчитано"
+for w in inno gon kr158 kr138 hop_grain hop_grain_inno fit80 fit40 fit60; do
+  out=$(python3 zreports.py $w all 2>&1 | sed -n 's/^Файл: //p')
+  if [ -n "$out" ]; then for f in $out; do ~/pw/bin/python zreport.py $f >/dev/null; done; echo "готово: $w (4 отчёта)"
+  else echo "!! $w — отчёты не собрались: python3 zreports.py $w all"; fi
 done
 python3 zevents.py --days 30 --out saved/market/${D}_события_рынка.md && ~/pw/bin/python zreport.py saved/market/${D}_события_рынка.md >/dev/null
-echo "== 4а. Сделка в лизинг по 4 типам (полка «Финмодели» в мини-приложении)"
-mkdir -p saved/model
-for pair in inno:полувагон_инновационный kr158:крытый_158 hop_grain:зерновоз fit80:фитинговая_платформа_80; do
-  w=${pair%%:*}; f=saved/model/${D}_сделка_лизинг_${pair#*:}.md
-  python3 zdeal.py run --wagon $w --out $f >/dev/null && ~/pw/bin/python zreport.py $f >/dev/null && echo "готово: $f" || echo "!! сделка $w — не посчитана"
-done
 echo "== 4б. Журнал «прогноз — факт», сверка рядов, оповещения"
 python3 zrates.py snap
 python3 ztypes.py check

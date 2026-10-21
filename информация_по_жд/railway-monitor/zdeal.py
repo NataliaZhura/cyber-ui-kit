@@ -26,7 +26,7 @@ sys.path.insert(0, str(BASE))
 # https://www.cbr.ru/Content/Document/File/194258/forecast_260724.pdf ; ставка на 21.10.2026 — 14% (решение 11.09.2026).
 KEY = {2026: 14.5, 2027: 11.5, 2028: 8.5}
 KEY_NOTE = ("ключевая ставка — середина прогноза Банка России от 24.07.2026 (2027 г. — 10,5–12,5%, 2028 г. — 8,0–9,0%), "
-            "с 2029 г. — как в 2028 г. (допущение); 23.10.2026 — заседание с новым прогнозом: обновить --key")
+            "с 2029 г. — как в 2028 г. (допущение); 23.10.2026 — заседание Банка России с новым прогнозом: ставку обновим")
 INFL = 4.0  # % в год после 2030 г. (Минэкономразвития, прогноз СЭР сентябрь 2026: 4,0% в 2027–2029 гг.)
 NAMES = {"gon": "Полувагон типовой", "inno": "Полувагон инновационный", "kr158": "Крытый вагон 158 м³",
          "kr138": "Крытый вагон 138 м³", "hop_grain": "Хоппер-зерновоз", "hop_grain_inno": "Хоппер-зерновоз инновационный",
@@ -66,7 +66,7 @@ def model(w, sc):
         p, _ = zvagon.price_path(V, "kr158", {y: lv158[y] for y in range(2027, 2031)})
         if w == "kr138":  # цены 138 м³ в модели нет — пропорционально ставке (оценка)
             p = {y: v * lvl[2026] / lv158[2026] for y, v in p.items()}
-            return lvl, p, "цена 138 м³ — как у 158 м³ пропорционально ставке (оценка; задайте --price)"
+            return lvl, p, "цена 138 м³ — как у 158 м³ пропорционально ставке (оценка; задайте свою цену)"
         return lvl, p, "модель цены нового вагона (zvagon), рынок 2026 г."
     v = T.value(w, sc)
     if not v:
@@ -74,9 +74,9 @@ def model(w, sc):
     note = v["P"]["note"]
     if w.startswith("hop_grain"):
         note += ("; цена нового зерновоза 2026 г. в открытых источниках не подтверждена: 2023–2024 гг. — 5,2–7,1 млн ₽ "
-                 "(Коммерсантъ, СберЛизинг), прайс лизинговой компании — от 6,0 млн ₽ без НДС; задайте свою: --price")
+                 "(Коммерсантъ, СберЛизинг), прайс лизинговой компании — от 6,0 млн ₽ без НДС; задайте свою цену")
     if w in ("fit40", "fit60"):
-        note += f"; цена {NAMES[w]} — как у 80' (своей модели нет, задайте --price)"
+        note += f"; цена {NAMES[w]} — как у 80' (своей модели нет, задайте свою цену)"
     return lvl, v["new"], note
 
 
@@ -131,6 +131,10 @@ def deal(w, sc, price=None, spread=3.5, term=20, util=95, opex=12, key=None, buy
             hold = None
         elif hold is None:
             hold = a["y"]
+    for i, x in enumerate(rows):  # доходность, если продать вагон в конце этого года
+        f = [-P] + [z["noi"] for z in rows[:i + 1]]
+        f[-1] += x["val"]
+        x["irr_to"] = irr(f)
     flows = [-P] + [x["noi"] for x in rows]
     flows[-1] += rows[-1]["val"]
     return {"w": w, "sc": sc, "price": P, "rows": rows, "note": note, "irr": irr(flows),
@@ -209,6 +213,18 @@ def report(a):
     if d["neg"]:
         L.append(f"Риск: в {', '.join(map(str, d['neg'][:6]))} г. аренда не покрывает платёж — заложить доплату или "
                  "договориться о графике (каникулы, сезонный платёж).")
+    L += ["", "**Калькулятор выхода: если продать вагон в конце года**", "",
+          "| Год продажи | Цена б/у | Долг к погашению | Накоплено после платежей | Итог | Доходность до продажи, % |", "|---|---|---|---|---|---|"]
+    for x in d["rows"]:
+        if x["k"] in (1, 2, 3, 4, 5, 7, 10, 15, 20):
+            L.append(f"| {x['y']} | {n(x['val'], 2)} | {n(x['bal'], 2)} | {n(x['cum'], 2)} | {n(x['exit'], 2)} | "
+                     f"{n(x['irr_to']) if x['irr_to'] is not None else '—'} |")
+    L += ["", f"<small>Доходность до продажи — как если бы вагон купили за {n(d['price'], 2)} млн ₽, получали чистый доход и "
+          f"продали в этом году; сравнивать со ставкой лизинга и с доходностью удержания весь срок "
+          f"({n(d['irr']) if d['irr'] is not None else '—'}%).</small>", ""]
+    A = advice(a.wagon, D)
+    L += ["## Предложения и обоснование по рынку", "", f"> **Что делать:** {A['action']}; выход — {A['exit']}.", "",
+          "Почему:"] + [f"- {x}" for x in A["why"]]
     L += ["", "## 3. Когда докупать", "", "| Покупка в конце года | Цена нового (прогноз) | Предельная цена | Решение |",
           "|---|---|---|---|"]
     for b, m, mp, s in buy_more(a.wagon, a.scenario, a):
@@ -228,10 +244,82 @@ def as_json(D, a):
             "summary": {SCN[sc]: {"price": round(x["price"], 2), "maxp": round(x["maxp"], 2),
                                   "irr": round(x["irr"], 1) if x["irr"] is not None else None, "payback": x["payback"],
                                   "neg": x["neg"], "exit": x["exit"]} for sc, x in D.items()},
-            "rows": [{k: (round(v, 2) if isinstance(v, float) else v) for k, v in x.items() if k in
-                      ("y", "rate", "noi", "r", "pay", "dscr", "bal", "val", "exit")} for x in d["rows"]],
+            "rows": [{k: (round(v, 1 if k == "irr_to" else 2) if isinstance(v, float) else v) for k, v in x.items() if k in
+                      ("y", "rate", "noi", "r", "pay", "dscr", "bal", "val", "exit", "cum", "irr_to")} for x in d["rows"]],
+            "irr_full": round(d["irr"], 1) if d["irr"] is not None else None, "advice": advice(a.wagon, D),
             "buy": [{"y": b, "market": round(m, 2), "maxp": round(mp, 2), "s": s} for b, m, mp, s in buy_more(a.wagon, a.scenario, a)],
             "note": KEY_NOTE, "price_note": d["note"]}
+
+
+EV_TYPE = {"gon": "gon", "inno": "gon", "kr158": "kr158", "kr138": "kr158", "hop_grain": "hop_grain",
+           "hop_grain_inno": "hop_grain", "fit80": "fit80", "fit40": "fit80", "fit60": "fit80"}
+TARIFF_ROW = {"gon": "Полувагон", "inno": "Инновационный", "kr158": "Крытый", "kr138": "Крытый", "hop_grain": "Хоппер",
+              "hop_grain_inno": "Хоппер", "fit80": "Фитинговая", "fit40": "Фитинговая", "fit60": "Фитинговая"}
+
+
+def advice(w, D):
+    """Предложения с обоснованием по рынку: покупать / держать / продавать. Каждое «почему» — цифра из базы или модели."""
+    b, ps = D["base"], D["pess"]
+    why, score = [], 0
+    k = b["price"] / b["maxp"]
+    if k <= 0.9:
+        score += 1
+        why.append(f"цена {n(b['price'], 2)} млн ₽ на {n((1 - k) * 100, 0)}% ниже предельной по базовому сценарию")
+    elif k > 1:
+        score -= 1
+        why.append(f"цена выше предельной по базовому сценарию ({n(b['price'], 2)} против {n(b['maxp'], 2)} млн ₽)")
+    if ps["price"] > ps["maxp"]:
+        score -= 1
+        why.append(f"в пессимистичном сценарии предельная цена {n(ps['maxp'], 2)} млн ₽ — ниже цены: риск для кредитора")
+    if b["neg"]:
+        why.append(f"в {', '.join(map(str, b['neg'][:3]))} г. аренда не покрывает платёж — нужен запас или сезонный график")
+    try:
+        import zhelp
+        import zrates
+        S = zrates.series()
+        r = S.get(zhelp.RATE_ITEM[w], {})
+        if len(r) >= 2:
+            last = max(r)
+            prev, year = r.get(zrates.zobs.shift(last, -1)), r.get(zrates.zobs.shift(last, -12))
+            if prev:
+                ch = (r[last] / prev - 1) * 100
+                score += 1 if ch >= 2 else -1 if ch <= -2 else 0
+                why.append(f"ставка аренды за месяц {ch:+.1f}% ({last}, {round(r[last])} ₽/сут)".replace(".", ","))
+            if year:
+                why.append(f"к году назад {(r[last] / year - 1) * 100:+.1f}%".replace(".", ","))
+        pk = S.get(zhelp.PARK_ITEM[w], {})
+        if len(pk) >= 2:
+            last = max(pk)
+            prev = pk.get(zrates.zobs.shift(last, -1))
+            if prev:
+                ch = (pk[last] / prev - 1) * 100
+                if "work" in zhelp.PARK_ITEM[w]:
+                    score += 1 if ch <= -0.5 else -1 if ch >= 0.5 else 0
+                    why.append(f"рабочий парк за месяц {ch:+.1f}% — {'вагоны уходят в отстой, предложение сжимается' if ch < 0 else 'предложение растёт'}".replace(".", ","))
+    except Exception:  # noqa: BLE001 — нет базы наблюдений: без рыночных строк
+        pass
+    try:
+        import zevents
+        it = zevents.events(EV_TYPE[w], 30).get(EV_TYPE[w], [])
+        if it:
+            s, v = zevents.verdict(it)
+            score += 1 if s >= 2 else -1 if s <= -2 else 0
+            why.append(f"события рынка за 30 дней: {'+' if s > 0 else ''}{s} — подтверждают {v} сценарий")
+    except SystemExit:
+        pass
+    try:
+        import ztariff
+        row = next((x for x in ztariff.BY_TYPE if x[0].startswith(TARIFF_ROW[w])), None)
+        if row:
+            why.append(f"тарифы РЖД: выгодно — {row[1]}; невыгодно — {row[2]}")
+    except Exception:  # noqa: BLE001
+        pass
+    act = ("покупать / докупать: цена ниже предельной, рынок поддерживает" if score >= 2 else
+           "не покупать по этой цене, действующий парк — держать и искать выход, если ставка продолжит падать" if score <= -2
+           else "держать; покупать — только с запасом к предельной цене и проверкой пессимистичного сценария")
+    ex = b["exit"]
+    return {"action": act, "score": score, "why": why,
+            "exit": (f"по базовому сценарию — продать в конце {ex} г." if ex else "по базовому сценарию — держать весь срок")}
 
 
 def args(argv=None):

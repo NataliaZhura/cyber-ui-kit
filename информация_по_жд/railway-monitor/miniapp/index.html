@@ -59,6 +59,8 @@ opacity:0;transform:translateY(20px);transition:.2s;pointer-events:none;z-index:
 .card.build{grid-column:1/-1;background:var(--btn);color:var(--btn-text)}.card.build small{color:var(--btn-text);opacity:.85}
 .seg{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}.seg button{flex:1 1 30%;border:1px solid var(--sep);background:var(--bg2);color:var(--text);
 border-radius:10px;padding:8px 4px;font:inherit;font-size:13px;cursor:pointer}.seg button.on{background:var(--btn);color:var(--btn-text);border-color:var(--btn)}
+.why{margin:6px 0 0;padding-left:18px}.why li{margin:3px 0;font-size:13px}
+.fh{margin:10px 0;padding-bottom:8px;border-bottom:1px solid var(--sep)}.fh:last-of-type{border-bottom:0}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.f2 div small{margin:0 0 3px}
 .tbl{width:100%;border-collapse:collapse;font-size:13px;margin:4px 0}.tbl th,.tbl td{padding:5px 4px;border-bottom:1px solid var(--sep);text-align:right;white-space:nowrap}
 .tbl th:first-child,.tbl td:first-child{text-align:left;white-space:normal}.tbl th{color:var(--hint);font-weight:600}
@@ -187,7 +189,7 @@ function renderTask() {
 }
 
 // ---------- «Построить прогноз»: расчёт программой на сервере, без нейросети ----------
-const F = {wagon: "inno", scenario: "base", set: {}, res: null};
+const F = {wagon: "inno", scenario: "base", set: {}, res: null, view: "rate", open: false};
 const fmt = v => Math.round(v).toLocaleString("ru-RU");
 const sgn = v => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v));
 async function calc(reset) {
@@ -221,25 +223,44 @@ function renderBuild() {
     <tr><th>Цель</th><th>Рабочий парк</th><th>в месяц за 3 мес.</th></tr>${r.need.map(n => `<tr><td>${fmt(n.target)} ₽</td>
     <td>−${String(n.pct).replace(".", ",")}% (−${String(n.k).replace(".", ",")} тыс.)</td><td>−${(n.k / 3).toFixed(1).replace(".", ",")} тыс.</td></tr>`).join("")}</table>
     <div class="note">В августе рабочий парк сократился на 6,4 тыс. вагонов за месяц.</div></div>` : "";
-  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Прогноз ставки</h2>
+  const H = r.help || {};
+  const hint = k => { const h = H[k]; if (!h) return "";
+    return `<div class="note">${esc(h.what)}<br><b>Почему такие значения:</b> ${esc(h.why)}<br><b>Где смотреть:</b> ${esc(h.where)}; разумно ${esc(h.range)}${h.now ? `<br><b>Сейчас:</b> ${esc(h.now)}` : ""}</div>`; };
+  const setup = F.open ? `<div class="box"><label>Свои допущения — сценарий «${esc(r.scenario)}»</label>
+    <div class="note">Годовые — на 2027–2030 (одно число на все годы или четыре через «;»); IV кв. 2026 — % в месяц. Пустое поле — значение сценария.</div>
+    ${r.fields.map(k => `<div class="fh">${inp(k)}${H[k] ? `<div class="note">${esc(H[k].what)} Разумно ${esc(H[k].range)}.${H[k].now ? ` Сейчас: ${esc(H[k].now)}.` : ""}</div>` : ""}</div>`).join("")}
+    <div class="note">Почему такие значения в сценариях и где смотреть свежие цифры — вкладка «② Факторы».</div>
+    <button class="main-btn" data-calc>Рассчитать</button><button class="main-btn ghost" data-reset>Вернуть значения сценария</button>
+    <button class="main-btn ghost" data-open>Скрыть настройки</button></div>`
+    : `<button class="main-btn ghost" data-open>Изменить допущения ▾</button><div class="note">Значения сценариев уже подобраны (пояснения — во вкладке «Факторы»). Свои — только если есть свежая цифра.</div>`;
+  const head = `<h2><button class="back" data-back>‹</button>Прогноз: ${esc(r.wagon)}</h2>
     <div class="box"><label>Тип вагона</label>${seg("wagon", [["inno", "Полувагон иннов."], ["gon", "Полувагон тип."], ["kr158", "Крытый 158"], ["kr138", "Крытый 138"], ["hop_grain", "Зерновоз"], ["fit80", "Фитинг 80'"]])}${seg("scenario", [["pess", "Пессимист."], ["base", "Базовый"], ["opt", "Оптимист."]])}
-    <label>Факторы сценария «${esc(r.scenario)}»</label><small>Годовые — на 2027–2030 (значение первого года, можно задать одно на все годы); IV кв. 2026 — % в месяц</small>
-    <div class="f2">${r.fields.map(k => inp(k)).join("")}</div>
-    <button class="main-btn" data-calc>Рассчитать</button><button class="main-btn ghost" data-reset>Вернуть значения сценария</button></div>
-    <div class="box"><label>${esc(r.wagon)}: октябрь — декабрь 2026, ₽/сут</label><div class="note">Ставка месяца — середина диапазона ставок рынка за месяц. Сентябрь — ${fmt(r.now)} ₽. Под ставкой — изменение за месяц.</div><div class="wrap">${q4}</div>
+    ${seg("view", [["rate", "① Ставка"], ["factors", "② Факторы"], ["value", "③ Стоимость"]])}
+    <button class="main-btn ghost" data-deal data-dw="${esc(F.wagon)}">④ Сделка и выход из неё ›</button></div>`;
+  const tail = `<div class="note">Данные рынка на ${esc(r.as_of)}. Оценка рынка, не инвестиционная рекомендация. Средняя ошибка модели по проверочным годам ±22–31% в год; 2029–2030 — ориентир.</div>`;
+  let body = "";
+  if (F.view === "factors") {
+    body = `<div class="box"><label>Из чего складывается рост (${esc(r.parts_scenario)}): изменение от декабря к декабрю</label><div class="wrap">${parts}</div></div>
+    <div class="box"><label>Цена фактора, ₽/сут</label>${price}<div class="note">На сколько изменится ставка, если фактор за год вырастет на 1%.</div></div>
+    <div class="box"><label>Откуда значения факторов</label>${r.fields.map(k => `<div class="fh"><b>${esc(r.factors[k][0])}</b> — сценарий «${esc(r.scenario)}»: ${esc(String(d[k]).replace(".", ","))} ${esc(r.factors[k][1])}${hint(k)}</div>`).join("")}</div>
+    ${setup}`;
+  } else if (F.view === "value") {
+    body = r.value ? `<div class="box"><label>Стоимость вагона, млн ₽ без НДС (${esc(r.scenario.toLowerCase())})</label><div class="wrap"><table class="tbl">
+      <tr><th></th>${Object.keys(r.value.new).map(y => `<th>${y}</th>`).join("")}</tr>
+      <tr><td>Новый</td>${Object.values(r.value.new).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr>
+      <tr><td>Б/у 14 лет</td>${Object.values(r.value.used).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr>
+      <tr><td>Доход к цене, %</td>${Object.values(r.value.cap).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr></table></div>
+      <div class="note"><b>Что двигает цену вагона:</b> 1) средняя ставка аренды за 3 года — вагон дорожает вслед за доходом; 2) себестоимость завода (металл, комплектующие) — около +4% в год; 3) годовой доход к цене — если он выше обычного коридора, вагон дёшев относительно ставки, ниже — дорог; 4) возраст — б/у дешевле нового по плавной кривой (3 года ×0,88, 8 лет ×0,75, 14 лет ×0,62, 19 лет ×0,50). Подробно — отчёт «Стоимость вагона» в разделе.</div></div>`
+      : `<div class="err">Модели стоимости для этого типа нет.</div>`;
+  } else {
+    body = `<div class="box"><label>${esc(r.wagon)}: октябрь — декабрь 2026, ₽/сут</label><div class="note">Ставка месяца — середина диапазона ставок рынка за месяц. Сентябрь — ${fmt(r.now)} ₽. Под ставкой — изменение за месяц.</div><div class="wrap">${q4}</div>
     <div class="note">* Средняя за 2026 г. — январь–декабрь: январь–сентябрь — факт, октябрь–декабрь — прогноз (сумма 12 месяцев / 12).</div></div>
     <div class="box"><label>Средняя ставка за год (январь–декабрь), ₽/сут</label><div class="wrap">${years}</div>
     <div class="note">2026 — январь–сентябрь факт + октябрь–декабрь прогноз. 2027–2030 — середина между ставкой на начало года (декабрь прошлого) и на конец года (декабрь); пессимистичный — средняя прошлого года + инфляция.</div>
     ${r.cap.length ? `<div class="note">⚠ Выше рекорда 2024 г. в ${r.cap.join(", ")} г. — заложен рост выпуска вагонов.</div>` : ""}</div>
-    <div class="box"><label>Из чего складывается рост (${esc(r.parts_scenario)}): изменение от декабря к декабрю</label><div class="wrap">${parts}</div></div>
-    ${need}<div class="box"><label>Цена фактора, ₽/сут</label>${price}</div>
-    ${r.value ? `<div class="box"><label>Стоимость вагона, млн ₽ без НДС (${esc(r.scenario.toLowerCase())})</label><div class="wrap"><table class="tbl">
-      <tr><th></th>${Object.keys(r.value.new).map(y => `<th>${y}</th>`).join("")}</tr>
-      <tr><td>Новый</td>${Object.values(r.value.new).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr>
-      <tr><td>Б/у 14 лет</td>${Object.values(r.value.used).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr>
-      <tr><td>Доход к цене, %</td>${Object.values(r.value.cap).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr></table></div></div>` : ""}
-    ${r.accuracy && r.accuracy.ratio > 0.9 ? `<div class="note">⚠ На прошлых годах модель этого типа не точнее прогноза «средний рост» — смотрите сценарии.</div>` : ""}
-    <div class="note">Данные рынка на ${esc(r.as_of)}. Оценка рынка, не инвестиционная рекомендация. Средняя ошибка модели по проверочным годам ±22–31% в год; 2029–2030 — ориентир.</div>`;
+    ${need}${r.accuracy && r.accuracy.ratio > 0.9 ? `<div class="note">⚠ На прошлых годах модель этого типа не точнее прогноза «средний рост» — смотрите сценарии.</div>` : ""}${setup}`;
+  }
+  $("view").innerHTML = head + body + tail;
 }
 
 const RT = {res: null};
@@ -258,7 +279,7 @@ async function renderRates() {
     `<tr><td>${esc(x.name)}</td><td>${fmt(x.value)}</td><td>${pc(x.mm)}</td><td>${pc(x.yy)}</td><td>${spark(x.hist)}</td></tr>`).join("")}</table></div></div>`).join("") +
     `<div class="note">Данные на ${esc(r.as_of)} — середина диапазона рынка за месяц. Данные рынка, только для внутреннего использования.</div>`;
 }
-const DL = {wagon: "inno", scenario: "base", set: {}, res: null};
+const DL = {wagon: "inno", scenario: "base", set: {}, res: null, exitY: 2031};
 async function dcalc() {
   try { DL.res = await api("/api/deal", {wagon: DL.wagon, scenario: DL.scenario, ...DL.set}); }
   catch (e) { DL.res = null; toast(e.message); $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Расчёт сделки</h2><div class="err">${esc(e.message)}</div>`; return; }
@@ -282,6 +303,15 @@ function renderDeal() {
     <div class="wrap"><table class="tbl"><tr><th>Сценарий</th><th>Цена</th><th>Предельная</th><th>Доходность, %</th><th>Окупаемость</th><th>Платёж не покрыт</th><th>Выйти</th></tr>${Object.entries(s).map(([k, x]) =>
     `<tr class="${k === r.scenario ? "me" : ""}"><td>${esc(k)}</td><td>${f2(x.price)}</td><td>${f2(x.maxp)}</td><td>${x.irr === null ? "—" : String(x.irr).replace(".", ",")}</td><td>${x.payback || "> 20 лет"}</td><td>${x.neg.length ? x.neg.slice(0, 4).join(", ") + (x.neg.length > 4 ? "…" : "") : "нет"}</td><td>${x.exit || "держать"}</td></tr>`).join("")}</table></div>
     <div class="note">Предельная цена — сегодняшняя стоимость чистого дохода за 20 лет и цены б/у в конце по ставке лизинга. Доходность — сравнивать со ставкой лизинга.</div></div>
+    <div class="box"><label>Предложение: ${esc(r.advice.action)}</label><div class="note">Выход — ${esc(r.advice.exit)}.</div>
+    <ul class="why">${r.advice.why.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>
+    <div class="box"><label>Калькулятор выхода: продать в конце года</label>
+    <div class="seg">${r.rows.filter((x, i) => [0, 1, 2, 3, 4, 6, 9, 14, 19].includes(i)).map(x => `<button data-dexit="${x.y}" class="${DL.exitY == x.y ? "on" : ""}">${x.y}</button>`).join("")}</div>
+    ${(() => { const x = r.rows.find(z => z.y == DL.exitY) || r.rows[4]; const better = x.irr_to !== null && r.irr_full !== null && x.irr_to > r.irr_full;
+      return `<table class="tbl"><tr><td>Цена продажи б/у</td><td>${f2(x.val)} млн ₽</td></tr><tr><td>Долг к погашению</td><td>${f2(x.bal)} млн ₽</td></tr>
+      <tr><td>Накоплено после платежей</td><td>${f2(x.cum)} млн ₽</td></tr><tr class="me"><td>Итог на руках</td><td>${f2(x.exit)} млн ₽</td></tr>
+      <tr><td>Доходность до продажи</td><td>${x.irr_to === null ? "—" : String(x.irr_to).replace(".", ",")}% против ${r.irr_full === null ? "—" : String(r.irr_full).replace(".", ",")}% при удержании весь срок</td></tr></table>
+      <div class="note">${x.exit < 0 ? "⚠ Продажа в этом году — в минус: цены б/у не хватает на долг." : better ? "Продать в этом году выгоднее, чем держать весь срок." : "Держать дольше выгоднее: доходность удержания выше."}</div>`; })()}</div>
     <div class="box"><label>Денежный поток по годам, млн ₽ (${esc(r.scenario.toLowerCase())})</label><div class="wrap"><table class="tbl"><tr><th>Год</th><th>Ставка, ₽/сут</th><th>Чистый доход</th><th>Лизинг, %</th><th>Платёж</th><th>Покрытие</th><th>Долг</th><th>Цена б/у</th><th>Итог при продаже</th></tr>${r.rows.map(x =>
     `<tr><td>${x.y}</td><td>${fmt(x.rate)}</td><td>${f2(x.noi)}</td><td>${String(x.r).replace(".", ",")}</td><td>${f2(x.pay)}</td><td>${x.dscr === null ? "—" : f2(x.dscr) + (x.dscr < 1 ? " ⚠" : "")}</td><td>${f2(x.bal)}</td><td>${f2(x.val)}</td><td>${f2(x.exit)}</td></tr>`).join("")}</table></div>
     <div class="note">Покрытие = чистый доход / платёж: ниже 1 — аренда не покрывает лизинг (банку обычно нужно 1,2+).</div></div>
@@ -310,10 +340,13 @@ document.addEventListener("click", async e => {
   const d = b.dataset;
   if (d.build !== undefined) { S.build = true; F.res = null; render(); window.scrollTo(0, 0); }
   else if (d.rates !== undefined) { S.rates = true; RT.res = null; render(); window.scrollTo(0, 0); }
-  else if (d.deal !== undefined) { S.deal = true; DL.res = null; render(); window.scrollTo(0, 0); }
+  else if (d.deal !== undefined) { S.deal = true; S.build = false; if (d.dw) { DL.wagon = d.dw; DL.set = {}; } DL.res = null; render(); window.scrollTo(0, 0); }
   else if (d.dwagon || d.dscenario) { if (d.dwagon) { DL.wagon = d.dwagon; DL.set = {}; } if (d.dscenario) DL.scenario = d.dscenario; DL.res = null; renderDeal(); }
+  else if (d.dexit) { DL.exitY = d.dexit; renderDeal(); }
   else if (d.dcalc !== undefined) { document.querySelectorAll("[data-dv]").forEach(i => { if (i.value.trim()) DL.set[i.dataset.dv] = i.value.trim(); else delete DL.set[i.dataset.dv]; }); DL.res = null; renderDeal(); }
   else if (d.dreset !== undefined) { DL.set = {}; DL.res = null; renderDeal(); }
+  else if (d.view) { F.view = d.view; renderBuild(); }
+  else if (d.open !== undefined) { F.open = !F.open; renderBuild(); }
   else if (d.wagon || d.scenario) { if (d.wagon) F.wagon = d.wagon; if (d.scenario) F.scenario = d.scenario; calc(true); }
   else if (d.calc !== undefined) { document.querySelectorAll("[data-f]").forEach(i => F.set[i.dataset.f] = i.value.trim()); calc(); }
   else if (d.reset !== undefined) calc(true);
