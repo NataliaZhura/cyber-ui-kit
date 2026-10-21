@@ -8,6 +8,7 @@
                                             предмет, начальная цена, дата, ссылка); повтор не дублирует
   python3 zprocure.py show [--wagon gon]    что найдено
   python3 zprocure.py links [--n 8]         завершённые закупки: ссылки на «Договор» и «Документы» (следующий шаг)
+  python3 zprocure.py contracts <файл.html> …   сохранённые вкладки «Договор» → номер и ссылка на печатную форму договора
   python3 zprocure.py import <файл.html> …  страницы поиска, сохранённые в браузере (сайт закрыт для зарубежного
                                             сервера): «Мои загрузки» → раскладка zinbox.py вызывает это сама
   python3 zprocure.py dump <файл.html>      показать, что программа видит на странице
@@ -35,7 +36,7 @@ QUERIES = [("gon", "предоставление полувагонов"), ("gon
            ("hop_grain", "предоставление хопперов-зерновозов"), ("fit", "предоставление фитинговых платформ"),
            ("fit", "предоставление платформ для перевозки контейнеров"), ("any", "предоставление подвижного состава")]
 COLS = ["number", "wagon", "query", "customer", "subject", "price", "currency", "published", "law", "status", "url",
-        "contract", "docs"]
+        "contract", "docs", "contract_no", "contract_xml"]
 
 
 def get(url, timeout=40):
@@ -192,6 +193,25 @@ def cmd_links(n=8):
         print(f"{r['number']} | {r['wagon']} | {float(r['price']):,.0f} ₽ | {r['customer'][:40]}\n  договор: {r['contract']}\n  документы: {r['docs']}".replace(",", " "))
 
 
+def cmd_contracts(files):
+    """Сохранённые вкладки «Договор» (contract-info.html): номер договора и ссылка на его печатную форму (XML: поставщик,
+    цена, объём) — дописываются к закупке в procure.csv."""
+    rows = {r["number"]: r for r in read()}
+    for f in files:
+        page = Path(f).read_text(encoding="utf-8", errors="replace")
+        num = re.search(r"purchaseNoticeNumber=(\d{8,})", page)
+        cno = re.search(r"Договор №\s*(\d{15,})", page)
+        xml = re.search(r'href="(/epz/order/notice/notice223/contract/printForm/viewXml\.html\?contractRegistrationNumber=\d+)"', page)
+        if not (num and cno):
+            print(f"{Path(f).name}: не вкладка «Договор» закупки")
+            continue
+        r = rows.setdefault(num.group(1), {"number": num.group(1), "query": "вкладка «Договор»"})
+        r["contract_no"] = cno.group(1)
+        r["contract_xml"] = "https://zakupki.gov.ru" + xml.group(1) if xml else ""
+        print(f"{num.group(1)} → договор {cno.group(1)}\n  печатная форма: {r['contract_xml']}")
+    save(list(rows.values()))
+
+
 def cmd_show(wagon):
     rows = [r for r in read() if not wagon or r["wagon"] == wagon]
     for r in rows[:60]:
@@ -209,6 +229,8 @@ if __name__ == "__main__":
         cmd_search(opt("--pages", 2), opt("--days", 365))
     elif a[:1] == ["show"]:
         cmd_show(opt("--wagon", ""))
+    elif a[:1] == ["contracts"] and len(a) > 1:
+        cmd_contracts(a[1:])
     elif a[:1] == ["links"]:
         cmd_links(opt("--n", 8))
     elif a[:1] == ["import"] and len(a) > 1:
