@@ -72,7 +72,7 @@ border-radius:10px;padding:8px 4px;font:inherit;font-size:13px;cursor:pointer}.s
 </header>
 <main id="view"><div class="err">Загружаю…</div></main>
 <div id="toast"></div>
-<input id="file" type="file" hidden accept=".pdf,.docx,.xlsx,.xls,.pptx,.csv,.png,.jpg,.jpeg,.md">
+<input id="file" type="file" multiple hidden accept=".pdf,.docx,.xlsx,.xls,.pptx,.csv,.png,.jpg,.jpeg,.md">
 <script>
 const tg = window.Telegram?.WebApp;
 tg?.ready(); tg?.expand();
@@ -176,7 +176,7 @@ function renderTask() {
     `<div class="box"><label>Своя задача</label><small>Опиши, что нужно: ЖДуша ответит в чате, а отчёт ляжет в свой раздел.
     ${direct ? "" : "Текст скопируется — вставь его в чат."}</small><textarea id="free" placeholder="например, сравни ПГК и Globaltrans по долгу за 2025"></textarea>
     <button class="main-btn" data-free>Отправить ЖДуше</button></div>
-    <button class="main-btn ghost" data-upload>Загрузить файл в «Мои загрузки»</button>
+    <button class="main-btn ghost" data-upload>Загрузить файлы в «Мои загрузки»</button>
     <h3>Мои загрузки</h3>${rows(S.data.files.upload || [])}<h3>Разное</h3>${rows(S.data.files.other || [])}`;
 }
 
@@ -273,10 +273,13 @@ document.addEventListener("click", async e => {
   else if (d.upload !== undefined) $("file").click();
 });
 $("file").addEventListener("change", async e => {
-  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-  if (f.size > 20 * 1048576) return toast("Файл больше 20 МБ — пришли его боту в чат");
-  toast("Загружаю " + f.name + "…");
-  try { await api("/api/upload", f, f.name); toast("Загружено в «Мои загрузки»"); await load(); } catch (er) { toast(er.message); }
+  const fs = [...e.target.files]; e.target.value = ""; let ok = 0;
+  for (const [i, f] of fs.entries()) {
+    if (f.size > 20 * 1048576) { toast(f.name + ": больше 20 МБ — пропущен"); continue; }
+    toast(`Загружаю ${i + 1} из ${fs.length}: ${f.name}…`);
+    try { await api("/api/upload", f, f.name); ok++; } catch (er) { toast(f.name + ": " + er.message); }
+  }
+  if (fs.length) { toast(`Загружено ${ok} из ${fs.length}. Выпуски Argus разложатся сами через минуту`); await load(); }
 });
 $("q").addEventListener("input", render);
 tg?.BackButton.onClick(() => { S.section = null; S.build = false; render(); });
