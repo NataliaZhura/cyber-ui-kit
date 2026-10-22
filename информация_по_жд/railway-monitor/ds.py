@@ -5,6 +5,8 @@
   python3 ds.py on  [агент ...]               перевести на DeepSeek (по умолчанию tester и zguest), GPT — запасной
   python3 ds.py off [агент ...]               вернуть GPT (DeepSeek — запасной)
   python3 ds.py on  --owner main tester zhdusha zguest    все агенты, включая владельца (когда кончился лимит GPT)
+  DS_MODEL=deepseek/deepseek-v4-pro python3 ds.py on zguest --no-gpt   гость на DeepSeek Pro, запасной — DeepSeek Flash,
+                                                                       подписка GPT не тратится совсем
   python3 ds.py off --owner main tester zhdusha zguest    вернуть всех на GPT
 
 Ключ: файл ~/.secrets/deepseek_key (одна строка, sk-…). Программа сама кладёт его в ~/.openclaw/.env
@@ -72,7 +74,8 @@ def put_key():
 
 def switch(on, agents):
     owner = "--owner" in agents
-    agents = [a for a in agents if a != "--owner"]
+    no_gpt = "--no-gpt" in agents  # запасной — только DeepSeek: подписка GPT не расходуется вовсе
+    agents = [a for a in agents if a not in ("--owner", "--no-gpt")]
     if not owner and (bad := [a for a in agents if a in OWNER]):
         sys.exit(f"СТОП: {', '.join(bad)} — агенты владельца; переключать их — только с --owner.")
     if on:
@@ -88,7 +91,8 @@ def switch(on, agents):
             print(f"{a}: такого агента нет — пропускаю")
             continue
         if on:
-            guest.put(f"{path}.model", {"primary": DS, "fallbacks": [DS_PRO, GPT]})
+            fb = [m for m in (DS_PRO, "deepseek/deepseek-flash") if m != DS][:1] + ([] if no_gpt else [GPT])
+            guest.put(f"{path}.model", {"primary": DS, "fallbacks": fb})
         else:
             guest.put(f"{path}.model", {"primary": GPT, "fallbacks": [DS, DS_PRO]})
         print(f"{a}: было {cur.get(a)} → стало {models()[1].get(a)}")
