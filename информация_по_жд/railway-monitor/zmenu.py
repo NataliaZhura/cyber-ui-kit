@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-MENU = [("start", "Старт: что умеет ЖДуша и как начать"), ("new", "Новый разговор"),
+MENU = [("start", "Старт: начало разговора, что умеет ЖДуша"), ("new", "Новая тема: начать разговор заново"),
         ("poluvagony", "Справка: рынок полувагонов"), ("krytye", "Справка: рынок крытых вагонов"),
         ("market", "Новости рынка за период"), ("rates", "Ставки аренды и предоставления"),
         ("loading", "Погрузка по грузам"), ("balance", "Баланс парка: дефицит или профицит"),
@@ -86,11 +86,10 @@ GUEST_PANEL = [[("📈 Полувагон", "?go=build&w=inno"), ("📦 Крыт
                [("📂 Все отчёты", "")]]
 
 
-def app_keyboard(cid, url, text="📂 Приложение ЖДуши"):
-    """Постоянная кнопка приложения под полем ввода (клавиатура бота). Кнопка «Меню» слева остаётся списком команд."""
-    kb = {"keyboard": [[{"text": text, "web_app": {"url": url}}]], "resize_keyboard": True, "is_persistent": True}
-    r = api("sendMessage", chat_id=cid, text=f"{text} — кнопка под полем ввода. «Меню» слева — список команд.",
-            reply_markup=json.dumps(kb, ensure_ascii=False))
+def drop_keyboard(cid):
+    """Убрать кнопку приложения под полем ввода: из такой кнопки Telegram не передаёт, кто открыл, — «Нет доступа»."""
+    r = api("sendMessage", chat_id=cid, text="Приложение ЖДуши — кнопка «Приложение» слева от поля ввода и кнопки пульта.",
+            reply_markup=json.dumps({"remove_keyboard": True}))
     return r.get("ok")
 
 
@@ -105,21 +104,22 @@ def set_commands():
 
 
 def fix(url):
-    """Всем — владельцу, гостям, респондентам: «Меню» = список команд, кнопка приложения под полем ввода,
-    закреплённый пульт (гостю — гостевой, респонденту — только анкета)."""
+    """Всем — владельцу, гостям, респондентам: кнопка «Приложение» слева от поля ввода (открывает мини-приложение),
+    команды — через «/» в поле ввода, закреплённый пульт со /start и /new (гостю — гостевой, респонденту — анкета)."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import zapp
     import zsurvey
     owner = (Path.home() / ".secrets" / "zhdusha_owner").read_text(encoding="utf-8").strip()
     set_commands()
-    api("setChatMenuButton", menu_button=json.dumps({"type": "commands"}))
+    btn = lambda u, t="Приложение": json.dumps({"type": "web_app", "text": t, "web_app": {"url": u}}, ensure_ascii=False)
+    api("setChatMenuButton", menu_button=btn(url))
     people = [(owner, "владелец", PANEL)] + [(g, f"гость {a}", GUEST_PANEL) for g, a in zapp.guests().items()]
     people += [(r, "респондент", None) for r in zsurvey.respondents()]
     for cid, who, pnl in people:
-        api("setChatMenuButton", chat_id=cid, menu_button=json.dumps({"type": "default"}))  # своё «Меню» не нужно
-        ok = app_keyboard(cid, url + ("?go=survey" if pnl is None else ""),
-                          "📝 Анкета ставок" if pnl is None else "📂 Приложение ЖДуши")
-        print(f"{cid} ({who}): {'кнопка приложения под полем ввода и «Меню» поставлены' if ok else 'не получилось — человек ещё не писал боту'}")
+        ok = api("setChatMenuButton", chat_id=cid,
+                 menu_button=btn(url + "?go=survey", "Анкета") if pnl is None else btn(url)).get("ok")
+        drop_keyboard(cid)
+        print(f"{cid} ({who}): {'кнопка приложения слева от поля ввода' if ok else 'не получилось — человек ещё не писал боту'}")
         if pnl is not None and ok:
             panel(url, [cid], True, pnl)
 
@@ -128,10 +128,12 @@ def panel(url, ids, pin_it=True, rows=None):
     """Сообщение-пульт с кнопками расчётов (+ закрепить). Нажатие кнопки не пишет боту — токены не тратятся."""
     kb = json.dumps({"inline_keyboard": [[{"text": t, "web_app": {"url": url + q}} for t, q in row] for row in rows or PANEL]},
                     ensure_ascii=False)
-    text = ("Пульт ЖДуши — считает программа, мгновенно и без нейросети:\n"
-            "• прогноз ставки по типу вагона (сценарии, факторы, стоимость вагона);\n"
-            "• ставки и парк по месяцам; расчёт сделки в лизинг; обзор рынка.\n"
-            "Вопросы словами — как обычно, в чат.")
+    text = ("Пульт ЖДуши\n"
+            "/start — начало разговора: что умеет ЖДуша\n"
+            "/new — перейти на новую тему (новый разговор)\n\n"
+            "Кнопки ниже считают программой, мгновенно и без нейросети: прогноз ставки по типу вагона (период, сценарии, "
+            "факторы, стоимость вагона), расчёт сделки в лизинг, отчёты. Любой расчёт — кнопкой «PDF в чат».\n"
+            "Приложение целиком — кнопка «Приложение» слева от поля ввода. Вопросы словами — как обычно, в чат.")
     for cid in ids:
         r = api("sendMessage", chat_id=cid, text=text, reply_markup=kb)
         if not r.get("ok"):
@@ -163,11 +165,11 @@ if __name__ == "__main__":
             has = ", ".join(("есть /" if any(c["command"] == x for c in cmds) else "НЕТ /") + x for x in ("start", "prognoz"))
             print(f"{name}: {len(cmds)} команд, {has}" if cmds else f"{name}: пусто (берётся общий список)")
         sys.exit(0)
-    webapp = sys.argv[2] if sys.argv[1:2] == ["webapp"] and len(sys.argv) > 2 else None
+    webapp = sys.argv[2] if sys.argv[1:2] == ["webapp"] and len(sys.argv) > 2 else URL  # кнопка слева — приложение
     if sys.argv[1:2] == ["webapp"] and not (webapp or "").startswith("https://"):
         sys.exit("Нужен адрес с https://, например: python3 zmenu.py webapp https://zhdusha.duckdns.org")
     res = set_commands()
-    button = {"type": "web_app", "text": "Меню", "web_app": {"url": webapp}} if webapp else {"type": "commands"}
+    button = {"type": "web_app", "text": "Приложение", "web_app": {"url": webapp}}
     api("setChatMenuButton", menu_button=json.dumps(button, ensure_ascii=False))
     api("setMyDescription", description=DESCRIPTION)
     api("setMyShortDescription", short_description=SHORT)
