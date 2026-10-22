@@ -132,11 +132,24 @@ def scenario(D, scen, ov):
     return s
 
 
+def q4_method(w):
+    """Ставка ближайших месяцев: park — X × темп рабочего парка (исходный); flat / half / full — по проверке (zverify.py)."""
+    try:
+        return json.loads((BASE / "forecast" / "methods.json").read_text(encoding="utf-8"))["q4"].get(w, "park")
+    except (OSError, ValueError, KeyError):
+        return "park"
+
+
 def forecast(D, w, scen, ov=None):
     s = scenario(D, scen, ov or {})
     e, m = elasticity(D, w), months(D, w)
     last = m[-1]
     q4 = [last * math.exp(-e * s["pace"] / 100 * k) for k in (1, 2, 3)]
+    q4m = q4_method(w)
+    if q4m != "park" and len(m) >= 4:  # способ, выигравший проверку с каждого месяца истории (zverify.py --apply)
+        g = {"flat": 0, "half": 0.5, "full": 1}[q4m] * math.log(last / m[-4]) / 3  # в месяц
+        sp = -e * (s["pace"] - D["scenarios"]["base"]["pace"]) / 100  # разница сценариев — как в модели
+        q4 = [last * math.exp((g + sp) * k) for k in (1, 2, 3)]
     dec = q4[-1]  # декабрь без поправки на события: от него — 2027–2030 (события 2027 г. — отдельной строкой)
     try:
         import zevents

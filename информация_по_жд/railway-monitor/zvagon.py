@@ -91,11 +91,19 @@ def price_path(V, typ, rates):
     k = V["market_2026"][typ] / fit[2026]  # насколько рынок 2026 г. выше/ниже модели — разрыв закрывается за 3 года
     out = {y: fit[y] * (k ** max(0, 1 - (y - 2026) / 3)) for y in fit}
     for y in range(2027, 2031):  # нижняя граница — себестоимость завода: цена нового падает не больше чем на 5% в год
-        out[y] = max(out[y], out[y - 1] * (1 - FLOOR / 100))  # (допущение: из окна средней выпадает пик 2024 г.)
+        out[y] = max(out[y], out[y - 1] * (1 - floor(typ) / 100))  # (допущение: из окна средней выпадает пик 2024 г.)
     return out, fit[2026]
 
 
-FLOOR = 5  # % — максимальное снижение цены нового вагона за год
+FLOOR = 5  # % — максимальное снижение цены нового вагона за год, если проверка не задала своё (forecast/methods.json)
+
+
+def floor(typ):
+    """Предел падения цены нового вагона за год, %: по проверке на истории (zverify.py --apply), иначе FLOOR."""
+    try:
+        return float(json.loads((BASE / "forecast" / "methods.json").read_text(encoding="utf-8"))["floor"][typ])
+    except (OSError, ValueError, KeyError):
+        return FLOOR
 
 
 def age_factor(V, age):

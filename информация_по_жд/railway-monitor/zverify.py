@@ -2,7 +2,9 @@
 """Проверка допущений модели на прошлом — по всем типам вагонов: ставка, стоимость, вход и выход из сделки.
 Каждое допущение: прогноз только по данным «до» → сравнение с фактом → вердикт. Без нейросети (0 токенов).
 
-  python3 zverify.py            все проверки → saved/model/ГГГГ-ММ-ДД_проверка_модели.md (и вывод на экран)
+  python3 zverify.py            все проверки и проверка замен → saved/model/ГГГГ-ММ-ДД_проверка_модели.md
+  python3 zverify.py --apply    то же + включить замены, которые выиграли проверку (forecast/methods.json):
+                                способ прогноза ближайших месяцев для полувагонов, предел падения цены вагона
 
 Данные: база наблюдений (месяцы с 12.2024), годовые ряды forecast/*.json (2007–2025), цены новых вагонов —
 forecast/price_hist.json (полувагоны и крытый — из презентаций рынков, только на сервере), зерновоз и платформа —
@@ -23,6 +25,8 @@ NM = {"gon": "Полувагон типовой", "inno": "Полувагон и
       "hop_grain": "Хоппер-зерновоз", "fit80": "Платформа 80'"}
 UTIL, OPEX = 0.95, 0.12  # загрузка и расходы — как в калькуляторе сделки (zdeal.py)
 V = []  # итог: (раздел, допущение, результат, вердикт)
+WIN = {"q4": {}, "floor": {}}  # что предлагает проверка замен — записывается в forecast/methods.json по --apply
+METHODS = FC / "methods.json"
 
 
 def js(name):
@@ -129,7 +133,7 @@ def t_elastic(L):
             dp, dr = math.log(p[b] / p[a]), math.log(r[b] / r[a])
             if abs(dp) >= 0.005:
                 xs.append(-dr / dp)
-                L.append(f"| {NM[w]} | {a} → {b} | {pct(dp * 100)} | {pct(dr * 100)} | {f1(-dr / dp)} |")
+                L.append(f"| {NM[w]} | {a} → {b} | {pct((math.exp(dp) - 1) * 100)} | {pct((math.exp(dr) - 1) * 100)} | {f1(-dr / dp)} |")
         pos = sum(1 for x in xs if x > 0)
         if xs:
             L.append(f"| {NM[w]} | **итого {len(xs)} отрезков** | | | X > 0 в {pos} из {len(xs)}; разброс {f1(min(xs))}…{f1(max(xs))} |")
@@ -344,11 +348,216 @@ def t_key(L):
           "обновим.</small>", ""]
 
 
+# ---------- 9. Замены: ставка на 3 месяца вперёд с каждого месяца истории ----------
+def t_rolling(L):
+    import zretro
+    S = zretro.data()
+    L += ["## 9. Замена 1. Ставка через 3 месяца: проверка с каждого месяца истории", "",
+          "С каждого месяца, где есть данные за 3 месяца до и после, прогнозируем ставку через 3 месяца и сравниваем с фактом. "
+          "Так проверок не 2, а 15–18 на тип. Способы:", "",
+          "- **как сейчас** — полувагоны: X из модели × темп рабочего парка за 3 месяца; крытый и платформа: базовый темп "
+          "модели; зерновоз: как в те же месяцы прошлого года;",
+          "- **ставка не изменится**;",
+          "- **половина темпа** — половина изменения ставки за последние 3 месяца;",
+          "- **весь темп** — изменение за последние 3 месяца продолжается.", "",
+          "| Тип | Проверок | Как сейчас | Не изменится | Половина темпа | Весь темп | Лучший |", "|---|---|---|---|---|---|---|"]
+    try:
+        import zrate
+        D = zrate.load()
+        E = {w: zrate.elasticity(D, w) for w in ("gon", "inno")}
+    except (SystemExit, Exception):  # noqa: BLE001
+        E = {}
+    try:
+        import ztypes
+        PACE = {w: ztypes.TYPES[w]["pace"]["base"] for w in ("kr158", "hop_grain", "fit80")}
+    except Exception:  # noqa: BLE001
+        PACE = {}
+    import zobs
+    p = S.get("park_gon_work", {})
+    for w in TYPES:
+        r = S.get(zretro.RATE[w], {})
+        err = {k: [] for k in ("now", "flat", "half", "full")}
+        for m in sorted(r):
+            a, z = zobs.shift(m, -3), zobs.shift(m, 3)
+            if a not in r or z not in r:
+                continue
+            g = r[m] / r[a]
+            pr = {"flat": r[m], "half": r[m] * g ** 0.5, "full": r[m] * g}
+            if w in ("gon", "inno"):
+                if w in E and m in p and a in p:
+                    pr["now"] = r[m] * math.exp(-E[w] * math.log(p[m] / p[a]))
+            elif w == "hop_grain":
+                y0, y3 = zobs.shift(m, -12), zobs.shift(m, -9)
+                if y0 in r and y3 in r:
+                    pr["now"] = r[m] * r[y3] / r[y0]
+            elif w in PACE:
+                pr["now"] = r[m] * (1 + PACE[w] / 100) ** 3
+            for k, v in pr.items():
+                err[k].append(abs(v / r[z] - 1) * 100)
+        sc = {k: mean(v) for k, v in err.items() if v}
+        if not sc:
+            L.append(f"| {NM[w]} | 0 | — | — | — | — | — |")
+            continue
+        best = min(sc, key=sc.get)
+        nm = {"now": "как сейчас", "flat": "не изменится", "half": "половина темпа", "full": "весь темп"}
+        L.append(f"| {NM[w]} | {len(err['flat'])} | " + " | ".join(f"±{f1(sc.get(k))}%" if k in sc else "—"
+                                                          for k in ("now", "flat", "half", "full")) + f" | {nm[best]} |")
+        ok = "now" in sc and sc["now"] <= sc[best] * 1.15
+        verdict("Замены", f"{NM[w]}: ставка через 3 месяца — способ модели против трёх простых",
+                f"как сейчас ±{f1(sc.get('now'))}%, лучший — {nm[best]} ±{f1(sc[best])}% ({len(err['flat'])} проверок)",
+                ok if "now" in sc else None)
+        if w in ("gon", "inno") and not ok:
+            WIN["q4"][w] = best
+    L += ["", "<small>Для полувагонов, где «как сейчас» хуже лучшего способа больше чем на 15%, `zverify.py --apply` "
+          "переключает прогноз ближайших месяцев на лучший способ (forecast/methods.json); разница сценариев "
+          "(оптимистичный / пессимистичный) сохраняется.</small>", ""]
+
+
+# ---------- 10. Замены: стоимость вагона ----------
+def t_value_alt(L):
+    import zmodel
+    L += ["## 10. Замена 2. Стоимость нового вагона: модель от ставки против простых способов", "",
+          "Прогноз цены года t по данным до t (ставка года t — фактическая). Способы: **от ставки** — как сейчас; "
+          "**как в прошлом году**; **тренд** — прошлый год × средний рост цены за прошлые годы; **за типовым полувагоном** — "
+          "цена типового полувагона года t × среднее соотношение цен за прошлые годы.", "",
+          "| Тип | Лет | От ставки | Как в прошлом году | Тренд | За типовым полувагоном | Лучший |", "|---|---|---|---|---|---|---|"]
+    _, gp = annual("gon")
+    for w in TYPES:
+        rate, price = annual(w)
+        if len(price) < 6:
+            continue
+        avg3 = {y: sum(rate[y - i] for i in range(3)) / 3 for y in rate if all(y - i in rate for i in range(3))}
+        ys = sorted(price)
+        err = {k: [] for k in ("rate", "last", "trend", "link")}
+        for t in ys:
+            prev = [y for y in ys if y < t]
+            if len(prev) < 6 or t - 1 not in price:
+                continue
+            tr = [(math.log(price[y]), [math.log(avg3[y]), y - 2015]) for y in prev if y in avg3]
+            if len(tr) >= 5 and t in avg3:
+                b, _ = zmodel.ols(tr)
+                err["rate"].append(abs(math.exp(b[0] + b[1] * math.log(avg3[t]) + b[2] * (t - 2015)) / price[t] - 1) * 100)
+            err["last"].append(abs(price[t - 1] / price[t] - 1) * 100)
+            gr = [price[y] / price[y - 1] for y in prev if y - 1 in price]
+            err["trend"].append(abs(price[t - 1] * math.prod(gr) ** (1 / len(gr)) / price[t] - 1) * 100)
+            if w != "gon" and t in gp:
+                k = [price[y] / gp[y] for y in prev if y in gp]
+                if k:
+                    err["link"].append(abs(gp[t] * statistics.median(k) / price[t] - 1) * 100)
+        sc = {k: mean(v) for k, v in err.items() if v}
+        best = min(sc, key=sc.get)
+        nm = {"rate": "от ставки", "last": "как в прошлом году", "trend": "тренд", "link": "за типовым полувагоном"}
+        L.append(f"| {NM[w]} | {len(err['last'])} | " + " | ".join(f"±{f1(sc[k])}%" if k in sc else "—"
+                                                          for k in ("rate", "last", "trend", "link")) + f" | {nm[best]} |")
+        verdict("Замены", f"{NM[w]}: стоимость — модель от ставки против простых способов",
+                f"от ставки ±{f1(sc.get('rate'))}%, лучший — {nm[best]} ±{f1(sc[best])}%",
+                ("rate" in sc and sc["rate"] <= sc[best] * 1.15) if "rate" in sc else None)
+    L += ["", "<small>Если «от ставки» проигрывает, стоимость в отчёте для этого типа считаем лучшим способом, а связь со "
+          "ставкой показываем только как пояснение.</small>", ""]
+
+
+# ---------- 11. Замены: предел падения цены нового вагона ----------
+def t_floor(L):
+    import zmodel
+    L += ["## 11. Замена 3. Насколько цена нового вагона может упасть за год", "",
+          "Модель от ставки иногда даёт слишком резкое падение, поэтому в ней стоит предел. Сравниваем прогнозы цены года t "
+          "(по данным до t) с пределом −5% (как сейчас), с пределом «худшее падение до года t» и без предела.", "",
+          "| Тип | Худшее падение в истории | Ошибка: предел −5% | предел по истории | без предела | Предлагаемый предел |",
+          "|---|---|---|---|---|---|"]
+    for w in TYPES:
+        rate, price = annual(w)
+        if len(price) < 6:
+            continue
+        avg3 = {y: sum(rate[y - i] for i in range(3)) / 3 for y in rate if all(y - i in rate for i in range(3))}
+        ys = sorted(y for y in price if y in avg3)
+        drops = [(price[y] / price[y - 1] - 1) * 100 for y in sorted(price) if y - 1 in price]
+        worst = -min(min(drops), 0)
+        err = {k: [] for k in ("f5", "fh", "none")}
+        for t in ys:
+            tr = [(math.log(price[y]), [math.log(avg3[y]), y - 2015]) for y in ys if y < t]
+            if len(tr) < 6 or t - 1 not in price:
+                continue
+            b, _ = zmodel.ols(tr)
+            pr = math.exp(b[0] + b[1] * math.log(avg3[t]) + b[2] * (t - 2015))
+            dh = [(price[y] / price[y - 1] - 1) * 100 for y in price if y < t and y - 1 in price]
+            wh = -min(min(dh), 0) if dh else 5
+            for k, fl in (("f5", 5), ("fh", wh), ("none", 100)):
+                err[k].append(abs(max(pr, price[t - 1] * (1 - fl / 100)) / price[t] - 1) * 100)
+        sc = {k: mean(v) for k, v in err.items()}
+        prop = round(worst) if sc["fh"] <= sc["f5"] else 5
+        if w in ("gon", "inno", "kr158"):
+            WIN["floor"][w] = prop
+        L.append(f"| {NM[w]} | −{f1(worst, 0)}% | ±{f1(sc['f5'])}% | ±{f1(sc['fh'])}% | ±{f1(sc['none'])}% | −{prop}% в год |")
+        verdict("Замены", f"{NM[w]}: предел падения цены нового вагона",
+                f"−5%: ошибка ±{f1(sc['f5'])}%; по истории (−{f1(worst, 0)}%): ±{f1(sc['fh'])}%", sc["fh"] <= sc["f5"])
+    L += ["", "<small>Предел по истории не хуже −5% — значит, −5% ничем не подтверждён и только смягчает пессимистичный "
+          "прогноз. `zverify.py --apply` ставит предел по истории для полувагонов и крытого (zvagon.py); у зерновоза и "
+          "платформы стоимость считается без предела.</small>", ""]
+
+
+# ---------- 12. Замены: стресс-сценарий для кредитора ----------
+def t_stress(L):
+    L += ["## 12. Замена 4. Стресс-сценарий: худший год истории", "",
+          "Пессимистичный сценарий оказался «умеренно плохим». Стресс для кредитора: в 2027 г. ставка падает, как в худший год "
+          "истории этого типа, 2028 г. — на дне, в 2029 г. — половина пути назад, с 2030 г. — базовый прогноз (в истории "
+          "после обвалов 2009, 2013–2015 и 2020 гг. ставка восстанавливалась за 2–3 года). Цена вагона — так же, от худшего "
+          "падения цены. Сделка — те же условия: 20 лет, без аванса, ключевая + 3,5 п.п.", "",
+          "| Тип | Худший год: ставка / цена | Лет «аренда не покрывает платёж» | Самое слабое покрытие платежа | Предельная цена, млн ₽ | Цена сейчас |",
+          "|---|---|---|---|---|---|"]
+    try:
+        import zdeal
+    except Exception:  # noqa: BLE001
+        return
+    orig = zdeal.model
+    for w in TYPES:
+        rate, price = annual(w)
+        rch = [(rate[y] / rate[y - 1] - 1) for y in rate if y - 1 in rate]
+        pch = [(price[y] / price[y - 1] - 1) for y in price if y - 1 in price]
+        if not rch:
+            continue
+        wr, wp = min(rch), min(pch) if pch else 0
+
+        def stressed(w_, sc, wr=wr, wp=wp):
+            lvl, newp, note = orig(w_, "base")
+            lv, pr = dict(lvl), dict(newp)
+            lv[2027] = lv[2026] * (1 + wr)  # худший год истории
+            lv[2028] = lv[2027]  # второй год на дне
+            lv[2029] = math.sqrt(lv[2028] * lvl[2029])  # восстановление: к 2030 г. — обратно на базовый путь
+            pr[2027] = pr[2026] * (1 + wp)
+            pr[2028] = pr[2027]
+            pr[2029] = math.sqrt(pr[2028] * newp[2029])
+            return lv, pr, note
+        try:
+            zdeal.model = stressed
+            d = zdeal.deal(w, "pess")
+            ds = [x["dscr"] for x in d["rows"] if x.get("dscr") is not None]
+            L.append(f"| {NM[w]} | {pct(wr * 100, 0)} / {pct(wp * 100, 0)} | {len(d['neg'])} | {f1(min(ds), 2) if ds else '—'} | "
+                     f"{f1(d['maxp'], 2)} | {f1(d['price'], 2)} |")
+            verdict("Замены", f"{NM[w]}: сделка в стрессе (худший год истории)",
+                    f"лет без покрытия {len(d['neg'])}, худшее покрытие {f1(min(ds), 2) if ds else '—'}; предельная цена "
+                    f"{f1(d['maxp'], 2)} против цены {f1(d['price'], 2)} млн ₽", d["maxp"] >= d["price"])
+        except (SystemExit, Exception) as e:  # noqa: BLE001
+            L.append(f"| {NM[w]} | {pct(wr * 100, 0)} / {pct(wp * 100, 0)} | расчёт не удался: {type(e).__name__} | | | |")
+        finally:
+            zdeal.model = orig
+    L += ["", "<small>«Подтверждено» — сделка по текущей цене выдерживает худший год истории (предельная цена не ниже цены). "
+          "Покрытие ниже 1 — в этот год аренды не хватает на платёж, нужен резерв. Стресс войдёт в калькулятор сделки "
+          "отдельной строкой.</small>", ""]
+
+
+def apply():
+    old = json.loads(METHODS.read_text(encoding="utf-8")) if METHODS.exists() else {}
+    new = {"q4": WIN["q4"], "floor": WIN["floor"]}
+    METHODS.write_text(json.dumps(new, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"\nЗаписано в {METHODS}: было {json.dumps(old, ensure_ascii=False)}, стало {json.dumps(new, ensure_ascii=False)}")
+
+
 def main():
     L = [f"# Проверка допущений модели на прошлом — {date.today().strftime('%d.%m.%Y')}", "",
          "<small>Только для внутреннего использования. Месячные ставки — с декабря 2024 г.; годовые ряды — 2007–2025 гг. "
          "Расчёт без нейросети: zverify.py.</small>", ""]
-    for t in (t_quarters, t_elastic, t_signs, t_annual, t_pess, t_value, t_entry, t_key):
+    for t in (t_quarters, t_elastic, t_signs, t_annual, t_pess, t_value, t_entry, t_key, t_rolling, t_value_alt, t_floor,
+              t_stress):
         try:
             t(L)
         except Exception as e:  # noqa: BLE001 — одна проверка не должна ронять остальные
@@ -363,6 +572,8 @@ def main():
     out.write_text(text, encoding="utf-8")
     print(text)
     print(f"\nФайл: {out}")
+    if "--apply" in sys.argv:
+        apply()
 
 
 if __name__ == "__main__":
