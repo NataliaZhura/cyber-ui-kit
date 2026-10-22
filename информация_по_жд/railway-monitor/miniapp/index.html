@@ -216,9 +216,9 @@ function formHtml(key) {
       `<option${c === cur ? " selected" : ""}>${esc(c)}</option>`).join("")}<option value="__own"${cur && !L.includes(cur) ? " selected" : ""}>другая (название или ИНН)…</option></select>
       ${cur === "__own" || (cur && !L.includes(cur)) ? `<input data-fv="${key}" data-fk="${k}" placeholder="название или ИНН" value="${esc(cur === "__own" ? "" : cur)}">` : ""}</div>`; };
   const body = F_.f.map(([k, t, label, opt]) => {
-    if (k === "period") { const def = t || 30; if (!v.from) [v.from, v.to] = perDays(def);
+    if (k === "period") { const def = t || 30; if (!v.from) { [v.from, v.to] = perDays(def); v.pk = "n" + def; }
       return `<div class="fh"><small>Период</small><div class="seg">${[["7 дней", 7], ["30 дней", 30], ["3 мес.", 91], ["год", 365]].map(([tt, n]) =>
-        `<button data-fp="${key}" data-fn="${n}">${tt}</button>`).join("")}<button data-fp="${key}" data-fy="2025">2025 г.</button></div>
+        `<button data-fp="${key}" data-fn="${n}" class="${v.pk === "n" + n ? "on" : ""}">${tt}</button>`).join("")}<button data-fp="${key}" data-fy="2025" class="${v.pk === "y2025" ? "on" : ""}">2025 г.</button></div>
         <div class="f2"><div><small>с</small><input type="date" data-fv="${key}" data-fk="from" value="${v.from}"></div><div><small>по</small><input type="date" data-fv="${key}" data-fk="to" value="${v.to}"></div></div></div>`; }
     if (t === "company") return co(k, label);
     if (t === "years") { if (!v.y1) { v.y1 = "2023"; v.y2 = "2025"; } const ys = ["2019", "2020", "2021", "2022", "2023", "2024", "2025", "2026"];
@@ -564,7 +564,8 @@ document.addEventListener("click", async e => {
   else if (d.second !== undefined) second();
   else if (d.read) openRead(d.read);
   else if (d.fsend) formSend(d.fsend);
-  else if (d.fp) { const v = FV[d.fp] = FV[d.fp] || {}; if (d.fy) { v.from = d.fy + "-01-01"; v.to = d.fy + "-12-31"; } else [v.from, v.to] = perDays(+d.fn); renderSection(d.fp); }
+  else if (d.fp) { const v = FV[d.fp] = FV[d.fp] || {}; if (d.fy) { v.from = d.fy + "-01-01"; v.to = d.fy + "-12-31"; v.pk = "y" + d.fy; } else { [v.from, v.to] = perDays(+d.fn); v.pk = "n" + d.fn; }
+    renderSection(d.fp); toast(`Период: ${rus(v.from)} — ${rus(v.to)}`); }
   else if (d.per) { const st = {F, RT, RO}[d.per]; st.from = d.pa; st.to = d.pb; st.touched = true; ({F: renderBuild, RT: renderRates, RO: renderRetro})[d.per](); }
   else if (d.pdf) pdfSend(d.pdf === "forecast" ? {kind: "forecast", wagon: F.wagon, scenario: F.scenario, set: F.set, from: F.from, to: F.to}
     : d.pdf === "deal" ? {kind: "deal", wagon: DL.wagon, scenario: DL.scenario, ...DL.set}
@@ -614,6 +615,7 @@ $("file").addEventListener("change", async e => {
 $("q").addEventListener("input", render);
 document.addEventListener("change", e => { const t = e.target;
   if (t.dataset && t.dataset.fv) { const v = FV[t.dataset.fv] = FV[t.dataset.fv] || {}; v[t.dataset.fk] = t.value;
+    if (t.dataset.fk === "from" || t.dataset.fk === "to") { v.pk = ""; renderSection(t.dataset.fv); return; }  // свои даты — кнопки не подсвечены
     if (t.tagName === "SELECT" && (t.value === "__own" || t.dataset.fk === "company" || t.dataset.fk === "company2")) renderSection(t.dataset.fv); return; }
   if (!t.dataset || !t.dataset.pf) return;
   const st = {F, RT, RO}[t.dataset.pf]; st[t.dataset.pk] = t.value; st.touched = true; ({F: renderBuild, RT: renderRates, RO: renderRetro})[t.dataset.pf](); });
