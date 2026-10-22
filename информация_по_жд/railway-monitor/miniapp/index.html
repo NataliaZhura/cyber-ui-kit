@@ -158,7 +158,7 @@ function render() {
     <div class="ask"><input id="ask" placeholder="другая компания: название или ИНН"><button class="main-btn" data-ask="/profile">Справка</button></div></div>` : "";
   const sv = S.tab === "Рынок" ? `<button class="card build" data-survey><b>Анкета ставок рынка</b>
     <small>5 минут раз в месяц: ставка по вашему типу вагона, договор, ожидания. Свой ряд ставок — от ответов участников рынка</small></button>` : "";
-  $("view").innerHTML = `${co}<div class="grid">${build}${sv}${secs.map(card).join("")}</div>`;
+  $("view").innerHTML = `${co}<div class="grid">${build}${sv}${secs.map(card).join("")}</div><div class="note" style="text-align:center">Версия приложения: ${VER}</div>`;
 }
 function card(s) {
   const f = S.data.files[s.key] || [];
@@ -174,6 +174,7 @@ const HINTS = {vagon: "тип: обычный / инновационный / к�
   model: "пришли файл в чат или «демо»"};
 // Формы «Новый отчёт» по разделам: компания, период и другие параметры → задача ЖДуше с точным названием отчёта и файла.
 // Пустое поле — значение по умолчанию (написано в подсказке). Отчёт называется «Раздел: Компания — период».
+const VER = "22.10.2026 · формы с периодами";  // видно внизу вкладки: если старая — закройте и откройте приложение заново
 const WAG = ["все типы", "полувагоны", "крытые", "зерновозы", "фитинговые платформы"];
 const FORMS = {
   poluvagony: {file: "полувагоны", f: [["period"], ["focus", "select", "Что смотреть", ["всё", "ставки", "парк и баланс", "погрузка", "операторы"]]]},
@@ -202,7 +203,7 @@ const FORMS = {
   profile: {file: "справка", f: [["company", "company", "Компания"], ["years", "years", "Отчётность за годы"]]},
   finance: {file: "финансы", f: [["company", "company", "Компания"], ["years", "years", "Годы"], ["std", "select", "Отчётность", ["РСБУ", "МСФО", "обе"]]]},
   courts: {file: "суды", f: [["company", "company", "Компания"], ["period", 365]]},
-  assets: {file: "имущество_лизинг", f: [["company", "company", "Компания"], ["what", "select", "Что смотреть", ["всё", "вагоны и лизинг", "недвижимость", "залоги"]]]},
+  assets: {file: "имущество_лизинг", f: [["company", "company", "Компания"], ["asof", "date", "На дату (пусто — сегодня)"], ["what", "select", "Что смотреть", ["всё", "вагоны и лизинг", "недвижимость", "залоги"]]]},
   compare: {file: "сравнение", f: [["company", "company", "Компания 1"], ["company2", "company", "Компания 2"], ["years", "years", "Годы"],
     ["what", "select", "Сравнить", ["всё", "финансы", "парк", "долг", "ставки и клиенты"]]]},
 };
@@ -250,8 +251,8 @@ function formSend(key) {
   if (F_.f.some(([k, t]) => t === "company" && k === "company" && !/Необязательно/i.test(lab[k] || "")) && (!v.company || v.company === "__own")) return toast("Выберите компанию");
   const who = [v.company, v.company2].filter(x => x && x !== "__own").join(" и ") || v.wagon || v.topic || v.cargo || "";
   const per = v.from ? `${rus(v.from)}–${rus(v.to)}` : v.y1 ? (v.y1 === v.y2 ? `${v.y1} г.` : `${v.y1}–${v.y2}`) : v.week ? `неделя с ${rus(v.week)}` :
-    key === "model" ? `горизонт ${v.horizon || 20} лет` : v.year || v.to || "";
-  const title = `${F_.title ? F_.title + " " : sec + ": "}${who}${per ? " — " + per : ""}`;
+    key === "model" ? `горизонт ${v.horizon || 20} лет` : v.asof ? `на ${rus(v.asof)}` : v.year || v.to || "";
+  const title = who ? `${F_.title ? F_.title + " " : sec + ": "}${who}${per ? " — " + per : ""}` : `${F_.title || sec}${per ? " — " + per : ""}`;
   const fname = [new Date().toISOString().slice(0, 10), F_.file, ...[v.company, v.company2].filter(x => x && x !== "__own"),
     v.from ? `${v.from}_${v.to}` : v.y1 ? (v.y1 === v.y2 ? v.y1 : `${v.y1}-${v.y2}`) : ""].filter(Boolean).join("_").replace(/[\s\/«»"]+/g, "_");
   task(`/${key} ${parts.join("; ")}. Название отчёта: «${title}». Файл: saved/…/${fname}.md (+ PDF).`);
