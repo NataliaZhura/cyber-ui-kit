@@ -223,7 +223,10 @@ function formHtml(key) {
     if (t === "company") return co(k, label);
     if (t === "years") { if (!v.y1) { v.y1 = "2023"; v.y2 = "2025"; } const ys = ["2019", "2020", "2021", "2022", "2023", "2024", "2025", "2026"];
       const sel = kk => `<select data-fv="${key}" data-fk="${kk}">${ys.map(y => `<option${y === v[kk] ? " selected" : ""}>${y}</option>`).join("")}</select>`;
-      return `<div class="fh"><small>${label}</small><div class="f2"><div><small>с</small>${sel("y1")}</div><div><small>по</small>${sel("y2")}</div></div></div>`; }
+      const ch = [["2023", "2023", "2023"], ["2024", "2024", "2024"], ["2025", "2025", "2025"], ["2023–2025", "2023", "2025"]];
+      return `<div class="fh"><small>${label} (отчётность на 31 декабря)</small><div class="seg">${ch.map(([tt, a, b]) =>
+        `<button data-fyr="${key}" data-ya="${a}" data-yb="${b}" class="${v.y1 === a && v.y2 === b ? "on" : ""}">${tt}</button>`).join("")}</div>
+        <div class="f2"><div><small>с</small>${sel("y1")}</div><div><small>по</small>${sel("y2")}</div></div></div>`; }
     if (t === "select") { if (!v[k]) v[k] = opt[0];
       return `<div class="fh"><small>${label}</small><select data-fv="${key}" data-fk="${k}">${opt.map(o => `<option${o === v[k] ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>`; }
     if (t === "file") { const xs = (S.data.files.upload || []).filter(f => /\.xlsx?$/i.test(f.name));
@@ -240,17 +243,17 @@ function formSend(key) {
   const parts = [], lab = Object.fromEntries(F_.f.map(([k, t, label]) => [k, label]));
   for (const [k, t, label, opt] of F_.f) {
     if (k === "period") parts.push(`период: с ${rus(v.from)} по ${rus(v.to)}`);
-    else if (t === "years") parts.push(`${label.toLowerCase()}: ${v.y1}–${v.y2}`);
+    else if (t === "years") parts.push(`${label.toLowerCase()}: ${v.y1 === v.y2 ? v.y1 + " (на 31.12." + v.y1 + ")" : v.y1 + "–" + v.y2}`);
     else if (v[k] && v[k] !== "__own") parts.push(`${label.toLowerCase()}: ${v[k]}`);
     else if (t === "number" || t === "text") { if (opt) parts.push(`${label.toLowerCase()}: ${opt.replace(/^пусто — /, "")} (по умолчанию)`); }
   }
   if (F_.f.some(([k, t]) => t === "company" && k === "company" && !/Необязательно/i.test(lab[k] || "")) && (!v.company || v.company === "__own")) return toast("Выберите компанию");
   const who = [v.company, v.company2].filter(x => x && x !== "__own").join(" и ") || v.wagon || v.topic || v.cargo || "";
-  const per = v.from ? `${rus(v.from)}–${rus(v.to)}` : v.y1 ? `${v.y1}–${v.y2}` : v.week ? `неделя с ${rus(v.week)}` :
+  const per = v.from ? `${rus(v.from)}–${rus(v.to)}` : v.y1 ? (v.y1 === v.y2 ? `${v.y1} г.` : `${v.y1}–${v.y2}`) : v.week ? `неделя с ${rus(v.week)}` :
     key === "model" ? `горизонт ${v.horizon || 20} лет` : v.year || v.to || "";
   const title = `${F_.title ? F_.title + " " : sec + ": "}${who}${per ? " — " + per : ""}`;
   const fname = [new Date().toISOString().slice(0, 10), F_.file, ...[v.company, v.company2].filter(x => x && x !== "__own"),
-    v.from ? `${v.from}_${v.to}` : v.y1 ? `${v.y1}-${v.y2}` : ""].filter(Boolean).join("_").replace(/[\s\/«»"]+/g, "_");
+    v.from ? `${v.from}_${v.to}` : v.y1 ? (v.y1 === v.y2 ? v.y1 : `${v.y1}-${v.y2}`) : ""].filter(Boolean).join("_").replace(/[\s\/«»"]+/g, "_");
   task(`/${key} ${parts.join("; ")}. Название отчёта: «${title}». Файл: saved/…/${fname}.md (+ PDF).`);
 }
 function rows(list, showSec, prevSeen) {
@@ -564,6 +567,7 @@ document.addEventListener("click", async e => {
   else if (d.second !== undefined) second();
   else if (d.read) openRead(d.read);
   else if (d.fsend) formSend(d.fsend);
+  else if (d.fyr) { const v = FV[d.fyr] = FV[d.fyr] || {}; v.y1 = d.ya; v.y2 = d.yb; renderSection(d.fyr); toast(d.ya === d.yb ? `Год: ${d.ya}` : `Годы: ${d.ya}–${d.yb}`); }
   else if (d.fp) { const v = FV[d.fp] = FV[d.fp] || {}; if (d.fy) { v.from = d.fy + "-01-01"; v.to = d.fy + "-12-31"; v.pk = "y" + d.fy; } else { [v.from, v.to] = perDays(+d.fn); v.pk = "n" + d.fn; }
     renderSection(d.fp); toast(`Период: ${rus(v.from)} — ${rus(v.to)}`); }
   else if (d.per) { const st = {F, RT, RO}[d.per]; st.from = d.pa; st.to = d.pb; st.touched = true; ({F: renderBuild, RT: renderRates, RO: renderRetro})[d.per](); }
