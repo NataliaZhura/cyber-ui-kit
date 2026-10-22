@@ -192,6 +192,8 @@ def listing(roots):
                 "name": p.name, "size": st.st_size, "mtime": int(st.st_mtime)}
         if root.name.startswith("saved_"):
             item["guest"] = root.name.removeprefix("saved_")
+        if p.suffix.lower() == ".md" or p.with_suffix(".md").exists():  # есть текст — читается прямо в приложении
+            item["read"] = True
         out[section_of(p, root)].append(item)
     for v in out.values():
         v.sort(key=lambda f: -f["mtime"])
@@ -207,6 +209,19 @@ def resolve(roots, fid):
     if not p.is_file() or not p.is_relative_to(root) or p.suffix.lower() not in SHOW:
         return None
     return p
+
+
+def read_id(uid, path):
+    """id файла для кнопки «Читать в приложении» под документом в чате (send.py) — в папках этого человека; нет — None."""
+    acc = who(str(uid))
+    path = Path(path).resolve()
+    if not acc or not (path.suffix.lower() == ".md" or path.with_suffix(".md").exists()):
+        return None
+    for i, root in enumerate(acc[2]):
+        r = root.resolve()
+        if path.is_relative_to(r):
+            return f"{i}/{path.relative_to(r).as_posix()}"
+    return None
 
 
 def link_sig(token, uid, fid, exp):
@@ -489,6 +504,12 @@ class App(BaseHTTPRequestHandler):
             subprocess.Popen([sys.executable, str(BASE / "zsecond.py"), "run"], stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, start_new_session=True)
             return self.reply(200, {"msg": "Задача ушла ЖДуше (GPT) — PDF придёт в чат через 5–15 минут"})
+        if path == "/api/read":  # отчёт текстом — читать прямо в приложении (PDF на компьютере Telegram не показывает)
+            p = resolve(roots, body.get("id", ""))
+            md = p if p and p.suffix.lower() == ".md" else p.with_suffix(".md") if p else None
+            if not md or not md.exists():
+                return self.reply(404, {"error": "У этого файла нет текстовой версии — нажмите «Открыть»."})
+            return self.reply(200, {"name": p.name, "md": md.read_text(encoding="utf-8")[:400000]})
         if path == "/api/survey":  # анкета ставок: ответ → forecast/survey.csv (zsurvey.py)
             import zsurvey
             try:

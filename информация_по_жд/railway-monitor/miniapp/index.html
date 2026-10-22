@@ -51,6 +51,8 @@ padding:9px 10px;background:var(--bg);color:var(--text);font:inherit}.ask .main-
 .box small{color:var(--hint);display:block;margin-bottom:8px}
 .box input,.box textarea{width:100%;border:1px solid var(--sep);border-radius:10px;padding:9px 10px;background:var(--bg2);color:var(--text);font:inherit}
 .box textarea{min-height:84px;resize:vertical}
+.reader{font-size:15px;line-height:1.45}.reader p{margin:6px 0}.reader h2,.reader h3,.reader h4{margin:16px 0 6px}
+.reader .li{margin:3px 0 3px 4px}.reader .tbl{font-size:12.5px}.reader .tbl td,.reader .tbl th{white-space:normal;text-align:left;vertical-align:top;min-width:70px}.reader small{color:var(--hint)}
 .box .main-btn{margin:8px 0 0}
 #toast{position:fixed;left:16px;right:16px;bottom:16px;background:#222;color:#fff;border-radius:12px;padding:12px 14px;
 opacity:0;transform:translateY(20px);transition:.2s;pointer-events:none;z-index:5}
@@ -119,6 +121,7 @@ async function load() {
       try { localStorage.setItem("zseen", JSON.stringify(S.seen)); } catch (e) {}
     }
     render();
+    if (S.pendingRead) { const f = S.pendingRead; S.pendingRead = null; openRead(f); }
   }
   catch (e) { $("view").innerHTML = `<div class="err">${esc(e.message)}<br><br>Открой приложение кнопкой «Меню» в чате @zhdusha_bot.</div>`; }
 }
@@ -135,6 +138,7 @@ function render() {
   if (S.deal) return renderDeal();
   if (S.retro) return renderRetro();
   if (S.survey) return renderSurvey();
+  if (S.read) return renderRead();
   const secs = S.data.sections.filter(s => s.group === S.tab);
   const build = S.tab === "Прогнозы" ? `<button class="card build" data-build><b>Построить прогноз ставки</b>
     <small>полувагоны, крытые, зерновоз, фитинговые платформы · свои значения факторов · октябрь–декабрь 2026 и до 2030</small></button>
@@ -168,7 +172,7 @@ function rows(list, showSec, prevSeen) {
   return `<div class="list">${list.map(f => `<div class="row">
     <div class="ico ${ext(f.name)}">${esc(ext(f.name).toUpperCase())}</div>
     <div class="meta"><div>${esc(pretty(f.name))}</div><small>${prevSeen !== undefined && f.mtime > prevSeen ? '<span class="tag new">новое</span> ' : ""}${f.guest ? '<span class="tag guest">гость</span> ' : ""}${stamp(f.mtime)} · ${kb(f.size)}${showSec ? " · " + esc(titles[f.sec]) : ""}</small></div>
-    <button class="act" data-open="${esc(f.id)}">Открыть</button><button class="act" data-send="${esc(f.id)}">В чат</button></div>`).join("")}</div>`;
+    ${f.read ? `<button class="act" data-read="${esc(f.id)}">Читать</button>` : ""}<button class="act" data-open="${esc(f.id)}">${f.read ? "PDF" : "Открыть"}</button><button class="act" data-send="${esc(f.id)}">В чат</button></div>`).join("")}</div>`;
 }
 function renderSection(key) {
   const s = S.data.sections.find(x => x.key === key);
@@ -365,6 +369,35 @@ async function second() {
   try { const r = await api("/api/second", {}); toast(r.msg || "Задача ушла ЖДуше"); setTimeout(() => tg?.close(), 1500); }
   catch (e) { toast(e.message); }
 }
+// Чтение отчёта прямо в приложении: Telegram на компьютере не показывает PDF внутри чата
+function mdHtml(md) {
+  const inl = t => esc(t).replace(/&lt;(\/?)small&gt;/g, "<$1small>").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  const L = md.split("\n"), out = [];
+  for (let i = 0; i < L.length; i++) {
+    const x = L[i];
+    if (/^\|/.test(x)) {
+      const t = [];
+      while (i < L.length && /^\|/.test(L[i])) { if (!/^\|[\s|:-]+\|?\s*$/.test(L[i])) t.push(L[i]); i++; }
+      i--;
+      out.push(`<div class="wrap"><table class="tbl">${t.map((r, k) => "<tr>" + r.replace(/^\||\|\s*$/g, "").split("|")
+        .map(c => k ? `<td>${inl(c.trim())}</td>` : `<th>${inl(c.trim())}</th>`).join("") + "</tr>").join("")}</table></div>`);
+    } else if (/^#{1,4} /.test(x)) { const n = x.match(/^#+/)[0].length; out.push(`<h${Math.min(n + 1, 4)}>${inl(x.replace(/^#+ /, ""))}</h${Math.min(n + 1, 4)}>`); }
+    else if (/^\s*[-*•] /.test(x)) out.push(`<div class="li">• ${inl(x.replace(/^\s*[-*•] /, ""))}</div>`);
+    else if (/^> /.test(x)) out.push(`<div class="note">${inl(x.slice(2))}</div>`);
+    else if (x.trim()) out.push(`<p>${inl(x)}</p>`);
+  }
+  return out.join("");
+}
+async function openRead(id) {
+  try { S.read = await api("/api/read", {id}); S.read.id = id; render(); window.scrollTo(0, 0); } catch (e) { toast(e.message); }
+}
+function renderRead() {
+  tg?.BackButton.show();
+  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>${esc(pretty(S.read.name))}</h2>
+    <div class="reader">${mdHtml(S.read.md)}</div>
+    <button class="main-btn ghost" data-send="${esc(S.read.id)}">Прислать PDF в чат</button>`;
+}
 function renderSurvey() {
   const resp = S.data.role === "respondent";
   if (!resp) tg?.BackButton.show();
@@ -408,6 +441,7 @@ document.addEventListener("click", async e => {
   const d = b.dataset;
   if (d.build !== undefined) { S.build = true; F.res = null; render(); window.scrollTo(0, 0); }
   else if (d.second !== undefined) second();
+  else if (d.read) openRead(d.read);
   else if (d.survey !== undefined) { S.survey = true; render(); window.scrollTo(0, 0); }
   else if (d.svk) { svKeep(); SV[d.svk] = d.svv; renderSurvey(); }
   else if (d.svsend !== undefined) svSend();
@@ -424,9 +458,9 @@ document.addEventListener("click", async e => {
   else if (d.wagon || d.scenario) { if (d.wagon) F.wagon = d.wagon; if (d.scenario) F.scenario = d.scenario; calc(true); }
   else if (d.calc !== undefined) { document.querySelectorAll("[data-f]").forEach(i => F.set[i.dataset.f] = i.value.trim()); calc(); }
   else if (d.reset !== undefined) calc(true);
-  else if (d.tab) { S.tab = d.tab; S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; S.survey = false; $("q").value = ""; try { localStorage.setItem("ztab", d.tab); } catch (e) {} render(); }
+  else if (d.tab) { S.tab = d.tab; S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; S.survey = false; S.read = null; $("q").value = ""; try { localStorage.setItem("ztab", d.tab); } catch (e) {} render(); }
   else if (d.sec) { S.section = d.sec; render(); window.scrollTo(0, 0); }
-  else if (d.back !== undefined) { S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; S.survey = false; render(); }
+  else if (d.back !== undefined) { S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; S.survey = false; S.read = null; render(); }
   else if (d.send) { try { await api("/api/send", {id: d.send}); toast("Файл отправлен в чат"); } catch (er) { toast(er.message); } }
   else if (d.open) {
     try { const r = await api("/api/link", {id: d.open}); const url = location.origin + r.url; tg?.openLink ? tg.openLink(url) : window.open(url); }
@@ -448,13 +482,14 @@ $("file").addEventListener("change", async e => {
   if (fs.length) { toast(`Загружено ${ok} из ${fs.length}. Выпуски Argus разложатся сами через минуту`); await load(); }
 });
 $("q").addEventListener("input", render);
-tg?.BackButton.onClick(() => { S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; S.survey = false; render(); });
+tg?.BackButton.onClick(() => { S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; S.survey = false; S.read = null; render(); });
 // Кнопки пульта в чате (zmenu.py panel) открывают приложение сразу на расчёте: ?go=build&w=…, ?go=rates, ?go=deal, ?go=sec&s=…
 (() => { const q = new URLSearchParams(location.search), go = q.get("go");
   if (go === "build") { S.tab = "Прогнозы"; S.build = true; if (q.get("w")) F.wagon = q.get("w"); }
   else if (go === "deal") { S.tab = "Прогнозы"; S.deal = true; if (q.get("w")) DL.wagon = q.get("w"); }
   else if (go === "rates") { S.tab = "Рынок"; S.rates = true; }
   else if (go === "survey") { S.tab = "Рынок"; S.survey = true; }
+  else if (go === "read" && q.get("f")) S.pendingRead = q.get("f");
   else if (go === "sec" && q.get("s")) S.section = q.get("s"); })();
 load();
 </script>

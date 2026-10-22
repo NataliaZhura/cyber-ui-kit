@@ -173,6 +173,13 @@ def cmd_invite(uid):
             ok = json.loads(r.read().decode()).get("ok")
     except Exception as e:  # noqa: BLE001
         sys.exit(f"Telegram не принял ({e}). Попросите человека открыть @zhdusha_bot и нажать Start, затем повторите.")
+    mb = json.dumps({"type": "web_app", "text": "Анкета", "web_app": {"url": URL + "?go=survey"}}, ensure_ascii=False)
+    req = urllib.request.Request(f"https://api.telegram.org/bot{token}/setChatMenuButton",  # кнопка у поля ввода
+                                 data=urllib.parse.urlencode({"chat_id": uid, "menu_button": mb}).encode())
+    try:
+        urllib.request.urlopen(req, timeout=30).read()
+    except Exception:  # noqa: BLE001 — не критично: кнопка анкеты уже в сообщении
+        pass
     print("Кнопка анкеты отправлена." if ok else "Telegram не принял сообщение.")
 
 

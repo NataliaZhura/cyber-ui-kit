@@ -36,10 +36,29 @@ MIME = {".pdf": "application/pdf", ".md": "text/markdown", ".csv": "text/csv", "
         ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".html": "text/html"}
 
 
+APP = "https://zhdusha.duckdns.org"
+
+
+def read_button(chat_id, path):
+    """Кнопка «Читать в приложении» под отчётом: на компьютере Telegram не показывает PDF внутри чата."""
+    try:
+        import urllib.parse as up
+        import zapp
+        fid = zapp.read_id(chat_id, path)
+    except Exception:  # noqa: BLE001 — нет мини-приложения на этой машине: просто файл
+        return ""
+    if not fid:
+        return ""
+    return json.dumps({"inline_keyboard": [[{"text": "📖 Читать в приложении",
+                                             "web_app": {"url": f"{APP}?go=read&f={up.quote(fid)}"}}]]}, ensure_ascii=False)
+
+
 def send(chat_id, path, token):
     boundary = uuid.uuid4().hex
+    kb = read_button(chat_id, path)
     body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n"
-            f"--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; filename=\"{path.name}\"\r\n"
+            + (f"--{boundary}\r\nContent-Disposition: form-data; name=\"reply_markup\"\r\n\r\n{kb}\r\n" if kb else "")
+            + f"--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; filename=\"{path.name}\"\r\n"
             f"Content-Type: {MIME.get(path.suffix.lower(), 'application/octet-stream')}\r\n\r\n").encode() + path.read_bytes() + \
         f"\r\n--{boundary}--\r\n".encode()
     req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendDocument", data=body,

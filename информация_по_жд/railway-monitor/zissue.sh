@@ -43,4 +43,4 @@ for f in saved/market/${D}_обзор_рынка_вагонов.pdf saved/market
   [ -f "$f" ] && python3 send.py "$f" || echo "!! нет $f — выпуск не собрался, пришли вывод выше"
 done
 systemctl restart zhdusha-app 2>/dev/null && echo "мини-приложение перезапущено"
-echo "== Готово. Пульт с кнопками (один раз): python3 zmenu.py panel — прогнозы, ставки, сделка без нейросети"
+echo "== Готово. Кнопка приложения и пульт владельцу и гостям (один раз): python3 zmenu.py fix"

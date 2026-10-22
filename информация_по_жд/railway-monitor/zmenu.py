@@ -79,9 +79,39 @@ PANEL = [[("📈 Полувагон", "?go=build&w=inno"), ("📦 Крытый",
          [("📰 Обзор рынка", "?go=sec&s=market"), ("📂 Все отчёты", "")]]
 
 
-def panel(url, ids, pin_it=True):
+# Пульт гостя: без «Ставок и парка» (данные партнёра — только владельцу), с анкетой ставок
+GUEST_PANEL = [[("📈 Полувагон", "?go=build&w=inno"), ("📦 Крытый", "?go=build&w=kr158")],
+               [("🌾 Зерновоз", "?go=build&w=hop_grain"), ("🚢 Платформа", "?go=build&w=fit80")],
+               [("🧮 Сделка: лизинг", "?go=deal"), ("📝 Анкета ставок", "?go=survey")],
+               [("📂 Все отчёты", "")]]
+
+
+def menu_button(cid, url):
+    """Кнопка «ЖДуша» слева от поля ввода — в конкретном чате: её не перебивает общий список команд."""
+    b = {"type": "web_app", "text": "ЖДуша", "web_app": {"url": url}}
+    return api("setChatMenuButton", chat_id=cid, menu_button=json.dumps(b, ensure_ascii=False)).get("ok")
+
+
+def fix(url):
+    """Владельцу, гостям и респондентам: кнопка приложения в каждом чате + закреплённый пульт (гостю — гостевой)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import zapp
+    import zsurvey
+    owner = (Path.home() / ".secrets" / "zhdusha_owner").read_text(encoding="utf-8").strip()
+    api("setChatMenuButton", menu_button=json.dumps({"type": "web_app", "text": "ЖДуша", "web_app": {"url": url}},
+                                                    ensure_ascii=False))
+    people = [(owner, "владелец", PANEL)] + [(g, f"гость {a}", GUEST_PANEL) for g, a in zapp.guests().items()]
+    people += [(r, "респондент", None) for r in zsurvey.respondents()]
+    for cid, who, pnl in people:
+        ok = menu_button(cid, url + ("?go=survey" if pnl is None else ""))
+        print(f"{cid} ({who}): кнопка приложения {'поставлена' if ok else 'не поставлена — человек ещё не писал боту'}")
+        if pnl is not None and ok:
+            panel(url, [cid], True, pnl)
+
+
+def panel(url, ids, pin_it=True, rows=None):
     """Сообщение-пульт с кнопками расчётов (+ закрепить). Нажатие кнопки не пишет боту — токены не тратятся."""
-    kb = json.dumps({"inline_keyboard": [[{"text": t, "web_app": {"url": url + q}} for t, q in row] for row in PANEL]},
+    kb = json.dumps({"inline_keyboard": [[{"text": t, "web_app": {"url": url + q}} for t, q in row] for row in rows or PANEL]},
                     ensure_ascii=False)
     text = ("Пульт ЖДуши — считает программа, мгновенно и без нейросети:\n"
             "• прогноз ставки по типу вагона (сценарии, факторы, стоимость вагона);\n"
@@ -103,6 +133,9 @@ if __name__ == "__main__":
         ids = [x for x in sys.argv[2:] if not x.startswith("--")]
         panel(URL, ids or [owner], "--no-pin" not in sys.argv)
         sys.exit(0)
+    if sys.argv[1:2] == ["fix"]:  # python3 zmenu.py fix — кнопка приложения и пульт всем: владельцу, гостям, респондентам
+        fix(URL)
+        sys.exit(0)
     if sys.argv[1:2] == ["pin"]:
         if len(sys.argv) < 3 or not sys.argv[2].startswith("https://"):
             sys.exit("Нужен адрес: python3 zmenu.py pin https://zhdusha.duckdns.org [ID …]")
@@ -115,7 +148,7 @@ if __name__ == "__main__":
             has = "есть /prognoz" if any(c["command"] == "prognoz" for c in cmds) else "НЕТ /prognoz"
             print(f"{name}: {len(cmds)} команд, {has}" if cmds else f"{name}: пусто (берётся общий список)")
         sys.exit(0)
-    webapp = sys.argv[2] if sys.argv[1:2] == ["webapp"] and len(sys.argv) > 2 else None
+    webapp = sys.argv[2] if sys.argv[1:2] == ["webapp"] and len(sys.argv) > 2 else URL
     if sys.argv[1:2] == ["webapp"] and not (webapp or "").startswith("https://"):
         sys.exit("Нужен адрес с https://, например: python3 zmenu.py webapp https://zhdusha.duckdns.org")
     cmds = json.dumps([{"command": c, "description": d} for c, d in MENU], ensure_ascii=False)
@@ -124,7 +157,7 @@ if __name__ == "__main__":
         api("setMyCommands", commands=cmds, **extra)
     for name, extra in owner_scope():  # личный список владельца, если его кто-то поставил, убираем — пусть берётся общий
         api("deleteMyCommands", **extra)
-    button = {"type": "web_app", "text": "Меню", "web_app": {"url": webapp}} if webapp else {"type": "commands"}
+    button = {"type": "web_app", "text": "ЖДуша", "web_app": {"url": webapp}}
     api("setChatMenuButton", menu_button=json.dumps(button, ensure_ascii=False))
     api("setMyDescription", description=DESCRIPTION)
     api("setMyShortDescription", short_description=SHORT)
