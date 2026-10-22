@@ -10,6 +10,7 @@
   python3 zobs.py seed                        известные точки из СМИ (ремонты, неисправные, отстой, профицит, оценки ПГК)
   python3 zobs.py add 2026-03 fleet_bad 150 --source media --note "РЖД, ссылка"   новая цифра из новости — вручную
   python3 zobs.py diag <выпуск.pdf> [ещё …]    почему раздел не прочитался: заголовок таблицы, похожие строки
+  python3 zobs.py find <выпуск.pdf> [ещё …] [--words парк выбыт …]   где в выпуске слова (сравнить с прочитанным выпуском)
 
 Наблюдение = месяц;показатель;мин;макс;источник;пометка. Источник: partner (данные партнёра — пока вместо опроса),
 survey (опрос участников), rzd (РЖД), media (СМИ), own (свой расчёт). Файл — forecast/observations.csv (только на сервере,
@@ -309,6 +310,22 @@ def cmd_diag(files):
                 print(f"     [{len(cells(x))} чисел] {x[:100]}")
 
 
+def cmd_find(files, words):
+    """Где в выпуске слова (без учёта регистра): строка текста, сама строка и сколько в следующей строке чисел.
+    Сравнить «хороший» выпуск с непрочитанным — видно, как теперь называется таблица и как она выглядит."""
+    words = words or ["парк", "выбыт", "поступ", "частн", "погрузк", "подвижной состав"]
+    for f in files:
+        text = pdf_text(Path(f).expanduser())
+        lines = [" ".join(x.split()) for x in text.splitlines()]
+        print(f"== {Path(f).name}: строк текста {len(lines)}")
+        for w in words:
+            hit = [i for i, x in enumerate(lines) if w.lower() in x.lower()]
+            print(f"  «{w}»: {len(hit)} строк")
+            for i in hit[:8]:
+                nxt = lines[i + 1] if i + 1 < len(lines) else ""
+                print(f"     [{i}] {lines[i][:110]}  → след.: [{len(cells(nxt))} чисел] {nxt[:60]}")
+
+
 def cmd_months():
     by = {}
     for r in read():
@@ -371,6 +388,9 @@ if __name__ == "__main__":
     sub.add_parser("months")
     sub.add_parser("seed")
     sub.add_parser("diag").add_argument("files", nargs="+")
+    fd = sub.add_parser("find")
+    fd.add_argument("files", nargs="+")
+    fd.add_argument("--words", nargs="*", default=[])
     d = sub.add_parser("add")
     d.add_argument("month")
     d.add_argument("item")
@@ -380,5 +400,5 @@ if __name__ == "__main__":
     d.add_argument("--note", default="")
     x = ap.parse_args()
     {"pdf": lambda: cmd_pdf(x.files), "show": lambda: cmd_show(x.month), "months": cmd_months,
-     "diag": lambda: cmd_diag(x.files), "seed": cmd_seed,
+     "diag": lambda: cmd_diag(x.files), "find": lambda: cmd_find(x.files, x.words), "seed": cmd_seed,
      "add": lambda: cmd_add(x)}[x.cmd]()
