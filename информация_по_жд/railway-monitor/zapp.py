@@ -211,6 +211,9 @@ def listing(roots):
     return out
 
 
+OWNER_ONLY = ("как_ждуша", "проверка_модели", "методик", "второе_мнение")  # гостю — нельзя, даже если файл попал к нему
+
+
 def resolve(roots, fid):
     idx, _, rel = fid.partition("/")
     if not idx.isdigit() or int(idx) >= len(roots) or not rel:
@@ -218,6 +221,8 @@ def resolve(roots, fid):
     root = roots[int(idx)].resolve()
     p = (root / rel).resolve()
     if not p.is_file() or not p.is_relative_to(root) or p.suffix.lower() not in SHOW:
+        return None
+    if roots[0] != SAVED and any(k in p.name.lower() for k in OWNER_ONLY):
         return None
     return p
 
@@ -421,8 +426,11 @@ class App(BaseHTTPRequestHandler):
             uid, acc, _ = self.user()
             if not acc:
                 return self.reply(403, {"error": "Нет доступа. Попроси владельца добавить тебя в ЖДушу."})
-            sections = [{"group": g, "key": k, "title": t} for g, k, t, _ in SECTIONS]
-            return self.reply(200, {"role": acc[0], "sections": sections, "files": listing(acc[2]), "companies": company_list(),
+            hide = set() if acc[0] == "owner" else {"method"}  # методика и проверка модели — только владельцу
+            sections = [{"group": g, "key": k, "title": t} for g, k, t, _ in SECTIONS if k not in hide]
+            files_ = {k: [f for f in v if acc[0] == "owner" or not any(x in f["name"].lower() for x in OWNER_ONLY)]
+                      for k, v in listing(acc[2]).items() if k not in hide}
+            return self.reply(200, {"role": acc[0], "sections": sections, "files": files_, "companies": company_list(),
                                     "direct": bool(config().get("task_cmd"))})
         if url.path == "/file":  # ссылка из /api/link: открывается во внешнем браузере, живёт 10 минут
             token, uid, fid, exp = secret("zhdusha_bot"), q.get("u", ""), q.get("f", ""), q.get("e", "0")
