@@ -88,8 +88,8 @@ GUEST_PANEL = [[("📈 Полувагон", "?go=build&w=inno"), ("📦 Крыт
 
 def drop_keyboard(cid):
     """Убрать кнопку приложения под полем ввода: из такой кнопки Telegram не передаёт, кто открыл, — «Нет доступа»."""
-    r = api("sendMessage", chat_id=cid, text="Приложение ЖДуши — кнопка «Приложение» слева от поля ввода и кнопки пульта.",
-            reply_markup=json.dumps({"remove_keyboard": True}))
+    r = api("sendMessage", chat_id=cid, text="Приложение ЖДуши — кнопка «Открыть приложение» в закреплённом сообщении.",
+            reply_markup=json.dumps({"remove_keyboard": True}), disable_notification=True)
     return r.get("ok")
 
 
@@ -112,14 +112,14 @@ def fix(url):
     owner = (Path.home() / ".secrets" / "zhdusha_owner").read_text(encoding="utf-8").strip()
     set_commands()
     btn = lambda u, t="Приложение": json.dumps({"type": "web_app", "text": t, "web_app": {"url": u}}, ensure_ascii=False)
-    api("setChatMenuButton", menu_button=btn(url))
+    api("setChatMenuButton", menu_button=json.dumps({"type": "commands"}))  # «Меню» — список команд
     people = [(owner, "владелец", PANEL)] + [(g, f"гость {a}", GUEST_PANEL) for g, a in zapp.guests().items()]
     people += [(r, "респондент", None) for r in zsurvey.respondents()]
     for cid, who, pnl in people:
-        ok = api("setChatMenuButton", chat_id=cid,
-                 menu_button=btn(url + "?go=survey", "Анкета") if pnl is None else btn(url)).get("ok")
+        ok = api("setChatMenuButton", chat_id=cid,  # респонденту — сразу анкета; остальным — «Меню» со списком команд
+                 menu_button=btn(url + "?go=survey", "Анкета") if pnl is None else json.dumps({"type": "default"})).get("ok")
         drop_keyboard(cid)
-        print(f"{cid} ({who}): {'кнопка приложения слева от поля ввода' if ok else 'не получилось — человек ещё не писал боту'}")
+        print(f"{cid} ({who}): {'«Меню» и закреп с кнопкой приложения' if ok else 'не получилось — человек ещё не писал боту'}")
         if pnl is not None and ok:
             note(url, cid)
 
@@ -175,11 +175,11 @@ if __name__ == "__main__":
             has = ", ".join(("есть /" if any(c["command"] == x for c in cmds) else "НЕТ /") + x for x in ("start", "prognoz"))
             print(f"{name}: {len(cmds)} команд, {has}" if cmds else f"{name}: пусто (берётся общий список)")
         sys.exit(0)
-    webapp = sys.argv[2] if sys.argv[1:2] == ["webapp"] and len(sys.argv) > 2 else URL  # кнопка слева — приложение
+    webapp = sys.argv[2] if sys.argv[1:2] == ["webapp"] and len(sys.argv) > 2 else None  # без «webapp» — «Меню» со списком команд
     if sys.argv[1:2] == ["webapp"] and not (webapp or "").startswith("https://"):
         sys.exit("Нужен адрес с https://, например: python3 zmenu.py webapp https://zhdusha.duckdns.org")
     res = set_commands()
-    button = {"type": "web_app", "text": "Приложение", "web_app": {"url": webapp}}
+    button = {"type": "web_app", "text": "Приложение", "web_app": {"url": webapp}} if webapp else {"type": "commands"}
     api("setChatMenuButton", menu_button=json.dumps(button, ensure_ascii=False))
     api("setMyDescription", description=DESCRIPTION)
     api("setMyShortDescription", short_description=SHORT)
