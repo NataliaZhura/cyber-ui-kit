@@ -89,6 +89,16 @@ def cmd_sort():
             shutil.move(p, dst)
             proc.append(dst)
             continue
+        low = p.name.lower()
+        if p.suffix.lower() == ".pdf" and any(k in low for k in ("как_ждуша", "методика", "проверка_модели")):
+            dst = BASE / "saved" / "model" / p.name  # методика и проверка модели — в раздел мини-приложения
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if "как_ждуша" in low and "внутр" not in low:  # версия для клиентов и кредиторов — и гостям
+                (BASE / "forecast" / "guest").mkdir(parents=True, exist_ok=True)
+                shutil.copy2(p, BASE / "forecast" / "guest" / p.name)
+            shutil.move(p, dst)
+            mats.append(p.name)
+            continue
         fp = first_page(p) if p.suffix.lower() == ".pdf" else ""
         if p.suffix.lower() == ".pdf" and ("zakupki.gov.ru" in fp or "Начальная цена" in fp) and "Argus" not in fp:
             PROC.mkdir(parents=True, exist_ok=True)  # страница поиска закупок, сохранённая в PDF с телефона

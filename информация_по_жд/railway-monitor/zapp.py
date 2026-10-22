@@ -55,6 +55,7 @@ SECTIONS = [
     ("Рынок", "rates", "Ставки", ["ставки_аренд", "_ставки"]),
     ("Рынок", "loading", "Погрузка", ["погрузк"]),
     ("Рынок", "balance", "Баланс парка", ["баланс"]),
+    ("Прогнозы", "method", "Методика и проверка модели", ["проверка_модели", "методика", "как_ждуша"]),
     ("Прогнозы", "prognoz", "Ставки до 2030", ["прогноз_ставок", "2030", "прогноз_3м"]),
     ("Прогнозы", "forecast", "Прогноз на неделю", ["прогноз"]),
     ("Прогнозы", "vagon", "Стоимость вагона", ["стоимость_вагона"]),
@@ -107,6 +108,9 @@ def who(uid):
     if agent:
         own = BASE / f"saved_{agent}"
         return "guest", agent, [own, FORECAST / "guest"], own
+    import zsurvey
+    if uid in zsurvey.respondents():  # респондент анкеты: видит только анкету, файлов нет
+        return "respondent", None, [], None
     return None
 
 
@@ -392,6 +396,9 @@ class App(BaseHTTPRequestHandler):
         if not acc:
             return self.reply(403, {"error": "Нет доступа"})
         role, agent, roots, own = acc
+        path0 = urllib.parse.urlparse(self.path).path
+        if role == "respondent" and path0 != "/api/survey":
+            return self.reply(403, {"error": "Вам доступна только анкета ставок"})
         size = int(self.headers.get("Content-Length", "0"))
         if size > MAX_UPLOAD:
             return self.reply(413, {"error": "Файл больше 20 МБ — пришли его боту в чат."})
@@ -482,6 +489,12 @@ class App(BaseHTTPRequestHandler):
             subprocess.Popen([sys.executable, str(BASE / "zsecond.py"), "run"], stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, start_new_session=True)
             return self.reply(200, {"msg": "Задача ушла ЖДуше (GPT) — PDF придёт в чат через 5–15 минут"})
+        if path == "/api/survey":  # анкета ставок: ответ → forecast/survey.csv (zsurvey.py)
+            import zsurvey
+            try:
+                return self.reply(200, zsurvey.save(uid, role, body))
+            except ValueError as e:
+                return self.reply(400, {"error": str(e)})
         if path == "/api/task":
             text = " ".join(str(body.get("text", "")).split())[:1500]
             if not text:

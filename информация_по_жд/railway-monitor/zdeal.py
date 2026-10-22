@@ -277,12 +277,24 @@ def report(a):
     return D, "\n".join(L) + "\n"
 
 
+STRESS = "Стресс: худший год"
+
+
 def as_json(D, a):
     d = D[a.scenario]
+    S = dict(D)
+    try:  # стресс для кредитора — строкой в таблице сценариев (худший год истории, zverify.py раздел 12)
+        S["stress"] = deal(a.wagon, "stress", a.price, a.spread, a.term, a.util, a.opex, a.key)
+    except (SystemExit, Exception):  # noqa: BLE001 — нет годовой истории
+        pass
+    st = S.get("stress")
     return {"wagon": NAMES[a.wagon], "scenario": SCN[a.scenario],
-            "summary": {SCN[sc]: {"price": round(x["price"], 2), "maxp": round(x["maxp"], 2),
-                                  "irr": round(x["irr"], 1) if x["irr"] is not None else None, "payback": x["payback"],
-                                  "neg": x["neg"], "exit": x["exit"]} for sc, x in D.items()},
+            "summary": {SCN.get(sc, STRESS): {"price": round(x["price"], 2), "maxp": round(x["maxp"], 2),
+                                              "irr": round(x["irr"], 1) if x["irr"] is not None else None,
+                                              "payback": x["payback"], "neg": x["neg"], "exit": x["exit"]}
+                        for sc, x in S.items()},
+            "stress_note": (st["note"].split("стресс: ")[-1] + ", 2028 г. — на дне, 2029 г. — половина пути назад, с 2030 г. — "
+                            "базовый прогноз. Если предельная цена в стрессе ниже цены — кредитору нужен резерв") if st else "",
             "rows": [{k: (round(v, 1 if k == "irr_to" else 2) if isinstance(v, float) else v) for k, v in x.items() if k in
                       ("y", "rate", "noi", "r", "pay", "dscr", "bal", "val", "exit", "cum", "irr_to")} for x in d["rows"]],
             "irr_full": round(d["irr"], 1) if d["irr"] is not None else None, "advice": advice(a.wagon, D),
