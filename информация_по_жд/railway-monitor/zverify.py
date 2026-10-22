@@ -4,7 +4,8 @@
 
   python3 zverify.py            все проверки и проверка замен → saved/model/ГГГГ-ММ-ДД_проверка_модели.md
   python3 zverify.py --apply    то же + включить замены, которые выиграли проверку (forecast/methods.json):
-                                способ прогноза ближайших месяцев для полувагонов, предел падения цены вагона
+                                способ прогноза ближайших месяцев для полувагонов, предел падения цены вагона,
+                                цена вагона за типовым полувагоном (крытый, зерновоз, платформа, инновационный)
 
 Данные: база наблюдений (месяцы с 12.2024), годовые ряды forecast/*.json (2007–2025), цены новых вагонов —
 forecast/price_hist.json (полувагоны и крытый — из презентаций рынков, только на сервере), зерновоз и платформа —
@@ -25,7 +26,7 @@ NM = {"gon": "Полувагон типовой", "inno": "Полувагон и
       "hop_grain": "Хоппер-зерновоз", "fit80": "Платформа 80'"}
 UTIL, OPEX = 0.95, 0.12  # загрузка и расходы — как в калькуляторе сделки (zdeal.py)
 V = []  # итог: (раздел, допущение, результат, вердикт)
-WIN = {"q4": {}, "floor": {}}  # что предлагает проверка замен — записывается в forecast/methods.json по --apply
+WIN = {"q4": {}, "floor": {}, "value": {}}  # что предлагает проверка замен — записывается в forecast/methods.json по --apply
 METHODS = FC / "methods.json"
 
 
@@ -406,8 +407,8 @@ def t_rolling(L):
         verdict("Замены", f"{NM[w]}: ставка через 3 месяца — способ модели против трёх простых",
                 f"как сейчас ±{f1(sc.get('now'))}%, лучший — {nm[best]} ±{f1(sc[best])}% ({len(err['flat'])} проверок)",
                 ok if "now" in sc else None)
-        if w in ("gon", "inno") and not ok:
-            WIN["q4"][w] = best
+        if w in ("gon", "inno") and not ok:  # из способов не хуже лучшего более чем на 5% — самый осторожный
+            WIN["q4"][w] = next(k for k in ("flat", "half", "full") if k in sc and sc[k] <= sc[best] * 1.05)
     L += ["", "<small>Для полувагонов, где «как сейчас» хуже лучшего способа больше чем на 15%, `zverify.py --apply` "
           "переключает прогноз ближайших месяцев на лучший способ (forecast/methods.json); разница сценариев "
           "(оптимистичный / пессимистичный) сохраняется.</small>", ""]
@@ -449,11 +450,14 @@ def t_value_alt(L):
         nm = {"rate": "от ставки", "last": "как в прошлом году", "trend": "тренд", "link": "за типовым полувагоном"}
         L.append(f"| {NM[w]} | {len(err['last'])} | " + " | ".join(f"±{f1(sc[k])}%" if k in sc else "—"
                                                           for k in ("rate", "last", "trend", "link")) + f" | {nm[best]} |")
+        if w != "gon" and "link" in sc and "rate" in sc and sc["link"] < sc["rate"]:
+            WIN["value"][w] = "link"  # «тренд» не берём: он продолжает прошлый рост цены бесконечно, без цикла
         verdict("Замены", f"{NM[w]}: стоимость — модель от ставки против простых способов",
                 f"от ставки ±{f1(sc.get('rate'))}%, лучший — {nm[best]} ±{f1(sc[best])}%",
                 ("rate" in sc and sc["rate"] <= sc[best] * 1.15) if "rate" in sc else None)
-    L += ["", "<small>Если «от ставки» проигрывает, стоимость в отчёте для этого типа считаем лучшим способом, а связь со "
-          "ставкой показываем только как пояснение.</small>", ""]
+    L += ["", "<small>`zverify.py --apply`: если «за типовым полувагоном» точнее «от ставки», цена нового вагона этого типа "
+          "в прогнозе идёт за ценой типового полувагона (уровень 2026 г. — рыночный). «Тренд» в прогноз не берём: он продолжает "
+          "прошлый рост цены без учёта цикла.</small>", ""]
 
 
 # ---------- 11. Замены: предел падения цены нового вагона ----------
@@ -508,28 +512,10 @@ def t_stress(L):
         import zdeal
     except Exception:  # noqa: BLE001
         return
-    orig = zdeal.model
     for w in TYPES:
-        rate, price = annual(w)
-        rch = [(rate[y] / rate[y - 1] - 1) for y in rate if y - 1 in rate]
-        pch = [(price[y] / price[y - 1] - 1) for y in price if y - 1 in price]
-        if not rch:
-            continue
-        wr, wp = min(rch), min(pch) if pch else 0
-
-        def stressed(w_, sc, wr=wr, wp=wp):
-            lvl, newp, note = orig(w_, "base")
-            lv, pr = dict(lvl), dict(newp)
-            lv[2027] = lv[2026] * (1 + wr)  # худший год истории
-            lv[2028] = lv[2027]  # второй год на дне
-            lv[2029] = math.sqrt(lv[2028] * lvl[2029])  # восстановление: к 2030 г. — обратно на базовый путь
-            pr[2027] = pr[2026] * (1 + wp)
-            pr[2028] = pr[2027]
-            pr[2029] = math.sqrt(pr[2028] * newp[2029])
-            return lv, pr, note
         try:
-            zdeal.model = stressed
-            d = zdeal.deal(w, "pess")
+            wr, wp = zdeal.worst(w)
+            d = zdeal.deal(w, "stress")
             ds = [x["dscr"] for x in d["rows"] if x.get("dscr") is not None]
             L.append(f"| {NM[w]} | {pct(wr * 100, 0)} / {pct(wp * 100, 0)} | {len(d['neg'])} | {f1(min(ds), 2) if ds else '—'} | "
                      f"{f1(d['maxp'], 2)} | {f1(d['price'], 2)} |")
@@ -537,9 +523,7 @@ def t_stress(L):
                     f"лет без покрытия {len(d['neg'])}, худшее покрытие {f1(min(ds), 2) if ds else '—'}; предельная цена "
                     f"{f1(d['maxp'], 2)} против цены {f1(d['price'], 2)} млн ₽", d["maxp"] >= d["price"])
         except (SystemExit, Exception) as e:  # noqa: BLE001
-            L.append(f"| {NM[w]} | {pct(wr * 100, 0)} / {pct(wp * 100, 0)} | расчёт не удался: {type(e).__name__} | | | |")
-        finally:
-            zdeal.model = orig
+            L.append(f"| {NM[w]} | расчёт не удался: {type(e).__name__} | | | | |")
     L += ["", "<small>«Подтверждено» — сделка по текущей цене выдерживает худший год истории (предельная цена не ниже цены). "
           "Покрытие ниже 1 — в этот год аренды не хватает на платёж, нужен резерв. Стресс войдёт в калькулятор сделки "
           "отдельной строкой.</small>", ""]
@@ -547,7 +531,7 @@ def t_stress(L):
 
 def apply():
     old = json.loads(METHODS.read_text(encoding="utf-8")) if METHODS.exists() else {}
-    new = {"q4": WIN["q4"], "floor": WIN["floor"]}
+    new = {"q4": WIN["q4"], "floor": WIN["floor"], "value": WIN["value"]}
     METHODS.write_text(json.dumps(new, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"\nЗаписано в {METHODS}: было {json.dumps(old, ensure_ascii=False)}, стало {json.dumps(new, ensure_ascii=False)}")
 

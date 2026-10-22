@@ -327,6 +327,10 @@ def value(w, scen="base", age=14):
     else:
         g = P["trend"][scen] / 100
         new = {y: P["new_2026"] * (1 + g) ** (y - 2026) for y in range(2026, 2031)}
+    import zvagon
+    if zvagon.method("value", w if w in ("hop_grain", "fit80") else T["data"], "rate") == "link":
+        g = zvagon.gon_link(scen)  # проверка на истории (zverify): цена этого типа точнее идёт за типовым полувагоном
+        new = {y: new[2026] * g[y] for y in new}
     used = {y: v * age_k(age) for y, v in new.items()}
     cap = {y: lv[y] * 365 / (new[y] * 1e6) * 100 for y in new}
     return {"new": new, "used": used, "cap": cap, "P": P, "age": age}

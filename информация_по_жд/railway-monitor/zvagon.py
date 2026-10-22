@@ -81,8 +81,25 @@ def verdict(V, score):
     return V["verdicts"][-1]
 
 
-def price_path(V, typ, rates):
-    """Цена нового вагона 2026–2030, млн ₽: 2026 — рынок, далее модель, привязанная к рынку 2026 г."""
+def method(kind, typ, default):
+    """Способ из проверки на истории (zverify.py --apply → forecast/methods.json)."""
+    try:
+        return json.loads((BASE / "forecast" / "methods.json").read_text(encoding="utf-8"))[kind][typ]
+    except (OSError, ValueError, KeyError):
+        return default
+
+
+def gon_link(sc="base"):
+    """Путь цены нового типового полувагона 2026–2030 / цена 2026 г. — для типов, чья цена идёт за ним (проверка zverify)."""
+    import zrate
+    lvl = zrate.forecast(zrate.load(), "gon", sc)["lvl"]
+    g, _ = price_path(load(), "gon", {y: lvl[y] for y in range(2027, 2031)}, sc)
+    return {y: v / g[2026] for y, v in g.items()}
+
+
+def price_path(V, typ, rates, sc="base"):
+    """Цена нового вагона 2026–2030, млн ₽: 2026 — рынок, далее модель, привязанная к рынку 2026 г.
+    Если проверка на истории показала, что цена типа точнее идёт за ценой типового полувагона, — за ним (method value=link)."""
     c = V["price_model"][typ]
     hist = {int(y): r for y, r in V["rates_hist"][typ].items()}
     allr = {**hist, **{y: rates[y] for y in rates}}
@@ -92,6 +109,9 @@ def price_path(V, typ, rates):
     out = {y: fit[y] * (k ** max(0, 1 - (y - 2026) / 3)) for y in fit}
     for y in range(2027, 2031):  # нижняя граница — себестоимость завода: цена нового падает не больше чем на 5% в год
         out[y] = max(out[y], out[y - 1] * (1 - floor(typ) / 100))  # (допущение: из окна средней выпадает пик 2024 г.)
+    if typ != "gon" and method("value", typ, "rate") == "link":
+        g = gon_link(sc)
+        out = {y: V["market_2026"][typ] * g[y] for y in out}
     return out, fit[2026]
 
 
@@ -100,10 +120,7 @@ FLOOR = 5  # % — максимальное снижение цены новог
 
 def floor(typ):
     """Предел падения цены нового вагона за год, %: по проверке на истории (zverify.py --apply), иначе FLOOR."""
-    try:
-        return float(json.loads((BASE / "forecast" / "methods.json").read_text(encoding="utf-8"))["floor"][typ])
-    except (OSError, ValueError, KeyError):
-        return FLOOR
+    return float(method("floor", typ, FLOOR))
 
 
 def age_factor(V, age):

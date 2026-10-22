@@ -55,7 +55,7 @@ def model(w, sc):
         import zvagon
         lvl = Z.forecast(Z.load(), w, sc)["lvl"]
         V = zvagon.load()
-        p, _ = zvagon.price_path(V, w, {y: lvl[y] for y in range(2027, 2031)})
+        p, _ = zvagon.price_path(V, w, {y: lvl[y] for y in range(2027, 2031)}, sc)
         return lvl, p, "модель цены нового вагона (zvagon), рынок 2026 г."
     import ztypes as T
     lvl = T.forecast(w, sc)["lvl"]
@@ -63,7 +63,7 @@ def model(w, sc):
         import zvagon
         V = zvagon.load()
         lv158 = lvl if w == "kr158" else T.forecast("kr158", sc)["lvl"]
-        p, _ = zvagon.price_path(V, "kr158", {y: lv158[y] for y in range(2027, 2031)})
+        p, _ = zvagon.price_path(V, "kr158", {y: lv158[y] for y in range(2027, 2031)}, sc)
         if w == "kr138":  # цены 138 м³ в модели нет — пропорционально ставке (оценка)
             p = {y: v * lvl[2026] / lv158[2026] for y, v in p.items()}
             return lvl, p, "цена 138 м³ — как у 158 м³ пропорционально ставке (оценка; задайте свою цену)"
@@ -80,10 +80,36 @@ def model(w, sc):
     return lvl, v["new"], note
 
 
+BASE_TYPE = {"kr138": "kr158", "hop_grain_inno": "hop_grain", "fit40": "fit80", "fit60": "fit80"}
+
+
+def worst(w):
+    """Худший год истории: изменение ставки и цены нового вагона (доли) — годовые ряды 2007–2025 гг. (zverify.annual)."""
+    import zverify
+    rate, price = zverify.annual(BASE_TYPE.get(w, w))
+    rch = [rate[y] / rate[y - 1] - 1 for y in rate if y - 1 in rate]
+    pch = [price[y] / price[y - 1] - 1 for y in price if y - 1 in price]
+    if not rch:
+        sys.exit(f"Нет годовой истории ставок для {NAMES[w]} — стресс не посчитать")
+    return min(rch), min(pch) if pch else 0.0
+
+
+def stressed(w):
+    """Стресс для кредитора: 2027 г. — худший год истории, 2028 г. — на дне, 2029 г. — половина пути назад,
+    с 2030 г. — базовый прогноз (в истории после обвалов 2009, 2013–2015, 2020 гг. ставка восстанавливалась за 2–3 года)."""
+    lvl, newp, note = model(w, "base")
+    wr, wp = worst(w)
+    lv, pr = dict(lvl), dict(newp)
+    lv[2027], pr[2027] = lv[2026] * (1 + wr), pr[2026] * (1 + wp)
+    lv[2028], pr[2028] = lv[2027], pr[2027]
+    lv[2029], pr[2029] = math.sqrt(lv[2028] * lvl[2029]), math.sqrt(pr[2028] * newp[2029])
+    return lv, pr, f"{note}; стресс: ставка {wr * 100:+.0f}%, цена {wp * 100:+.0f}% в 2027 г.".replace("-", "−")
+
+
 @__import__("functools").lru_cache(maxsize=None)
 def paths(w, sc):
-    lvl, p, note = model(w, sc)
-    g = INFL / 2 if sc == "pess" else INFL
+    lvl, p, note = stressed(w) if sc == "stress" else model(w, sc)
+    g = INFL / 2 if sc in ("pess", "stress") else INFL
     rate, price = dict(lvl), dict(p)
     for y in range(2031, 2031 + HORIZON + 2):
         rate[y] = rate[y - 1] * (1 + g / 100)
@@ -188,6 +214,17 @@ def report(a):
         L.append(f"| {SCN[sc]} | {n(x['price'], 2)} | {n(x['maxp'], 2)} | {n(x['irr']) if x['irr'] is not None else '—'} | "
                  f"{x['payback'] or 'не окупается за 20 лет'} | {', '.join(map(str, x['neg'][:6])) + ('…' if len(x['neg']) > 6 else '') or 'нет'} | "
                  f"{x['exit'] or 'держать весь срок'} |")
+    try:  # стресс для кредитора: худший год истории (проверка zverify.py, раздел 12)
+        x = deal(a.wagon, "stress", a.price, a.spread, a.term, a.util, a.opex, a.key)
+        ds = [z["dscr"] for z in x["rows"] if z["dscr"] is not None]
+        L.append(f"| Стресс: худший год истории | {n(x['price'], 2)} | {n(x['maxp'], 2)} | "
+                 f"{n(x['irr']) if x['irr'] is not None else '—'} | {x['payback'] or 'не окупается за 20 лет'} | "
+                 f"{', '.join(map(str, x['neg'][:6])) + ('…' if len(x['neg']) > 6 else '') or 'нет'} | {x['exit'] or 'держать весь срок'} |")
+        L += ["", f"<small>Стресс: {x['note'].split('стресс: ')[-1]}, 2028 г. — на дне, 2029 г. — половина пути назад, с 2030 г. — "
+              f"базовый прогноз. Худшее покрытие платежа — {n(min(ds), 2) if ds else '—'}. Если предельная цена в стрессе ниже "
+              "цены покупки — кредитору нужен резерв или более низкая цена.</small>"]
+    except (SystemExit, Exception):  # noqa: BLE001 — нет годовой истории: без строки стресса
+        pass
     v = "покупка оправдана" if d["price"] <= d["maxp"] * 0.9 else "на грани" if d["price"] <= d["maxp"] else "дорого"
     if v == "покупка оправдана" and len(d["neg"]) >= 3:
         v = "оправдана по цене, но аренда не покрывает платёж несколько лет"
@@ -275,6 +312,12 @@ def advice(w, D):
         why.append(f"в пессимистичном сценарии предельная цена {n(ps['maxp'], 2)} млн ₽ — ниже цены: риск для кредитора")
     if len(b["neg"]) >= 3:
         score -= 1
+    try:
+        st = deal(w, "stress", b["price"])
+    except (SystemExit, Exception):  # noqa: BLE001 — нет годовой истории
+        st = None
+    if st and st["maxp"] < st["price"]:
+        why.append(f"в стрессе (худший год истории) предельная цена {n(st['maxp'], 2)} млн ₽ — ниже цены: нужен резерв")
     if b["neg"]:
         why.append(f"в {', '.join(map(str, b['neg'][:3]))} г. аренда не покрывает платёж — нужен запас или сезонный график")
     try:
