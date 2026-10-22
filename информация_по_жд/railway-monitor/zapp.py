@@ -127,6 +127,15 @@ def check_init(init_data, token):
     return str(json.loads(pairs.get("user", "{}")).get("id", ""))
 
 
+def company_list():
+    """Компании для справки в приложении: первая колонка watchlist.csv (как в файле, без синонимов)."""
+    try:
+        lines = (BASE / "watchlist.csv").read_text(encoding="utf-8-sig").splitlines()[1:]
+    except OSError:
+        return []
+    return sorted({x.split(";")[0].strip() for x in lines if x.split(";")[0].strip()}, key=str.lower)
+
+
 def companies():
     """Названия и синонимы из watchlist.csv (только на сервере), в нижнем регистре, пробелы → «_»."""
     try:
@@ -411,7 +420,7 @@ class App(BaseHTTPRequestHandler):
             if not acc:
                 return self.reply(403, {"error": "Нет доступа. Попроси владельца добавить тебя в ЖДушу."})
             sections = [{"group": g, "key": k, "title": t} for g, k, t, _ in SECTIONS]
-            return self.reply(200, {"role": acc[0], "sections": sections, "files": listing(acc[2]),
+            return self.reply(200, {"role": acc[0], "sections": sections, "files": listing(acc[2]), "companies": company_list(),
                                     "direct": bool(config().get("task_cmd"))})
         if url.path == "/file":  # ссылка из /api/link: открывается во внешнем браузере, живёт 10 минут
             token, uid, fid, exp = secret("zhdusha_bot"), q.get("u", ""), q.get("f", ""), q.get("e", "0")

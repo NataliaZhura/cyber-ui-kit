@@ -62,7 +62,44 @@ for who, cid in (("общая", None), ("владелец", own), ("Анаста
     print(f"  {'ОК        ' if b.get('type') == 'web_app' else 'ПРОБЛЕМА  '}кнопка «Меню» ({who}): {b.get('type')} {url}")
 PY
 
+python3 - <<'PY'
+import json, urllib.parse, urllib.request
+from pathlib import Path
+tok = (Path.home() / ".secrets" / "zhdusha_bot").read_text().strip()
+own = (Path.home() / ".secrets" / "zhdusha_owner").read_text().strip()
+def api(m, **p):
+    req = urllib.request.Request(f"https://api.telegram.org/bot{tok}/{m}", data=urllib.parse.urlencode(p).encode())
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read())
+for who, extra in (("общий", {}), ("все личные чаты", {"scope": json.dumps({"type": "all_private_chats"})}),
+                   ("чат владельца", {"scope": json.dumps({"type": "chat", "chat_id": own})})):
+    c = [x["command"] for x in api("getMyCommands", **extra)["result"]]
+    print(f"  {'ОК        ' if 'start' in c or (not c and who == 'чат владельца') else 'ПРОБЛЕМА  '}команды ({who}): "
+          + (", ".join("/" + x for x in c[:6]) + ("…" if len(c) > 6 else "") if c else "пусто"))
+PY
+
+echo "== 4б. Отвечает ли ЖДуша (модель и ошибки шлюза за 3 часа)"
+cd "$KIT" && python3 ds.py check 2>&1 | head -8 | sed 's/^/    /'
+journalctl --user -u openclaw-gateway --since "-3h" --no-pager 2>/dev/null | grep -i -E "error|limit|quota|429|401|refus" | tail -8 | sed 's/^/    /'
+
+echo "== 4в. PDF из приложения (пробный: прогноз инновационного на 2 месяца — владельцу)"
+cd "$KIT" && timeout 120 python3 zpdf.py "$(cat $S/zhdusha_owner)" '{"kind": "forecast", "wagon": "inno", "scenario": "base", "from": "2026-10", "to": "2026-11"}' 2>&1 | tail -4 | sed 's/^/    /'
+
+echo "== 4г. Файл гостя → в чат владельцу (как кнопка «В чат» в приложении)"
+cd "$KIT" && timeout 60 python3 - <<'PY' 2>&1 | tail -3 | sed 's/^/    /'
+import zapp, send
+own = zapp.secret("zhdusha_owner")
+acc = zapp.who(own)
+g = [(r, p) for r, p in zapp.files(acc[2]) if r.name.startswith("saved_")]
+if not g:
+    print("у гостей пока нет файлов")
+else:
+    r, p = max(g, key=lambda x: x[1].stat().st_mtime)
+    print(f"последний файл гостя: {r.name}/{p.relative_to(r)} → отправка: "
+          + ("ОК" if send.send(own, p, zapp.secret("zhdusha_bot")) else "НЕ ОТПРАВЛЕН"))
+PY
+
 echo "== 5. Журналы (последние строки)"
-echo "  задачи из приложения (saved/task.log):"; tail -n 6 "$KIT/saved/task.log" 2>/dev/null | sed 's/^/    /' || echo "    пусто"
+echo "  задачи и PDF из приложения (saved/task.log):"; tail -n 12 "$KIT/saved/task.log" 2>/dev/null | sed 's/^/    /' || echo "    пусто"
 echo "  ошибки приложения за сутки:"; journalctl -u zhdusha-app --since "-24h" --no-pager 2>/dev/null | grep -i -E "error|traceback|exception" | tail -5 | sed 's/^/    /'
 echo "== Готово. Строки «ПРОБЛЕМА» — пришли в разговор «Мини-приложение»."

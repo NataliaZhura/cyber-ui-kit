@@ -152,9 +152,13 @@ function render() {
     <small>2025–2026 по каждому типу: рынок рядом со ставкой, что двигало ставку, проверка прогноза на прошлом</small></button>
     <button class="card build" data-second><b>Второе мнение GPT</b>
     <small>ЖДуша на GPT проверяет наши прогнозы: с чем не согласна, что не учли, свой прогноз — PDF в чат</small></button>` : "";
+  const co = S.tab === "Компании" && (S.data.companies || []).length ? `<div class="box"><label>Справка по компании</label>
+    <div class="note">Нажмите компанию — ЖДуша подготовит справку (финансы, суды, имущество, новости) и пришлёт PDF в чат; отчёт ляжет в раздел «Справка по компании».</div>
+    <div class="seg">${S.data.companies.map(c => `<button data-task="/profile ${esc(c)}">${esc(c)}</button>`).join("")}</div>
+    <div class="ask"><input id="ask" placeholder="другая компания: название или ИНН"><button class="main-btn" data-ask="/profile">Справка</button></div></div>` : "";
   const sv = S.tab === "Рынок" ? `<button class="card build" data-survey><b>Анкета ставок рынка</b>
     <small>5 минут раз в месяц: ставка по вашему типу вагона, договор, ожидания. Свой ряд ставок — от ответов участников рынка</small></button>` : "";
-  $("view").innerHTML = `<div class="grid">${build}${sv}${secs.map(card).join("")}</div>`;
+  $("view").innerHTML = `${co}<div class="grid">${build}${sv}${secs.map(card).join("")}</div>`;
 }
 function card(s) {
   const f = S.data.files[s.key] || [];
