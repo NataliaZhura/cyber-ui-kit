@@ -129,8 +129,9 @@ def note(url, cid):
     api("unpinAllChatMessages", chat_id=cid)
     kb = json.dumps({"inline_keyboard": [[{"text": "📂 Открыть приложение", "web_app": {"url": url}}]]}, ensure_ascii=False)
     r = api("sendMessage", chat_id=cid, reply_markup=kb, parse_mode="HTML",
-            text="<b>/start</b> — <b>начало разговора</b>: что умеет ЖДуша\n"
-                 "<b>/new</b> — <b>новая тема</b> (начать разговор заново)")
+            text="▶️ <b>/start</b> — <b>начало разговора</b>: что умеет ЖДуша\n"
+                 "🔄 <b>/new</b> — <b>новая тема</b> (начать разговор заново)\n"
+                 "📂 Приложение — кнопка ниже или «Меню» слева от поля ввода")
     if r.get("ok"):
         api("pinChatMessage", chat_id=cid, message_id=r["result"]["message_id"], disable_notification=True)
 
