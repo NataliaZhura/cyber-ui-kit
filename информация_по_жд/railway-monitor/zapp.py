@@ -203,8 +203,16 @@ def listing(roots):
                 "name": p.name, "size": st.st_size, "mtime": int(st.st_mtime)}
         if root.name.startswith("saved_"):
             item["guest"] = root.name.removeprefix("saved_")
-        if p.suffix.lower() == ".md" or p.with_suffix(".md").exists():  # есть текст — читается прямо в приложении
+        md = p if p.suffix.lower() == ".md" else p.with_suffix(".md")
+        if md.exists():  # есть текст — читается прямо в приложении; название — первая строка «# …» (компания и период)
             item["read"] = True
+            try:
+                with md.open(encoding="utf-8") as fh:
+                    head = next((x for x in (fh.readline() for _ in range(3)) if x.startswith("# ")), "")
+                if head:
+                    item["title"] = head[2:].strip()[:140]
+            except (OSError, UnicodeDecodeError):
+                pass
         out[section_of(p, root)].append(item)
     for v in out.values():
         v.sort(key=lambda f: -f["mtime"])

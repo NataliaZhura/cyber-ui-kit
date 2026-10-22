@@ -36,7 +36,7 @@ h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--hint
 .ico{flex:0 0 36px;height:36px;border-radius:9px;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff;background:#8a8f98}
 .ico.pdf{background:#d93025}.ico.docx{background:#2b6cd8}.ico.xlsx,.ico.xls,.ico.csv{background:#1e8e3e}.ico.png,.ico.jpg,.ico.jpeg{background:#8e44ad}
 .meta{flex:1;min-width:0}
-.meta div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta div{overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;word-break:break-word}
 .meta small{color:var(--hint)}
 .act{border:0;background:var(--bg2);color:var(--link);border-radius:8px;padding:6px 9px;font:inherit;font-size:13px;cursor:pointer}
 .main-btn{display:block;width:100%;border:0;border-radius:12px;padding:12px;margin:0 0 12px;background:var(--btn);color:var(--btn-text);font:inherit;font-weight:600;cursor:pointer}
@@ -172,12 +172,93 @@ const HINTS = {vagon: "тип: обычный / инновационный / к�
   loading: "период", profile: "компания", finance: "компания, год", courts: "компания", assets: "компания",
   company: "компания, период", compare: "две компании", lease: "компания или тип вагона", prognoz: "тип вагона, год, сценарий",
   model: "пришли файл в чат или «демо»"};
+// Формы «Новый отчёт» по разделам: компания, период и другие параметры → задача ЖДуше с точным названием отчёта и файла.
+// Пустое поле — значение по умолчанию (написано в подсказке). Отчёт называется «Раздел: Компания — период».
+const WAG = ["все типы", "полувагоны", "крытые", "зерновозы", "фитинговые платформы"];
+const FORMS = {
+  poluvagony: {file: "полувагоны", f: [["period"], ["focus", "select", "Что смотреть", ["всё", "ставки", "парк и баланс", "погрузка", "операторы"]]]},
+  krytye: {file: "крытые", f: [["period"], ["focus", "select", "Что смотреть", ["всё", "ставки", "парк и баланс", "погрузка", "операторы"]]]},
+  zerno: {file: "зерновозы", f: [["period"], ["focus", "select", "Что смотреть", ["всё", "ставки", "парк и баланс", "погрузка зерна", "экспорт и порты"]]]},
+  fiting: {file: "фитинги", f: [["period"], ["focus", "select", "Что смотреть", ["всё", "ставки", "парк и баланс", "контейнеры", "операторы"]]]},
+  market: {file: "новости_рынка", f: [["period", 7], ["topic", "select", "Тема", ["все", "полувагоны", "крытые", "зерновозы", "фитинги", "порты и море", "тарифы РЖД"]]]},
+  rates: {file: "ставки_аренды", f: [["period"], ["wagon", "select", "Тип вагона", WAG]]},
+  loading: {file: "погрузка", f: [["period"], ["cargo", "select", "Груз", ["все", "уголь", "зерно", "стройгрузы", "металлы", "удобрения", "контейнеры"]]]},
+  balance: {file: "баланс_парка", f: [["period"], ["wagon", "select", "Тип вагона", WAG]]},
+  forecast: {file: "прогноз_на_неделю", f: [["week", "date", "Неделя с"], ["wagon", "select", "Тип вагона", WAG]]},
+  prognoz: {file: "прогноз_ставок", f: [["wagon", "select", "Тип вагона", ["инновационный полувагон", "типовой полувагон", "крытый 158", "крытый 138", "зерновоз", "фитинг 80'"]],
+    ["scenario", "select", "Сценарий", ["все три", "базовый", "оптимистичный", "пессимистичный"]], ["to", "select", "Горизонт", ["2026", "2027", "2028", "2030"]]]},
+  vagon: {file: "стоимость_вагона", f: [["wagon", "select", "Тип вагона", ["инновационный полувагон", "типовой полувагон", "крытый 158", "зерновоз", "фитинг 80'"]],
+    ["age", "number", "Возраст б/у, лет", "пусто — новый"], ["scenario", "select", "Сценарий", ["базовый", "оптимистичный", "пессимистичный"]], ["year", "select", "На год", ["2026", "2027", "2028", "2029", "2030"]]]},
+  lease: {file: "оперировать_или_сдавать", f: [["company", "company", "Компания (необязательно)"], ["wagon", "select", "Тип вагона", WAG.slice(1)],
+    ["term", "number", "Срок, лет", "пусто — 5"], ["rate", "number", "Своя ставка аренды, ₽/сут", "пусто — рыночная"]]},
+  model: {file: "финмодель", f: [["company", "company", "Компания"], ["xlsx", "file", "Файл модели (Excel)"],
+    ["horizon", "number", "Горизонт дисконтирования, лет", "пусто — 20 лет"], ["disc", "text", "Ставка дисконтирования", "пусто — ключевая + 3,5 п.п."],
+    ["util", "number", "Загрузка вагонов, %", "пусто — 95"], ["opex", "number", "Расходы, % выручки", "пусто — 12"],
+    ["resid", "number", "Остаточная стоимость в конце, % цены", "пусто — по модели цены б/у"],
+    ["scen", "select", "Сценарии", ["все: база, снижение, рост, стресс", "только база и стресс"]],
+    ["check", "select", "Что проверить", ["всё: покрытие долга, точка пробоя, выход", "покрытие платежей по годам", "когда выходить из сделки"]]]},
+  zavod: {file: "завод", f: [["company", "company", "Завод (название или ИНН)"], ["sum", "number", "Сумма аванса, млн ₽", ""], ["delivery", "date", "Срок поставки"]]},
+  company: {file: "новости_оператора", title: "Анализ и новости", f: [["company", "company", "Компания"], ["period", 30]]},
+  profile: {file: "справка", f: [["company", "company", "Компания"], ["years", "years", "Отчётность за годы"]]},
+  finance: {file: "финансы", f: [["company", "company", "Компания"], ["years", "years", "Годы"], ["std", "select", "Отчётность", ["РСБУ", "МСФО", "обе"]]]},
+  courts: {file: "суды", f: [["company", "company", "Компания"], ["period", 365]]},
+  assets: {file: "имущество_лизинг", f: [["company", "company", "Компания"], ["what", "select", "Что смотреть", ["всё", "вагоны и лизинг", "недвижимость", "залоги"]]]},
+  compare: {file: "сравнение", f: [["company", "company", "Компания 1"], ["company2", "company", "Компания 2"], ["years", "years", "Годы"],
+    ["what", "select", "Сравнить", ["всё", "финансы", "парк", "долг", "ставки и клиенты"]]]},
+};
+const FV = {};  // значения форм: FV[раздел][поле]
+const ymd = d => d.toISOString().slice(0, 10), rus = v => v ? v.split("-").reverse().join(".") : "";
+function perDays(n) { const t = new Date(), f = new Date(); f.setDate(t.getDate() - n); return [ymd(f), ymd(t)]; }
+function formHtml(key) {
+  const F_ = FORMS[key], v = FV[key] = FV[key] || {};
+  const co = (k, label) => { const L = S.data.companies || [], cur = v[k] || "";
+    return `<div class="fh"><small>${label}</small><select data-fv="${key}" data-fk="${k}"><option value="">— выберите —</option>${L.map(c =>
+      `<option${c === cur ? " selected" : ""}>${esc(c)}</option>`).join("")}<option value="__own"${cur && !L.includes(cur) ? " selected" : ""}>другая (название или ИНН)…</option></select>
+      ${cur === "__own" || (cur && !L.includes(cur)) ? `<input data-fv="${key}" data-fk="${k}" placeholder="название или ИНН" value="${esc(cur === "__own" ? "" : cur)}">` : ""}</div>`; };
+  const body = F_.f.map(([k, t, label, opt]) => {
+    if (k === "period") { const def = t || 30; if (!v.from) [v.from, v.to] = perDays(def);
+      return `<div class="fh"><small>Период</small><div class="seg">${[["7 дней", 7], ["30 дней", 30], ["3 мес.", 91], ["год", 365]].map(([tt, n]) =>
+        `<button data-fp="${key}" data-fn="${n}">${tt}</button>`).join("")}<button data-fp="${key}" data-fy="2025">2025 г.</button></div>
+        <div class="f2"><div><small>с</small><input type="date" data-fv="${key}" data-fk="from" value="${v.from}"></div><div><small>по</small><input type="date" data-fv="${key}" data-fk="to" value="${v.to}"></div></div></div>`; }
+    if (t === "company") return co(k, label);
+    if (t === "years") { if (!v.y1) { v.y1 = "2023"; v.y2 = "2025"; } const ys = ["2019", "2020", "2021", "2022", "2023", "2024", "2025", "2026"];
+      const sel = kk => `<select data-fv="${key}" data-fk="${kk}">${ys.map(y => `<option${y === v[kk] ? " selected" : ""}>${y}</option>`).join("")}</select>`;
+      return `<div class="fh"><small>${label}</small><div class="f2"><div><small>с</small>${sel("y1")}</div><div><small>по</small>${sel("y2")}</div></div></div>`; }
+    if (t === "select") { if (!v[k]) v[k] = opt[0];
+      return `<div class="fh"><small>${label}</small><select data-fv="${key}" data-fk="${k}">${opt.map(o => `<option${o === v[k] ? " selected" : ""}>${esc(o)}</option>`).join("")}</select></div>`; }
+    if (t === "file") { const xs = (S.data.files.upload || []).filter(f => /\.xlsx?$/i.test(f.name));
+      return `<div class="fh"><small>${label}</small><select data-fv="${key}" data-fk="${k}"><option value="">демо-модель (без файла)</option>${xs.map(f =>
+        `<option${f.name === v[k] ? " selected" : ""}>${esc(f.name)}</option>`).join("")}</select><button class="main-btn ghost" data-upload>Загрузить Excel</button></div>`; }
+    if (t === "date") return `<div class="fh"><small>${label}</small><input type="date" data-fv="${key}" data-fk="${k}" value="${esc(v[k] || "")}"></div>`;
+    return `<div class="fh"><small>${label}</small><input data-fv="${key}" data-fk="${k}" ${t === "number" ? 'inputmode="decimal"' : ""} placeholder="${esc(opt || "")}" value="${esc(v[k] || "")}"></div>`;
+  }).join("");
+  return `<div class="box"><label>Новый отчёт</label>${body}<button class="main-btn" data-fsend="${key}">Отправить ЖДуше</button>
+    <div class="note">Пустое поле — значение по умолчанию. Отчёт придёт в чат и ляжет в этот раздел с названием «раздел: компания — период».</div></div>`;
+}
+function formSend(key) {
+  const F_ = FORMS[key], v = FV[key] || {}, sec = (S.data.sections.find(x => x.key === key) || {}).title || key;
+  const parts = [], lab = Object.fromEntries(F_.f.map(([k, t, label]) => [k, label]));
+  for (const [k, t, label, opt] of F_.f) {
+    if (k === "period") parts.push(`период: с ${rus(v.from)} по ${rus(v.to)}`);
+    else if (t === "years") parts.push(`${label.toLowerCase()}: ${v.y1}–${v.y2}`);
+    else if (v[k] && v[k] !== "__own") parts.push(`${label.toLowerCase()}: ${v[k]}`);
+    else if (t === "number" || t === "text") { if (opt) parts.push(`${label.toLowerCase()}: ${opt.replace(/^пусто — /, "")} (по умолчанию)`); }
+  }
+  if (F_.f.some(([k, t]) => t === "company" && k === "company" && !/Необязательно/i.test(lab[k] || "")) && (!v.company || v.company === "__own")) return toast("Выберите компанию");
+  const who = [v.company, v.company2].filter(x => x && x !== "__own").join(" и ") || v.wagon || v.topic || v.cargo || "";
+  const per = v.from ? `${rus(v.from)}–${rus(v.to)}` : v.y1 ? `${v.y1}–${v.y2}` : v.week ? `неделя с ${rus(v.week)}` :
+    key === "model" ? `горизонт ${v.horizon || 20} лет` : v.year || v.to || "";
+  const title = `${F_.title ? F_.title + " " : sec + ": "}${who}${per ? " — " + per : ""}`;
+  const fname = [new Date().toISOString().slice(0, 10), F_.file, ...[v.company, v.company2].filter(x => x && x !== "__own"),
+    v.from ? `${v.from}_${v.to}` : v.y1 ? `${v.y1}-${v.y2}` : ""].filter(Boolean).join("_").replace(/[\s\/«»"]+/g, "_");
+  task(`/${key} ${parts.join("; ")}. Название отчёта: «${title}». Файл: saved/…/${fname}.md (+ PDF).`);
+}
 function rows(list, showSec, prevSeen) {
   if (!list.length) return `<div class="empty">Здесь пока ничего нет</div>`;
   const titles = Object.fromEntries(S.data.sections.map(s => [s.key, s.title]));
   return `<div class="list">${list.map(f => `<div class="row">
     <div class="ico ${ext(f.name)}">${esc(ext(f.name).toUpperCase())}</div>
-    <div class="meta"><div>${esc(pretty(f.name))}</div><small>${prevSeen !== undefined && f.mtime > prevSeen ? '<span class="tag new">новое</span> ' : ""}${f.guest ? '<span class="tag guest">гость</span> ' : ""}${stamp(f.mtime)} · ${kb(f.size)}${showSec ? " · " + esc(titles[f.sec]) : ""}</small></div>
+    <div class="meta"><div>${esc(f.title || pretty(f.name))}</div><small>${prevSeen !== undefined && f.mtime > prevSeen ? '<span class="tag new">новое</span> ' : ""}${f.guest ? '<span class="tag guest">гость</span> ' : ""}${stamp(f.mtime)} · ${kb(f.size)}${showSec ? " · " + esc(titles[f.sec]) : ""}</small></div>
     ${f.read ? `<button class="act" data-read="${esc(f.id)}">Читать</button>` : ""}<button class="act" data-open="${esc(f.id)}">${f.read ? "PDF" : "Открыть"}</button><button class="act" data-send="${esc(f.id)}">В чат</button></div>`).join("")}</div>`;
 }
 function renderSection(key) {
@@ -187,7 +268,7 @@ function renderSection(key) {
   S.seen[key] = Math.floor(Date.now() / 1000);
   try { localStorage.setItem("zseen", JSON.stringify(S.seen)); } catch (e) {}
   tg?.BackButton.show();
-  const cmd = ["upload", "other"].includes(key) ? "" : `<div class="ask"><input id="ask" placeholder="${esc(HINTS[key] || "уточнение (необязательно)")}">
+  const cmd = FORMS[key] ? formHtml(key) : ["upload", "other", "method"].includes(key) ? "" : `<div class="ask"><input id="ask" placeholder="${esc(HINTS[key] || "уточнение (необязательно)")}">
     <button class="main-btn" data-ask="/${key}">Новый отчёт</button></div>`;
   $("view").innerHTML = `<h2><button class="back" data-back>‹</button>${esc(s.title)}</h2>${cmd}${rows(f, false, prev)}`;
 }
@@ -482,6 +563,8 @@ document.addEventListener("click", async e => {
   if (d.build !== undefined) { S.build = true; F.res = null; render(); window.scrollTo(0, 0); }
   else if (d.second !== undefined) second();
   else if (d.read) openRead(d.read);
+  else if (d.fsend) formSend(d.fsend);
+  else if (d.fp) { const v = FV[d.fp] = FV[d.fp] || {}; if (d.fy) { v.from = d.fy + "-01-01"; v.to = d.fy + "-12-31"; } else [v.from, v.to] = perDays(+d.fn); renderSection(d.fp); }
   else if (d.per) { const st = {F, RT, RO}[d.per]; st.from = d.pa; st.to = d.pb; st.touched = true; ({F: renderBuild, RT: renderRates, RO: renderRetro})[d.per](); }
   else if (d.pdf) pdfSend(d.pdf === "forecast" ? {kind: "forecast", wagon: F.wagon, scenario: F.scenario, set: F.set, from: F.from, to: F.to}
     : d.pdf === "deal" ? {kind: "deal", wagon: DL.wagon, scenario: DL.scenario, ...DL.set}
@@ -529,7 +612,10 @@ $("file").addEventListener("change", async e => {
   if (fs.length) { toast(`Загружено ${ok} из ${fs.length}. Выпуски Argus разложатся сами через минуту`); await load(); }
 });
 $("q").addEventListener("input", render);
-document.addEventListener("change", e => { const t = e.target; if (!t.dataset || !t.dataset.pf) return;
+document.addEventListener("change", e => { const t = e.target;
+  if (t.dataset && t.dataset.fv) { const v = FV[t.dataset.fv] = FV[t.dataset.fv] || {}; v[t.dataset.fk] = t.value;
+    if (t.tagName === "SELECT" && (t.value === "__own" || t.dataset.fk === "company" || t.dataset.fk === "company2")) renderSection(t.dataset.fv); return; }
+  if (!t.dataset || !t.dataset.pf) return;
   const st = {F, RT, RO}[t.dataset.pf]; st[t.dataset.pk] = t.value; st.touched = true; ({F: renderBuild, RT: renderRates, RO: renderRetro})[t.dataset.pf](); });
 tg?.BackButton.onClick(() => { S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; S.survey = false; S.read = null; render(); });
 // Кнопки пульта в чате (zmenu.py panel) открывают приложение сразу на расчёте: ?go=build&w=…, ?go=rates, ?go=deal, ?go=sec&s=…
