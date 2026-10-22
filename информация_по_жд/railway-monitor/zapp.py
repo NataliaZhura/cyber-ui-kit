@@ -136,6 +136,20 @@ def company_list():
     return sorted({x.split(";")[0].strip() for x in lines if x.split(";")[0].strip()}, key=str.lower)
 
 
+def factory_list():
+    """Вагоностроительные заводы для /zavod: таблица ZAVODY.md — название и ИНН (если указан)."""
+    try:
+        lines = (BASE / "ZAVODY.md").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    out = []
+    for x in lines:
+        c = [y.strip() for y in x.split("|")]
+        if len(c) > 3 and c[1] and c[1] not in ("Завод",) and not set(c[1]) <= set("-: "):
+            out.append({"name": c[1], "inn": c[2] if c[2].isdigit() else ""})
+    return out
+
+
 def companies():
     """Названия и синонимы из watchlist.csv (только на сервере), в нижнем регистре, пробелы → «_»."""
     try:
@@ -185,8 +199,11 @@ def files(roots):
             rel = p.relative_to(root).parts
             if not p.is_file() or p.suffix.lower() not in SHOW or "copy" in rel[:-1] or "_tmp" in p.stem:
                 continue
-            if any(k in p.stem.lower() for k in ("conversation_info", "openclaw_ctx", "conversation info")):
+            if any(k in p.stem.lower() for k in ("conversation_info", "openclaw_ctx", "conversation info", "параметры_запроса",
+                                                  "выбор_компании")):
                 continue  # служебные файлы робота — не отчёты
+            if p.suffix.lower() == ".md" and p.stat().st_size < 1200 and root.name != "upload" and "upload" not in rel:
+                continue  # черновики робота (1 КБ, без PDF) — не отчёты
             if root == FORECAST and rel[0] == "guest":
                 continue
             if p.suffix.lower() == ".md" and p.with_suffix(".pdf").exists():
@@ -438,7 +455,7 @@ class App(BaseHTTPRequestHandler):
             sections = [{"group": g, "key": k, "title": t} for g, k, t, _ in SECTIONS if k not in hide]
             files_ = {k: [f for f in v if acc[0] == "owner" or not any(x in f["name"].lower() for x in OWNER_ONLY)]
                       for k, v in listing(acc[2]).items() if k not in hide}
-            return self.reply(200, {"role": acc[0], "sections": sections, "files": files_, "companies": company_list(),
+            return self.reply(200, {"role": acc[0], "sections": sections, "files": files_, "companies": company_list(), "factories": factory_list(),
                                     "direct": bool(config().get("task_cmd"))})
         if url.path == "/file":  # ссылка из /api/link: открывается во внешнем браузере, живёт 10 минут
             token, uid, fid, exp = secret("zhdusha_bot"), q.get("u", ""), q.get("f", ""), q.get("e", "0")

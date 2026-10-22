@@ -187,18 +187,18 @@ const FORMS = {
   balance: {file: "баланс_парка", f: [["period"], ["wagon", "select", "Тип вагона", WAG]]},
   forecast: {file: "прогноз_на_неделю", f: [["week", "date", "Неделя с"], ["wagon", "select", "Тип вагона", WAG]]},
   prognoz: {file: "прогноз_ставок", f: [["wagon", "select", "Тип вагона", ["инновационный полувагон", "типовой полувагон", "крытый 158", "крытый 138", "зерновоз", "фитинг 80'"]],
-    ["scenario", "select", "Сценарий", ["все три", "базовый", "оптимистичный", "пессимистичный"]], ["to", "select", "Горизонт", ["2026", "2027", "2028", "2030"]]]},
+    ["scenario", "select", "Сценарий", ["все три", "базовый", "оптимистичный", "пессимистичный"]], ["to", "select", "Горизонт", ["2030", "2028", "2027", "2026"]]]},
   vagon: {file: "стоимость_вагона", f: [["wagon", "select", "Тип вагона", ["инновационный полувагон", "типовой полувагон", "крытый 158", "зерновоз", "фитинг 80'"]],
     ["age", "number", "Возраст б/у, лет", "пусто — новый"], ["scenario", "select", "Сценарий", ["базовый", "оптимистичный", "пессимистичный"]], ["year", "select", "На год", ["2026", "2027", "2028", "2029", "2030"]]]},
   lease: {file: "оперировать_или_сдавать", f: [["company", "company", "Компания (необязательно)"], ["wagon", "select", "Тип вагона", WAG.slice(1)],
     ["term", "number", "Срок, лет", "пусто — 5"], ["rate", "number", "Своя ставка аренды, ₽/сут", "пусто — рыночная"]]},
-  model: {file: "финмодель", f: [["company", "company", "Компания"], ["xlsx", "file", "Файл модели (Excel)"],
+  model: {file: "финмодель", f: [["company", "company", "Компания (заёмщик или лизингополучатель)"], ["xlsx", "file", "Файл модели (Excel)"],
     ["horizon", "number", "Горизонт дисконтирования, лет", "пусто — 20 лет"], ["disc", "text", "Ставка дисконтирования", "пусто — ключевая + 3,5 п.п."],
     ["util", "number", "Загрузка вагонов, %", "пусто — 95"], ["opex", "number", "Расходы, % выручки", "пусто — 12"],
     ["resid", "number", "Остаточная стоимость в конце, % цены", "пусто — по модели цены б/у"],
     ["scen", "select", "Сценарии", ["все: база, снижение, рост, стресс", "только база и стресс"]],
     ["check", "select", "Что проверить", ["всё: покрытие долга, точка пробоя, выход", "покрытие платежей по годам", "когда выходить из сделки"]]]},
-  zavod: {file: "завод", f: [["company", "company", "Завод (название или ИНН)"], ["sum", "number", "Сумма аванса, млн ₽", ""], ["delivery", "date", "Срок поставки"]]},
+  zavod: {file: "завод", f: [["company", "factory", "Вагоностроительный завод"], ["sum", "number", "Сумма аванса, млн ₽", ""], ["delivery", "date", "Срок поставки"]]},
   company: {file: "новости_оператора", title: "Анализ и новости", f: [["company", "company", "Компания"], ["period", 30]]},
   profile: {file: "справка", f: [["company", "company", "Компания"], ["years", "years", "Отчётность за годы"]]},
   finance: {file: "финансы", f: [["company", "company", "Компания"], ["years", "years", "Годы"], ["std", "select", "Отчётность", ["РСБУ", "МСФО", "обе"]]]},
@@ -212,7 +212,7 @@ const ymd = d => d.toISOString().slice(0, 10), rus = v => v ? v.split("-").rever
 function perDays(n) { const t = new Date(), f = new Date(); f.setDate(t.getDate() - n); return [ymd(f), ymd(t)]; }
 function formHtml(key) {
   const F_ = FORMS[key], v = FV[key] = FV[key] || {};
-  const co = (k, label) => { const L = S.data.companies || [], cur = v[k] || "";
+  const co = (k, label, fac) => { const L = fac ? (S.data.factories || []).map(x => x.name) : S.data.companies || [], cur = v[k] || "";
     return `<div class="fh"><small>${label}</small><select data-fv="${key}" data-fk="${k}"><option value="">— выберите —</option>${L.map(c =>
       `<option${c === cur ? " selected" : ""}>${esc(c)}</option>`).join("")}<option value="__own"${cur && !L.includes(cur) ? " selected" : ""}>другая (название или ИНН)…</option></select>
       ${cur === "__own" || (cur && !L.includes(cur)) ? `<input data-fv="${key}" data-fk="${k}" placeholder="название или ИНН" value="${esc(cur === "__own" ? "" : cur)}">` : ""}</div>`; };
@@ -221,7 +221,7 @@ function formHtml(key) {
       return `<div class="fh"><small>Период</small><div class="seg">${[["7 дней", 7], ["30 дней", 30], ["3 мес.", 91], ["год", 365]].map(([tt, n]) =>
         `<button data-fp="${key}" data-fn="${n}" class="${v.pk === "n" + n ? "on" : ""}">${tt}</button>`).join("")}<button data-fp="${key}" data-fy="2025" class="${v.pk === "y2025" ? "on" : ""}">2025 г.</button></div>
         <div class="f2"><div><small>с</small><input type="date" data-fv="${key}" data-fk="from" value="${v.from}"></div><div><small>по</small><input type="date" data-fv="${key}" data-fk="to" value="${v.to}"></div></div></div>`; }
-    if (t === "company") return co(k, label);
+    if (t === "company" || t === "factory") return co(k, label, t === "factory");
     if (t === "years") { if (!v.y1) { v.y1 = "2023"; v.y2 = "2025"; } const ys = ["2019", "2020", "2021", "2022", "2023", "2024", "2025", "2026"];
       const sel = kk => `<select data-fv="${key}" data-fk="${kk}">${ys.map(y => `<option${y === v[kk] ? " selected" : ""}>${y}</option>`).join("")}</select>`;
       const ch = [["2023", "2023", "2023"], ["2024", "2024", "2024"], ["2025", "2025", "2025"], ["2023–2025", "2023", "2025"]];
@@ -245,10 +245,13 @@ function formSend(key) {
   for (const [k, t, label, opt] of F_.f) {
     if (k === "period") parts.push(`период: с ${rus(v.from)} по ${rus(v.to)}`);
     else if (t === "years") parts.push(`${label.toLowerCase()}: ${v.y1 === v.y2 ? v.y1 + " (на 31.12." + v.y1 + ")" : v.y1 + "–" + v.y2}`);
+    else if (t === "factory" && v[k] && v[k] !== "__own") { const x = (S.data.factories || []).find(y => y.name === v[k]);
+      parts.push(`завод: ${v[k]}${x && x.inn ? ", ИНН " + x.inn : ""}`); }
     else if (v[k] && v[k] !== "__own") parts.push(`${label.toLowerCase()}: ${v[k]}`);
     else if (t === "number" || t === "text") { if (opt) parts.push(`${label.toLowerCase()}: ${opt.replace(/^пусто — /, "")} (по умолчанию)`); }
   }
-  if (F_.f.some(([k, t]) => t === "company" && k === "company" && !/Необязательно/i.test(lab[k] || "")) && (!v.company || v.company === "__own")) return toast("Выберите компанию");
+  if (F_.f.some(([k, t]) => (t === "company" || t === "factory") && k === "company" && !/Необязательно/i.test(lab[k] || "")) && (!v.company || v.company === "__own"))
+    return toast(key === "zavod" ? "Выберите завод" : "Выберите компанию");
   const who = [v.company, v.company2].filter(x => x && x !== "__own").join(" и ") || v.wagon || v.topic || v.cargo || "";
   const per = v.from ? `${rus(v.from)}–${rus(v.to)}` : v.y1 ? (v.y1 === v.y2 ? `${v.y1} г.` : `${v.y1}–${v.y2}`) : v.week ? `неделя с ${rus(v.week)}` :
     key === "model" ? `горизонт ${v.horizon || 20} лет` : v.asof ? `на ${rus(v.asof)}` : v.year || v.to || "";
