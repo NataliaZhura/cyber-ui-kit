@@ -105,7 +105,7 @@ def set_commands():
 
 def fix(url):
     """Всем — владельцу, гостям, респондентам: кнопка «Приложение» слева от поля ввода (открывает мини-приложение),
-    команды — через «/» в поле ввода, закреплённый пульт со /start и /new (гостю — гостевой, респонденту — анкета)."""
+    команды — через «/» в поле ввода, в закрепе — только /start и /new (старый пульт с кнопками открепляется)."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import zapp
     import zsurvey
@@ -121,7 +121,17 @@ def fix(url):
         drop_keyboard(cid)
         print(f"{cid} ({who}): {'кнопка приложения слева от поля ввода' if ok else 'не получилось — человек ещё не писал боту'}")
         if pnl is not None and ok:
-            panel(url, [cid], True, pnl)
+            note(url, cid)
+
+
+def note(url, cid):
+    """Закреп — коротко: как начать и как сменить тему; старый пульт с кнопками открепляется (всё есть в приложении)."""
+    api("unpinAllChatMessages", chat_id=cid)
+    kb = json.dumps({"inline_keyboard": [[{"text": "📂 Открыть приложение", "web_app": {"url": url}}]]}, ensure_ascii=False)
+    r = api("sendMessage", chat_id=cid, reply_markup=kb,
+            text="/start — начало разговора: что умеет ЖДуша\n/new — новая тема (начать разговор заново)")
+    if r.get("ok"):
+        api("pinChatMessage", chat_id=cid, message_id=r["result"]["message_id"], disable_notification=True)
 
 
 def panel(url, ids, pin_it=True, rows=None):
