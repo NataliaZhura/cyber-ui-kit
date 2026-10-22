@@ -29,11 +29,18 @@ def read_secret(name):
     return p.read_text(encoding="utf-8").strip()
 
 
+# тип файла для Telegram: с application/octet-stream PDF на компьютере и в веб-версии не открывается встроенным просмотром
+MIME = {".pdf": "application/pdf", ".md": "text/markdown", ".csv": "text/csv", ".txt": "text/plain",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".html": "text/html"}
+
+
 def send(chat_id, path, token):
     boundary = uuid.uuid4().hex
     body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n"
             f"--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; filename=\"{path.name}\"\r\n"
-            f"Content-Type: application/octet-stream\r\n\r\n").encode() + path.read_bytes() + \
+            f"Content-Type: {MIME.get(path.suffix.lower(), 'application/octet-stream')}\r\n\r\n").encode() + path.read_bytes() + \
         f"\r\n--{boundary}--\r\n".encode()
     req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendDocument", data=body,
                                  headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
