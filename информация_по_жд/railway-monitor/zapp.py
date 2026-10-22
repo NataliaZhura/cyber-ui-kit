@@ -270,6 +270,28 @@ def vagon_value(t, lvl):
 import zhelp  # noqa: E402  — пояснения к факторам («Изменить допущения»)
 
 
+def monthly(q4, lvl):
+    """Помесячный путь ставки до декабря 2030 г.: октябрь–декабрь 2026 — прогноз модели по месяцам; дальше — плавный
+    путь через среднюю за каждый год (точка в середине года), без сезонности. Для выбора «с … по …» в приложении."""
+    lm = 12 - len(q4)
+    pts = [(lm + 1 + i, v) for i, v in enumerate(q4)] + [((y - 2026) * 12 + 7, lvl[y]) for y in range(2027, 2031) if y in lvl]
+    out = {}
+    for t in range(lm + 1, 61):
+        if t <= 12:
+            v = q4[t - lm - 1]
+        else:
+            a = max((x for x in pts if x[0] <= t), key=lambda x: x[0])
+            nx = [x for x in pts if x[0] > t]
+            if nx:
+                b = nx[0]
+                v = a[1] * (b[1] / a[1]) ** ((t - a[0]) / (b[0] - a[0]))
+            else:  # после середины 2030 г. — тем же темпом, что последний отрезок
+                p0, p1 = pts[-2], pts[-1]
+                v = p1[1] * (p1[1] / p0[1]) ** ((t - p1[0]) / (p1[0] - p0[0]))
+        out[f"{2026 + (t - 1) // 12}-{(t - 1) % 12 + 1:02d}"] = round(v)
+    return out
+
+
 def forecast_type(w, sc, body):
     """«Построить прогноз» для крытых, зерновоза, платформ — ztypes.py (та же схема, что у полувагона)."""
     import ztypes as T
@@ -300,6 +322,7 @@ def forecast_type(w, sc, body):
                              "delta": [round(a - b) for a, b in zip(x_["q4"], [x_["months"][lm]] + x_["q4"][:-1])],
                              "avg": round(x_["lvl"][2026]), "pace": x_["pace"]} for k, x_ in res.items()},
            "years": {T.SCN[k]: {str(y): round(x_["lvl"][y]) for y in [2026] + T.YEARS} for k, x_ in res.items()},
+           "monthly": {T.SCN[k]: monthly(list(x_["q4"]), x_["lvl"]) for k, x_ in res.items()},
            "parts": {str(y): {k: round(x) for k, x in r["parts"][y].items()} for y in T.YEARS},
            "end": {str(y): round(r["end"][y]) for y in T.YEARS}, "parts_scenario": T.SCN[sc],
            "price": {k: round(x) for k, x in price.items()}, "need": [], "factors": factors, "cap": [],
@@ -343,6 +366,7 @@ def forecast(body):
             "q4": {Z.SCN[k]: {"months": [round(x) for x in v["q4"]], "delta": [round(x) for x in v["q4_rub"]],
                               "avg": round(v["lvl"][2026]), "pace": v["scen"]["pace"]} for k, v in res.items()},
             "years": {Z.SCN[k]: {str(y): round(v["lvl"][y]) for y in [2026] + Z.YEARS} for k, v in res.items()},
+            "monthly": {Z.SCN[k]: monthly(list(v["q4"]), v["lvl"]) for k, v in res.items()},
             "parts": {str(y): {k: round(v) for k, v in r["parts"][y].items()} for y in Z.YEARS},
             "end": {str(y): round(r["end"][y]) for y in Z.YEARS}, "parts_scenario": Z.SCN[sc if sc != "pess" else "base"],
             "price": {k: round(v) for k, v in up.items()},
@@ -483,11 +507,12 @@ class App(BaseHTTPRequestHandler):
             if body.get("wagon", "inno") not in zdeal.NAMES or body.get("scenario", "base") not in zdeal.SCN:
                 return self.reply(400, {"error": "Нет такого типа вагона или сценария"})
             argv = ["run", "--wagon", str(body.get("wagon") or "inno"), "--scenario", str(body.get("scenario") or "base")]
-            for k, lim in (("price", (0.5, 30)), ("spread", (0, 15)), ("util", (30, 100)), ("opex", (0, 60))):
+            for k, lim in (("price", (0.5, 30)), ("spread", (0, 15)), ("util", (30, 100)), ("opex", (0, 60)), ("term", (3, 25))):
                 v = str(body.get(k) or "").replace(",", ".").strip()
                 if v:
                     try:
-                        argv += [f"--{k}", str(min(lim[1], max(lim[0], float(v))))]
+                        x = min(lim[1], max(lim[0], float(v)))
+                        argv += [f"--{k}", str(int(x) if k == "term" else x)]
                     except ValueError:
                         return self.reply(400, {"error": f"Не число: {k}"})
             try:
@@ -510,6 +535,13 @@ class App(BaseHTTPRequestHandler):
             if not md or not md.exists():
                 return self.reply(404, {"error": "У этого файла нет текстовой версии — нажмите «Открыть»."})
             return self.reply(200, {"name": p.name, "md": md.read_text(encoding="utf-8")[:400000]})
+        if path == "/api/pdf":  # расчёт из приложения → PDF в чат (zpdf.py), без нейросети
+            if body.get("kind") in ("rates", "retro") and role != "owner":
+                return self.reply(403, {"error": "Этот расчёт доступен владельцу."})
+            log = (SAVED / "task.log").open("a", encoding="utf-8")
+            subprocess.Popen([sys.executable, str(BASE / "zpdf.py"), uid, json.dumps(body, ensure_ascii=False)], cwd=BASE,
+                             stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
+            return self.reply(200, {"ok": True, "msg": "PDF придёт в чат через 10–30 секунд"})
         if path == "/api/survey":  # анкета ставок: ответ → forecast/survey.csv (zsurvey.py)
             import zsurvey
             try:

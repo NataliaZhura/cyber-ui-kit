@@ -51,6 +51,8 @@ padding:9px 10px;background:var(--bg);color:var(--text);font:inherit}.ask .main-
 .box small{color:var(--hint);display:block;margin-bottom:8px}
 .box input,.box textarea{width:100%;border:1px solid var(--sep);border-radius:10px;padding:9px 10px;background:var(--bg2);color:var(--text);font:inherit}
 .box textarea{min-height:84px;resize:vertical}
+.box select{width:100%;border:1px solid var(--sep);border-radius:10px;padding:9px 10px;background:var(--bg2);color:var(--text);font:inherit}
+.tbl td.b{font-weight:700}
 .reader{font-size:15px;line-height:1.45}.reader p{margin:6px 0}.reader h2,.reader h3,.reader h4{margin:16px 0 6px}
 .reader .li{margin:3px 0 3px 4px}.reader .tbl{font-size:12.5px}.reader .tbl td,.reader .tbl th{white-space:normal;text-align:left;vertical-align:top;min-width:70px}.reader small{color:var(--hint)}
 .box .main-btn{margin:8px 0 0}
@@ -203,7 +205,20 @@ function renderTask() {
 }
 
 // ---------- «Построить прогноз»: расчёт программой на сервере, без нейросети ----------
-const F = {wagon: "inno", scenario: "base", set: {}, res: null, view: "rate", open: false};
+const F = {wagon: "inno", scenario: "base", set: {}, res: null, view: "rate", open: false, from: "", to: ""};
+// Период «с … по …»: быстрые кнопки + два списка месяцев. st — состояние экрана (F, RT, RO), id — его имя для кнопок
+const MN = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+const mlab = m => MN[+m.slice(5) - 1] + " " + m.slice(0, 4);
+function perFix(st, keys, defTo) { if (!keys.includes(st.from)) st.from = keys[0]; if (!keys.includes(st.to)) st.to = defTo || keys[keys.length - 1];
+  if (st.from > st.to) [st.from, st.to] = [st.to, st.from]; return keys.filter(k => k >= st.from && k <= st.to); }
+function perUI(id, st, keys, chips) {
+  const opt = sel => keys.map(k => `<option value="${k}"${k === sel ? " selected" : ""}>${mlab(k)}</option>`).join("");
+  return `<div class="box"><label>Период</label><div class="seg">${chips.map(([t, a, b]) =>
+    `<button data-per="${id}" data-pa="${a}" data-pb="${b}" class="${st.from === a && st.to === b ? "on" : ""}">${t}</button>`).join("")}</div>
+    <div class="f2"><div><small>с</small><select data-pf="${id}" data-pk="from">${opt(st.from)}</select></div>
+    <div><small>по</small><select data-pf="${id}" data-pk="to">${opt(st.to)}</select></div></div></div>`;
+}
+async function pdfSend(body) { try { const r = await api("/api/pdf", body); toast(r.msg || "PDF придёт в чат"); } catch (e) { toast(e.message); } }
 const fmt = v => Math.round(v).toLocaleString("ru-RU");
 const sgn = v => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v));
 async function calc(reset) {
@@ -221,14 +236,21 @@ function renderBuild() {
     return `<div><small>${esc(name)}, ${esc(unit)}</small><input inputmode="decimal" data-f="${k}" value="${esc(String(v).replace(".", ","))}"></div>`; };
   const seg = (key, opts) => `<div class="seg">${opts.map(([v, t]) => `<button data-${key}="${v}" class="${F[key] === v ? "on" : ""}">${t}</button>`).join("")}</div>`;
   const sc = Object.keys(r.years);
-  const yrs = Object.keys(r.years[sc[0]]);
+  const mk = Object.keys(r.monthly[sc[0]]);
+  const ms = perFix(F, mk, mk[Math.min(2, mk.length - 1)]);
+  const y0 = +F.from.slice(0, 4), y1 = +F.to.slice(0, 4);
+  const yrs = Object.keys(r.years[sc[0]]).filter(y => +y >= y0 && +y <= y1);
+  const per = perUI("F", F, mk, [["1 мес.", mk[0], mk[0]], ["2 мес.", mk[0], mk[1]], ["3 мес.", mk[0], mk[2]],
+    ["до конца 2027", mk[0], "2027-12"], ["до 2030", mk[0], mk[mk.length - 1]]]);
+  const mtab = `<table class="tbl"><tr><th>Месяц</th>${sc.map(k => `<th>${k.replace("истичный", "ист.")}</th>`).join("")}</tr>${ms.map(m =>
+    `<tr><td>${mlab(m)}</td>${sc.map(k => `<td class="${k === r.scenario ? "b" : ""}">${fmt(r.monthly[k][m])}</td>`).join("")}</tr>`).join("")}</table>`;
   const months = ["октябрь", "ноябрь", "декабрь"];
   const q4 = `<table class="tbl"><tr><th>Сценарий</th>${months.map(m => `<th>${m.slice(0, 3)}</th>`).join("")}<th>средняя за 2026 г.*</th></tr>${sc.map(k =>
     `<tr class="${k === r.scenario ? "me" : ""}"><td>${k.replace("истичный", "ист.")}<br><small style="color:var(--hint)">${r.pace_label} ${String(r.q4[k].pace).replace(".", ",")}%/мес</small></td>${r.q4[k].months.map((m, i) =>
     `<td>${fmt(m)}<br><small style="color:var(--hint)">${sgn(r.q4[k].delta[i])}</small></td>`).join("")}<td>${fmt(r.q4[k].avg)}</td></tr>`).join("")}</table>`;
   const years = `<table class="tbl"><tr><th>Сценарий</th>${yrs.map(y => `<th>${y}</th>`).join("")}</tr>${sc.map(k =>
     `<tr class="${k === r.scenario ? "me" : ""}"><td>${k}</td>${yrs.map(y => `<td>${fmt(r.years[k][y])}</td>`).join("")}</tr>`).join("")}</table>`;
-  const py = Object.keys(r.parts), keys = [...new Set(py.flatMap(y => Object.keys(r.parts[y])))];
+  const pyAll = Object.keys(r.parts), pyIn = pyAll.filter(y => +y >= y0 && +y <= y1), py = pyIn.length ? pyIn : pyAll, keys = [...new Set(py.flatMap(y => Object.keys(r.parts[y])))];
   const parts = `<table class="tbl"><tr><th>Фактор, ₽/сут</th>${py.map(y => `<th>${y}</th>`).join("")}</tr>${keys.map(k =>
     `<tr><td>${esc(k)}</td>${py.map(y => `<td>${sgn(r.parts[y][k] || 0)}</td>`).join("")}</tr>`).join("")}
     <tr class="me"><td>Ставка на конец года (декабрь)</td>${py.map(y => `<td>${fmt(r.end[y])}</td>`).join("")}</tr></table>`;
@@ -250,34 +272,36 @@ function renderBuild() {
   const head = `<h2><button class="back" data-back>‹</button>Прогноз: ${esc(r.wagon)}</h2>
     <div class="box"><label>Тип вагона</label>${seg("wagon", [["inno", "Полувагон иннов."], ["gon", "Полувагон тип."], ["kr158", "Крытый 158"], ["kr138", "Крытый 138"], ["hop_grain", "Зерновоз"], ["fit80", "Фитинг 80'"]])}${seg("scenario", [["pess", "Пессимист."], ["base", "Базовый"], ["opt", "Оптимист."]])}
     ${seg("view", [["rate", "① Ставка"], ["factors", "② Факторы"], ["value", "③ Стоимость"]])}
-    <button class="main-btn ghost" data-deal data-dw="${esc(F.wagon)}">④ Сделка и выход из неё ›</button></div>`;
+    <button class="main-btn ghost" data-deal data-dw="${esc(F.wagon)}">④ Сделка и выход из неё ›</button>
+    <button class="main-btn ghost" data-pdf="forecast">📄 PDF в чат — выбранный период</button></div>${per}`;
   const tail = `<div class="note">Данные рынка на ${esc(r.as_of)}. Оценка рынка, не инвестиционная рекомендация. Средняя ошибка модели по проверочным годам ±22–31% в год; 2029–2030 — ориентир.</div>`;
   let body = "";
   if (F.view === "factors") {
-    body = `<div class="box"><label>Из чего складывается рост (${esc(r.parts_scenario)}): изменение от декабря к декабрю</label><div class="wrap">${parts}</div></div>
+    body = `<div class="box"><label>Из чего складывается рост (${esc(r.parts_scenario)}): изменение от декабря к декабрю</label><div class="wrap">${parts}</div>${pyIn.length ? "" : `<div class="note">Разложение по факторам — по годам с 2027 г.; в выбранном периоде их нет, показаны все годы.</div>`}</div>
     <div class="box"><label>Цена фактора, ₽/сут</label>${price}<div class="note">На сколько изменится ставка, если фактор за год вырастет на 1%.</div></div>
     <div class="box"><label>Откуда значения факторов</label>${r.fields.map(k => `<div class="fh"><b>${esc(r.factors[k][0])}</b> — сценарий «${esc(r.scenario)}»: ${esc(String(d[k]).replace(".", ","))} ${esc(r.factors[k][1])}${hint(k)}</div>`).join("")}</div>
     ${setup}`;
   } else if (F.view === "value") {
     body = r.value ? `<div class="box"><label>Стоимость вагона, млн ₽ без НДС (${esc(r.scenario.toLowerCase())})</label><div class="wrap"><table class="tbl">
-      <tr><th></th>${Object.keys(r.value.new).map(y => `<th>${y}</th>`).join("")}</tr>
-      <tr><td>Новый</td>${Object.values(r.value.new).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr>
-      <tr><td>Б/у 14 лет</td>${Object.values(r.value.used).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr>
-      <tr><td>Доход к цене, %</td>${Object.values(r.value.cap).map(v => `<td>${String(v).replace(".", ",")}</td>`).join("")}</tr></table></div>
+      ${(() => { const vy = Object.keys(r.value.new).filter(y => +y <= Math.max(y1, 2026)), c = (o, y) => `<td>${String(o[y]).replace(".", ",")}</td>`;
+        return `<tr><th></th>${vy.map(y => `<th>${y}</th>`).join("")}</tr><tr><td>Новый</td>${vy.map(y => c(r.value.new, y)).join("")}</tr>
+      <tr><td>Б/у 14 лет</td>${vy.map(y => c(r.value.used, y)).join("")}</tr><tr><td>Доход к цене, %</td>${vy.map(y => c(r.value.cap, y)).join("")}</tr>`; })()}</table></div>
       <div class="note"><b>Что двигает цену вагона:</b> 1) средняя ставка аренды за 3 года — вагон дорожает вслед за доходом; 2) себестоимость завода (металл, комплектующие) — около +4% в год; 3) годовой доход к цене — если он выше обычного коридора, вагон дёшев относительно ставки, ниже — дорог; 4) возраст — б/у дешевле нового по плавной кривой (3 года ×0,88, 8 лет ×0,75, 14 лет ×0,62, 19 лет ×0,50). Подробно — отчёт «Стоимость вагона» в разделе.</div></div>`
       : `<div class="err">Модели стоимости для этого типа нет.</div>`;
   } else {
-    body = `<div class="box"><label>${esc(r.wagon)}: октябрь — декабрь 2026, ₽/сут</label><div class="note">Ставка месяца — середина диапазона ставок рынка за месяц. Сентябрь — ${fmt(r.now)} ₽. Под ставкой — изменение за месяц.</div><div class="wrap">${q4}</div>
-    <div class="note">* Средняя за 2026 г. — январь–декабрь: январь–сентябрь — факт, октябрь–декабрь — прогноз (сумма 12 месяцев / 12).</div></div>
-    <div class="box"><label>Средняя ставка за год (январь–декабрь), ₽/сут</label><div class="wrap">${years}</div>
+    body = `<div class="box"><label>${esc(r.wagon)}: ${mlab(ms[0])} — ${mlab(ms[ms.length - 1])}, ₽/сут</label><div class="note">Последний факт — ${fmt(r.now)} ₽ (${esc(r.as_of)}).</div><div class="wrap">${mtab}</div>
+    <div class="note">Октябрь–декабрь 2026 г. — прогноз модели по месяцам. С января 2027 г. — плавный путь через среднюю за год, без сезонности: ориентир по уровню${F.wagon === "hop_grain" ? "; у зерновоза внутри года ставка меняется по сезону в разы — смотрите среднюю за год" : ""}.</div></div>
+    ${ms[0] <= "2026-12" ? `<div class="box"><label>Октябрь — декабрь 2026 по сценариям</label><div class="wrap">${q4}</div>
+    <div class="note">* Средняя за 2026 г. — январь–сентябрь факт, октябрь–декабрь прогноз (сумма 12 месяцев / 12).</div></div>` : ""}
+    ${yrs.length && y1 >= 2027 ? `<div class="box"><label>Средняя ставка за год (январь–декабрь), ₽/сут</label><div class="wrap">${years}</div>
     <div class="note">2026 — январь–сентябрь факт + октябрь–декабрь прогноз. 2027–2030 — середина между ставкой на начало года (декабрь прошлого) и на конец года (декабрь); пессимистичный — средняя прошлого года + инфляция.</div>
-    ${r.cap.length ? `<div class="note">⚠ Выше рекорда 2024 г. в ${r.cap.join(", ")} г. — заложен рост выпуска вагонов.</div>` : ""}</div>
+    ${r.cap.length ? `<div class="note">⚠ Выше рекорда 2024 г. в ${r.cap.join(", ")} г. — заложен рост выпуска вагонов.</div>` : ""}</div>` : ""}
     ${need}${r.accuracy && r.accuracy.ratio > 0.9 ? `<div class="note">⚠ На прошлых годах модель этого типа не точнее прогноза «средний рост» — смотрите сценарии.</div>` : ""}${setup}`;
   }
   $("view").innerHTML = head + body + tail;
 }
 
-const RT = {res: null};
+const RT = {res: null, from: "", to: ""};
 const spark = h => { if (h.length < 2) return ""; const v = h.map(x => x[1]), lo = Math.min(...v), hi = Math.max(...v), w = 70, ht = 18;
   const pts = v.map((x, i) => `${(i * w / (v.length - 1)).toFixed(1)},${(ht - (hi > lo ? (x - lo) / (hi - lo) * ht : ht / 2)).toFixed(1)}`).join(" ");
   return `<svg width="${w}" height="${ht + 2}" viewBox="0 -1 ${w} ${ht + 2}"><polyline fill="none" stroke="var(--link)" stroke-width="1.5" points="${pts}"/></svg>`; };
@@ -287,25 +311,36 @@ async function renderRates() {
   if (!RT.res) { $("view").innerHTML = `<div class="err">Загружаю…</div>`;
     try { RT.res = await api("/api/rates", {}); } catch (e) { $("view").innerHTML = `<div class="err">${esc(e.message)}</div>`; return; } }
   const r = RT.res;
+  const mk = [...new Set(r.groups.flatMap(g => g.rows.flatMap(x => x.hist.map(h => h[0]))))].sort(), L = mk.length;
+  const ms = perFix(RT, mk, mk[L - 1]);
+  if (RT.from === mk[0] && !RT.touched) { RT.from = mk[Math.max(0, L - 3)]; return renderRates(); }
+  const per = perUI("RT", RT, mk, [["1 мес.", mk[L - 1], mk[L - 1]], ["3 мес.", mk[Math.max(0, L - 3)], mk[L - 1]],
+    ["6 мес.", mk[Math.max(0, L - 6)], mk[L - 1]], ["13 мес.", mk[0], mk[L - 1]]]);
   const al = r.alerts.length ? `<div class="box"><label>Оповещения</label>${r.alerts.map(a => `<div class="note">⚠ ${esc(a.text)}</div>`).join("")}</div>` : "";
-  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Ставки и парк по месяцам</h2>${al}` + r.groups.map(g =>
-    `<div class="box"><label>${esc(g.title)}</label><div class="wrap"><table class="tbl"><tr><th>Показатель</th><th>${esc(g.rows[0].month)}</th><th>к мес.</th><th>к году</th><th>13 мес.</th></tr>${g.rows.map(x =>
-    `<tr><td>${esc(x.name)}</td><td>${fmt(x.value)}</td><td>${pc(x.mm)}</td><td>${pc(x.yy)}</td><td>${spark(x.hist)}</td></tr>`).join("")}</table></div></div>`).join("") +
+  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Ставки и парк по месяцам</h2>${per}
+    <button class="main-btn ghost" data-pdf="rates">📄 PDF в чат — выбранный период</button>${al}` + r.groups.map(g =>
+    `<div class="box"><label>${esc(g.title)}</label><div class="wrap"><table class="tbl"><tr><th>Показатель</th>${ms.map(m => `<th>${mlab(m)}</th>`).join("")}<th>к мес.*</th><th>к году*</th><th>график</th></tr>${g.rows.map(x => { const h = Object.fromEntries(x.hist);
+    return `<tr><td>${esc(x.name)}</td>${ms.map(m => `<td>${h[m] === undefined ? "—" : fmt(h[m])}</td>`).join("")}<td>${pc(x.mm)}</td><td>${pc(x.yy)}</td><td>${spark(x.hist.filter(z => z[0] >= RT.from && z[0] <= RT.to))}</td></tr>`; }).join("")}</table></div>
+    <div class="note">* изменение последнего месяца (${esc(g.rows[0].month)}) к прошлому месяцу и к году назад.</div></div>`).join("") +
     `<div class="note">Данные на ${esc(r.as_of)} — середина диапазона рынка за месяц. Данные рынка, только для внутреннего использования.</div>`;
 }
-const RO = {wagon: "inno", res: null};
+const RO = {wagon: "inno", res: null, from: "", to: ""};
 async function renderRetro() {
   tg?.BackButton.show();
   if (!RO.res) { $("view").innerHTML = `<div class="err">Считаю…</div>`;
     try { RO.res = await api("/api/retro", {wagon: RO.wagon}); } catch (e) { $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Анализ по месяцам</h2><div class="err">${esc(e.message)}</div>`; return; } }
+  const mk = RO.res.rows.map(x => x.m), ms = perFix(RO, mk, mk[mk.length - 1]);
+  const per = perUI("RO", RO, mk, [["2025", mk.find(m => m >= "2025-01") || mk[0], [...mk].reverse().find(m => m <= "2025-12") || mk[0]],
+    ["2026", mk.find(m => m >= "2026-01") || mk[0], mk[mk.length - 1]], ["всё", mk[0], mk[mk.length - 1]]]);
   const r = RO.res, pcx = v => v === null || v === undefined ? "—" : (Math.abs(v) >= 100 ? fmt(v) : pc(v));
   const seg = `<div class="seg">${[["inno", "Полувагон иннов."], ["gon", "Полувагон тип."], ["kr158", "Крытый 158"], ["kr138", "Крытый 138"], ["hop_grain", "Зерновоз"], ["fit80", "Фитинг 80'"], ["fit40", "Фитинг 40'"], ["fit60", "Фитинг 60'"]].map(([v, t]) =>
     `<button data-rw="${v}" class="${RO.wagon === v ? "on" : ""}">${t}</button>`).join("")}</div>`;
   const mn = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
   const drv = y => (r.drivers[y] || []).map(d => `<tr><td>${esc(d.name)}${d.lag ? " (месяцем раньше)" : ""}</td><td>${String(d.r).replace(".", ",")}</td><td>${String(d.b).replace(".", ",")} на 1 ${esc(d.unit)}</td></tr>`).join("") || `<tr><td colspan="3">мало данных</td></tr>`;
   const tst = (k, t) => r.tests[k] ? `<tr><td>${t}</td>${["m1", "m2", "m3"].map(m => `<td>${r.tests[k][m] === undefined ? "—" : "±" + Math.round(r.tests[k][m]) + "%"}</td>`).join("")}</tr>` : "";
-  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Анализ ставки по месяцам</h2><div class="box">${seg}</div>
-    <div class="box"><label>${esc(r.wagon)}: ставка и рынок</label><div class="wrap"><table class="tbl"><tr><th>Месяц</th><th>Ставка</th><th>к мес.</th><th>к году</th>${r.cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>${r.rows.map(x =>
+  $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Анализ ставки по месяцам</h2><div class="box">${seg}</div>${per}
+    <button class="main-btn ghost" data-pdf="retro">📄 PDF в чат — выбранный период</button>
+    <div class="box"><label>${esc(r.wagon)}: ставка и рынок</label><div class="wrap"><table class="tbl"><tr><th>Месяц</th><th>Ставка</th><th>к мес.</th><th>к году</th>${r.cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>${r.rows.filter(x => x.m >= RO.from && x.m <= RO.to).map(x =>
     `<tr><td>${mn[+x.m.slice(5) - 1]} ${x.m.slice(2, 4)}</td><td>${fmt(x.rate)}</td><td>${pc(x.mm)}</td><td>${pc(x.yy)}</td>${x.x.map(v => `<td>${pcx(v)}</td>`).join("")}</tr>`).join("")}</table></div></div>
     <div class="box"><label>Что двигало ставку</label><div class="note">Связь от −1 до +1: ближе к ±1 — сильнее; слабее ±0,6 — может быть случайной (мало точек).</div>
     <b>2025</b><table class="tbl"><tr><th>Показатель</th><th>Связь</th><th>% ставки</th></tr>${drv(2025)}</table>
@@ -332,8 +367,9 @@ function renderDeal() {
   $("view").innerHTML = `<h2><button class="back" data-back>‹</button>Расчёт сделки: вагон в лизинг</h2>
     <div class="box"><label>Тип вагона</label>${seg("wagon", [["inno", "Полувагон иннов."], ["gon", "Полувагон тип."], ["kr158", "Крытый 158"], ["kr138", "Крытый 138"], ["hop_grain", "Зерновоз"], ["hop_grain_inno", "Зерновоз иннов."], ["fit80", "Фитинг 80'"], ["fit40", "Фитинг 40'"], ["fit60", "Фитинг 60'"]])}
     ${seg("scenario", [["pess", "Пессимист."], ["base", "Базовый"], ["opt", "Оптимист."]])}
+    <label>Срок лизинга</label><div class="seg">${[5, 10, 15, 20].map(t => `<button data-dterm="${t}" class="${String(DL.set.term || 20) === String(t) ? "on" : ""}">${t} лет</button>`).join("")}</div>
     <div class="f2">${inp("price", "Цена, млн ₽ без НДС", f2(me.price))}${inp("spread", "Надбавка к ключевой, п.п.", "3,5")}${inp("util", "Загрузка, %", "95")}${inp("opex", "Расходы, % выручки", "12")}</div>
-    <button class="main-btn" data-dcalc>Рассчитать</button><button class="main-btn ghost" data-dreset>Вернуть значения по умолчанию</button></div>
+    <button class="main-btn" data-dcalc>Рассчитать и прислать PDF</button><button class="main-btn ghost" data-pdf="deal">📄 PDF в чат</button><button class="main-btn ghost" data-dreset>Вернуть значения по умолчанию</button></div>
     <div class="box"><label>${esc(r.wagon)}: ${esc(verdict)}</label><div class="note">Цена ${f2(me.price)} млн ₽ против предельной ${f2(me.maxp)} млн ₽ (${esc(r.scenario.toLowerCase())} сценарий).</div>
     <div class="wrap"><table class="tbl"><tr><th>Сценарий</th><th>Цена</th><th>Предельная</th><th>Доходность, %</th><th>Окупаемость</th><th>Платёж не покрыт</th><th>Выйти</th></tr>${Object.entries(s).map(([k, x]) =>
     `<tr class="${k === r.scenario ? "me" : ""}"><td>${esc(k)}</td><td>${f2(x.price)}</td><td>${f2(x.maxp)}</td><td>${x.irr === null ? "—" : String(x.irr).replace(".", ",")}</td><td>${x.payback || "> 20 лет"}</td><td>${x.neg.length ? x.neg.slice(0, 4).join(", ") + (x.neg.length > 4 ? "…" : "") : "нет"}</td><td>${x.exit || "держать"}</td></tr>`).join("")}</table></div>
@@ -442,6 +478,11 @@ document.addEventListener("click", async e => {
   if (d.build !== undefined) { S.build = true; F.res = null; render(); window.scrollTo(0, 0); }
   else if (d.second !== undefined) second();
   else if (d.read) openRead(d.read);
+  else if (d.per) { const st = {F, RT, RO}[d.per]; st.from = d.pa; st.to = d.pb; st.touched = true; ({F: renderBuild, RT: renderRates, RO: renderRetro})[d.per](); }
+  else if (d.pdf) pdfSend(d.pdf === "forecast" ? {kind: "forecast", wagon: F.wagon, scenario: F.scenario, set: F.set, from: F.from, to: F.to}
+    : d.pdf === "deal" ? {kind: "deal", wagon: DL.wagon, scenario: DL.scenario, ...DL.set}
+    : d.pdf === "rates" ? {kind: "rates", from: RT.from, to: RT.to} : {kind: "retro", wagon: RO.wagon, from: RO.from, to: RO.to});
+  else if (d.dterm) { DL.set.term = d.dterm; DL.res = null; renderDeal(); }
   else if (d.survey !== undefined) { S.survey = true; render(); window.scrollTo(0, 0); }
   else if (d.svk) { svKeep(); SV[d.svk] = d.svv; renderSurvey(); }
   else if (d.svsend !== undefined) svSend();
@@ -451,12 +492,14 @@ document.addEventListener("click", async e => {
   else if (d.deal !== undefined) { S.deal = true; S.build = false; if (d.dw) { DL.wagon = d.dw; DL.set = {}; } DL.res = null; render(); window.scrollTo(0, 0); }
   else if (d.dwagon || d.dscenario) { if (d.dwagon) { DL.wagon = d.dwagon; DL.set = {}; } if (d.dscenario) DL.scenario = d.dscenario; DL.res = null; renderDeal(); }
   else if (d.dexit) { DL.exitY = d.dexit; renderDeal(); }
-  else if (d.dcalc !== undefined) { document.querySelectorAll("[data-dv]").forEach(i => { if (i.value.trim()) DL.set[i.dataset.dv] = i.value.trim(); else delete DL.set[i.dataset.dv]; }); DL.res = null; renderDeal(); }
+  else if (d.dcalc !== undefined) { document.querySelectorAll("[data-dv]").forEach(i => { if (i.value.trim()) DL.set[i.dataset.dv] = i.value.trim(); else delete DL.set[i.dataset.dv]; }); DL.res = null; renderDeal();
+    pdfSend({kind: "deal", wagon: DL.wagon, scenario: DL.scenario, ...DL.set}); }
   else if (d.dreset !== undefined) { DL.set = {}; DL.res = null; renderDeal(); }
   else if (d.view) { F.view = d.view; renderBuild(); }
   else if (d.open !== undefined) { F.open = !F.open; renderBuild(); }
   else if (d.wagon || d.scenario) { if (d.wagon) F.wagon = d.wagon; if (d.scenario) F.scenario = d.scenario; calc(true); }
-  else if (d.calc !== undefined) { document.querySelectorAll("[data-f]").forEach(i => F.set[i.dataset.f] = i.value.trim()); calc(); }
+  else if (d.calc !== undefined) { document.querySelectorAll("[data-f]").forEach(i => F.set[i.dataset.f] = i.value.trim()); calc();
+    pdfSend({kind: "forecast", wagon: F.wagon, scenario: F.scenario, set: F.set, from: F.from, to: F.to}); }
   else if (d.reset !== undefined) calc(true);
   else if (d.tab) { S.tab = d.tab; S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; S.survey = false; S.read = null; $("q").value = ""; try { localStorage.setItem("ztab", d.tab); } catch (e) {} render(); }
   else if (d.sec) { S.section = d.sec; render(); window.scrollTo(0, 0); }
@@ -482,6 +525,8 @@ $("file").addEventListener("change", async e => {
   if (fs.length) { toast(`Загружено ${ok} из ${fs.length}. Выпуски Argus разложатся сами через минуту`); await load(); }
 });
 $("q").addEventListener("input", render);
+document.addEventListener("change", e => { const t = e.target; if (!t.dataset || !t.dataset.pf) return;
+  const st = {F, RT, RO}[t.dataset.pf]; st[t.dataset.pk] = t.value; st.touched = true; ({F: renderBuild, RT: renderRates, RO: renderRetro})[t.dataset.pf](); });
 tg?.BackButton.onClick(() => { S.section = null; S.build = false; S.rates = false; S.deal = false; S.retro = false; S.survey = false; S.read = null; render(); });
 // Кнопки пульта в чате (zmenu.py panel) открывают приложение сразу на расчёте: ?go=build&w=…, ?go=rates, ?go=deal, ?go=sec&s=…
 (() => { const q = new URLSearchParams(location.search), go = q.get("go");

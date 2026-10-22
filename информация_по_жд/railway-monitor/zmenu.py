@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-MENU = [("start", "Знакомство: что умеет ЖДуша"), ("new", "Новый разговор"),
+MENU = [("start", "Старт: что умеет ЖДуша и как начать"), ("new", "Новый разговор"),
         ("poluvagony", "Справка: рынок полувагонов"), ("krytye", "Справка: рынок крытых вагонов"),
         ("market", "Новости рынка за период"), ("rates", "Ставки аренды и предоставления"),
         ("loading", "Погрузка по грузам"), ("balance", "Баланс парка: дефицит или профицит"),
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["show"]:
         for name, extra in SCOPES + owner_scope():
             cmds = api("getMyCommands", **extra).get("result", [])
-            has = "есть /prognoz" if any(c["command"] == "prognoz" for c in cmds) else "НЕТ /prognoz"
+            has = ", ".join(("есть /" if any(c["command"] == x for c in cmds) else "НЕТ /") + x for x in ("start", "prognoz"))
             print(f"{name}: {len(cmds)} команд, {has}" if cmds else f"{name}: пусто (берётся общий список)")
         sys.exit(0)
     webapp = sys.argv[2] if sys.argv[1:2] == ["webapp"] and len(sys.argv) > 2 else None
