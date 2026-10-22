@@ -128,8 +128,9 @@ def note(url, cid):
     """Закреп — коротко: как начать и как сменить тему; старый пульт с кнопками открепляется (всё есть в приложении)."""
     api("unpinAllChatMessages", chat_id=cid)
     kb = json.dumps({"inline_keyboard": [[{"text": "📂 Открыть приложение", "web_app": {"url": url}}]]}, ensure_ascii=False)
-    r = api("sendMessage", chat_id=cid, reply_markup=kb,
-            text="/start — начало разговора: что умеет ЖДуша\n/new — новая тема (начать разговор заново)")
+    r = api("sendMessage", chat_id=cid, reply_markup=kb, parse_mode="HTML",
+            text="<b>/start</b> — <b>начало разговора</b>: что умеет ЖДуша\n"
+                 "<b>/new</b> — <b>новая тема</b> (начать разговор заново)")
     if r.get("ok"):
         api("pinChatMessage", chat_id=cid, message_id=r["result"]["message_id"], disable_notification=True)
 
@@ -159,6 +160,13 @@ if __name__ == "__main__":
         owner = (Path.home() / ".secrets" / "zhdusha_owner").read_text(encoding="utf-8").strip()
         ids = [x for x in sys.argv[2:] if not x.startswith("--")]
         panel(URL, ids or [owner], "--no-pin" not in sys.argv)
+        sys.exit(0)
+    if sys.argv[1:2] == ["note"]:  # python3 zmenu.py note — только заново закрепить /start и /new (владельцу и гостям)
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import zapp
+        for cid in [(Path.home() / ".secrets" / "zhdusha_owner").read_text(encoding="utf-8").strip()] + list(zapp.guests()):
+            note(URL, cid)
+            print(f"{cid}: закреп обновлён")
         sys.exit(0)
     if sys.argv[1:2] == ["fix"]:  # python3 zmenu.py fix — кнопка приложения и пульт всем: владельцу, гостям, респондентам
         fix(URL)
