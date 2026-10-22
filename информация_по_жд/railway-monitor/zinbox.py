@@ -128,6 +128,7 @@ def cmd_sort():
         # новый месяц: сначала сверка с прошлым прогнозом и оповещения, потом новый прогноз — в журнал
         subprocess.run([sys.executable, str(BASE / "zrates.py"), "alerts", "--send"])
         subprocess.run([sys.executable, str(BASE / "zrates.py"), "snap"])
+        subprocess.run([sys.executable, str(BASE / "zsurvey.py"), "build"])  # анкета: ставки с ≥ 3 ответами → база
         subprocess.Popen([sys.executable, str(BASE / "zsecond.py"), "run"], start_new_session=True)  # второе мнение GPT
     pr = ""
     if proc:
