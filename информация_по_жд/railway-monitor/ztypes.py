@@ -228,7 +228,7 @@ def forecast(w, scen="base", ov=None):
     if T.get("data") in SEASONAL and "pace" not in (ov or {}):
         k25 = season_k(T, last_m)
         if k25:  # проверка на прошлом (zretro.py): у зерновоза «как в те же месяцы 2025 г.» ошибка ±6% против ±74% у ровного темпа
-            base = [m[last_m] * k for k in k25]
+            base = [m[last_m] * k ** damp(T["data"]) for k in k25]
             q = {"base": base, "opt": [x * (1 + SEASON_OPT / 100) ** (i + 1) for i, x in enumerate(base)],
                  "pess": [m[last_m] * (1 + T["pace"]["base"] / 100) ** (i + 1) for i in range(len(k25))]}[scen]
             pace = ((q[-1] / m[last_m]) ** (1 / len(q)) - 1) * 100  # средний темп в месяц — для таблиц
@@ -259,6 +259,15 @@ def forecast(w, scen="base", ov=None):
 
 SEASONAL = {"hop_grain"}  # типы, у которых IV кв. считается по сезонности прошлого года (выбрано проверкой на прошлом)
 SEASON_OPT = 1.5          # оптимистичный: сезонный путь + 1,5% в месяц
+SEASON_FILE = BASE / "forecast" / "season.json"  # доля сезона 2025 г. по типам: 1 — весь, 0,5 — половина (ztypes.py season --set)
+
+
+def damp(key):
+    """Какую долю сезонного изменения 2025 г. брать: в IV кв. 2025 г. ставка зерновоза ещё и выходила из обвала."""
+    try:
+        return float(json.loads(SEASON_FILE.read_text(encoding="utf-8")).get(key, 1))
+    except (OSError, ValueError):
+        return 1.0
 
 
 def season_k(T, lm):
@@ -342,13 +351,15 @@ def report(w, a):
           "| Сценарий | Темп, % в месяц | октябрь* | ноябрь* | декабрь* | средняя за 2026 г.** |", "|---|---|---|---|---|---|"]
     for sc in SCN:
         r = res[sc]
-        tag = {"season": " (сезон 2025 г.)", "flat": " (без сезонного роста)"}.get(r["mode"], "")
+        tag = {"season": " (сезон 2025 г.)" if damp(T.get("data")) == 1 else " (половина сезона 2025 г.)",
+               "flat": " (без сезонного роста)"}.get(r["mode"], "")
         L.append(f"| {SCN[sc]} | {sg(r['pace'], 1)}{tag} | " + " | ".join(n(x) for x in r["q4"]) + f" | {n(r['lvl'][2026])} |")
     sp = seasonal_path(T, r0)
     if r0["mode"] == "season":
         L += ["", f"<small>IV кв. {T['name'].lower()} — по сезонности 2025 г.: ставка {MGEN[lm - 1]} 2026 г. × как менялась "
-              f"ставка в те же месяцы 2025 г. ({', '.join(sg((k - 1) * 100) + '%' for k in season_k(T, lm)[-3:])}). Проверка на "
-              "прошлом: средние ставки кварталов 2026 г. по этому способу — ошибка ±6%, по ровному темпу — ±74%. "
+              f"ставка в те же месяцы 2025 г. ({', '.join(sg((k - 1) * 100) + '%' for k in season_k(T, lm)[-3:])})"
+              + ("" if damp(T["data"]) == 1 else ", из них берётся половина: в конце 2025 г. ставка ещё и выходила из обвала")
+              + ". Сравнение способов на прошлом — python3 ztypes.py season. "
               f"Оптимистичный — сезон + {f1(SEASON_OPT)}% в месяц, пессимистичный — сезонного роста нет. 2027–2030 гг. "
               "считаются от декабря без сезонного пика.</small>"]
     elif sp:
@@ -425,10 +436,60 @@ def report(w, a):
     return res, "\n".join(L) + "\n"
 
 
+def season_cmd(new=None, w="hop_grain"):
+    """Сравнение способов IV кв. зерновоза: весь сезон 2025 г. против половины — прогноз и проверка на I–III кв. 2026 г."""
+    import statistics
+    import zretro
+    T = TYPES[w]
+    if new is not None:
+        d = json.loads(SEASON_FILE.read_text(encoding="utf-8")) if SEASON_FILE.exists() else {}
+        d[T["data"]] = new
+        SEASON_FILE.write_text(json.dumps(d), encoding="utf-8")
+    r = zretro.data().get(zretro.RATE[w], {})
+    L = [f"{T['name']}: IV квартал — весь сезон 2025 г. (А) или половина (Б). Сейчас включено: "
+         f"{'А' if damp(T['data']) == 1 else 'Б'} (доля {damp(T['data'])}).", ""]
+    r0 = forecast(w, "base")
+    lm = r0["last_m"]
+    k = season_k(T, lm)
+    if k:
+        last = r0["months"][lm]
+        L.append(f"Прогноз от {MGEN[lm - 1]} 2026 г. ({n(last)} ₽): месяц | А | Б")
+        for i, x in enumerate(k[-3:]):
+            L.append(f"  {MNAME[lm + len(k) - 3 + i]:9} | {n(last * x)} ({sg((x - 1) * 100)}%) | "
+                     f"{n(last * x ** 0.5)} ({sg((x ** 0.5 - 1) * 100)}%)")
+    if "2025-12" in r and "2024-12" in r:
+        L += ["", "Проверка на прошлом: средняя ставка квартала 2026 г. по данным до декабря 2025 г. | факт | А | Б"]
+        ea, eb = [], []
+        for q in (1, 2, 3):
+            ms = [f"{q * 3 - 2 + i:02d}" for i in range(3)]
+            f = [r[f"2026-{m}"] for m in ms if f"2026-{m}" in r]
+            ly = [r[f"2025-{m}"] / r["2024-12"] for m in ms if f"2025-{m}" in r]
+            if len(f) < 2 or not ly:
+                continue
+            fa, a, b = statistics.mean(f), r["2025-12"] * statistics.mean(ly), r["2025-12"] * statistics.mean(x ** 0.5 for x in ly)
+            ea.append(abs(a / fa - 1) * 100)
+            eb.append(abs(b / fa - 1) * 100)
+            L.append(f"  {q} кв. | {n(fa)} | {n(a)} ({sg((a / fa - 1) * 100)}%) | {n(b)} ({sg((b / fa - 1) * 100)}%)")
+        if ea:
+            L.append(f"  Средняя ошибка: А ±{f1(statistics.mean(ea))}%, Б ±{f1(statistics.mean(eb))}%")
+    try:
+        import csv
+        with (BASE / "forecast" / "gpt_journal.csv").open(encoding="utf-8") as fh:
+            g = [x for x in csv.DictReader(fh, delimiter=";") if x["wagon"] == w and x["horizon"] == "3м"][-1:]
+        if g:
+            L.append(f"\nВторое мнение GPT на {MNAME[lm + 2] if lm + 2 < 13 else 'декабрь'}: {g[0]['low']}–{g[0]['high']} ₽ ({g[0]['dir']}).")
+    except (OSError, KeyError):
+        pass
+    L.append("\nВключить Б: python3 ztypes.py season --set 0.5 · вернуть А: --set 1")
+    return "\n".join(L)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("check")
+    se = sub.add_parser("season")
+    se.add_argument("--set", type=float)
     r = sub.add_parser("run")
     r.add_argument("--wagon", default="kr158", choices=list(TYPES))
     r.add_argument("--scenario", default="base", choices=list(SCN))
@@ -439,6 +500,8 @@ if __name__ == "__main__":
     x = ap.parse_args()
     if x.cmd == "check":
         sys.exit(print(check()))
+    if x.cmd == "season":
+        sys.exit(print(season_cmd(x.set)))
     res, md = report(x.wagon, x)
     if x.json:
         print(json.dumps({sc: {"year": {str(y): round(v) for y, v in r_["lvl"].items()}, "q4": [round(q) for q in r_["q4"]]}
