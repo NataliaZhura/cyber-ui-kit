@@ -93,9 +93,7 @@ def cmd_sort():
         if p.suffix.lower() == ".pdf" and any(k in low for k in ("как_ждуша", "методика", "проверка_модели")):
             dst = BASE / "saved" / "model" / p.name  # методика и проверка модели — в раздел мини-приложения
             dst.parent.mkdir(parents=True, exist_ok=True)
-            if "как_ждуша" in low and "внутр" not in low:  # версия для клиентов и кредиторов — и гостям
-                (BASE / "forecast" / "guest").mkdir(parents=True, exist_ok=True)
-                shutil.copy2(p, BASE / "forecast" / "guest" / p.name)
+            # методика — только владельцу (решение 22.10: гостям не показываем)
             shutil.move(p, dst)
             mats.append(p.name)
             continue

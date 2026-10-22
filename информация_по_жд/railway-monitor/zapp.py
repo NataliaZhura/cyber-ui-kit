@@ -185,6 +185,8 @@ def files(roots):
             rel = p.relative_to(root).parts
             if not p.is_file() or p.suffix.lower() not in SHOW or "copy" in rel[:-1] or "_tmp" in p.stem:
                 continue
+            if any(k in p.stem.lower() for k in ("conversation_info", "openclaw_ctx", "conversation info")):
+                continue  # служебные файлы робота — не отчёты
             if root == FORECAST and rel[0] == "guest":
                 continue
             if p.suffix.lower() == ".md" and p.with_suffix(".pdf").exists():
