@@ -118,22 +118,44 @@ def fix(url):
     for cid, who, pnl in people:
         ok = api("setChatMenuButton", chat_id=cid,  # респонденту — сразу анкета; остальным — «Меню» = приложение
                  menu_button=btn(url + "?go=survey", "Анкета") if pnl is None else btn(url)).get("ok")
-        drop_keyboard(cid)
         print(f"{cid} ({who}): {'кнопка «Меню» (приложение) и закреп /start, /new' if ok else 'не получилось — человек ещё не писал боту'}")
         if pnl is not None and ok:
-            note(url, cid)
+            print(f"   {note(url, cid)}")
+
+
+PINS = Path(__file__).resolve().parent / "forecast" / "pins.json"  # чат → id закреплённого сообщения (только на сервере)
+NOTE = ("▶️ <b>/start</b> — <b>начало разговора</b>: что умеет ЖДуша\n"
+        "🔄 <b>/new</b> — <b>новая тема</b> (начать разговор заново)\n"
+        "📂 Приложение — кнопка ниже или «Меню» слева от поля ввода")
 
 
 def note(url, cid):
-    """Закреп — коротко: как начать и как сменить тему; старый пульт с кнопками открепляется (всё есть в приложении)."""
-    api("unpinAllChatMessages", chat_id=cid)
+    """Закреп: /start, /new и кнопка приложения. Уже закреплён — правится на месте, новых сообщений в чат не шлёт."""
+    pins = json.loads(PINS.read_text(encoding="utf-8")) if PINS.exists() else {}
     kb = json.dumps({"inline_keyboard": [[{"text": "📂 Открыть приложение", "web_app": {"url": url}}]]}, ensure_ascii=False)
-    r = api("sendMessage", chat_id=cid, reply_markup=kb, parse_mode="HTML",
-            text="▶️ <b>/start</b> — <b>начало разговора</b>: что умеет ЖДуша\n"
-                 "🔄 <b>/new</b> — <b>новая тема</b> (начать разговор заново)\n"
-                 "📂 Приложение — кнопка ниже или «Меню» слева от поля ввода")
-    if r.get("ok"):
-        api("pinChatMessage", chat_id=cid, message_id=r["result"]["message_id"], disable_notification=True)
+    mid = pins.get(str(cid))
+    if not mid:  # уже закреплённый наш закреп (/start, /new) — берём его, а не шлём новое сообщение
+        pm = api("getChat", chat_id=cid).get("result", {}).get("pinned_message") or {}
+        if "/start" in pm.get("text", "") and "/new" in pm.get("text", ""):
+            mid = pm["message_id"]
+            pins[str(cid)] = mid
+            PINS.parent.mkdir(parents=True, exist_ok=True)
+            PINS.write_text(json.dumps(pins), encoding="utf-8")
+    if mid:
+        r = api("editMessageText", chat_id=cid, message_id=mid, text=NOTE, parse_mode="HTML", reply_markup=kb)
+        if r.get("ok") or "not modified" in str(r.get("description", "")):
+            api("pinChatMessage", chat_id=cid, message_id=mid, disable_notification=True)
+            return "закреп обновлён на месте"
+    api("unpinAllChatMessages", chat_id=cid)
+    r = api("sendMessage", chat_id=cid, reply_markup=kb, parse_mode="HTML", text=NOTE, disable_notification=True)
+    if not r.get("ok"):
+        return f"не получилось: {r.get('description')}"
+    mid = r["result"]["message_id"]
+    api("pinChatMessage", chat_id=cid, message_id=mid, disable_notification=True)
+    pins[str(cid)] = mid
+    PINS.parent.mkdir(parents=True, exist_ok=True)
+    PINS.write_text(json.dumps(pins), encoding="utf-8")
+    return "закреп отправлен и закреплён"
 
 
 def panel(url, ids, pin_it=True, rows=None):
@@ -166,8 +188,7 @@ if __name__ == "__main__":
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import zapp
         for cid in [(Path.home() / ".secrets" / "zhdusha_owner").read_text(encoding="utf-8").strip()] + list(zapp.guests()):
-            note(URL, cid)
-            print(f"{cid}: закреп обновлён")
+            print(f"{cid}: {note(URL, cid)}")
         sys.exit(0)
     if sys.argv[1:2] == ["fix"]:  # python3 zmenu.py fix — кнопка приложения и пульт всем: владельцу, гостям, респондентам
         fix(URL)
