@@ -15,6 +15,7 @@
 import json
 import sys
 import urllib.parse
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -39,8 +40,14 @@ TOKEN = (Path.home() / ".secrets" / "zhdusha_bot").read_text(encoding="utf-8").s
 def api(method, **params):
     req = urllib.request.Request(f"https://api.telegram.org/bot{TOKEN}/{method}",
                                  data=urllib.parse.urlencode(params).encode())
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:  # Telegram отвечает 400 с пояснением («message is not modified» и т. п.) — не падаем
+        try:
+            return json.loads(e.read().decode("utf-8"))
+        except ValueError:
+            return {"ok": False, "description": f"HTTP {e.code}"}
 
 
 # Telegram показывает список из самой «узкой» области: чат > все личные чаты > язык > по умолчанию.
