@@ -197,6 +197,15 @@ if __name__ == "__main__":
         for cid in [(Path.home() / ".secrets" / "zhdusha_owner").read_text(encoding="utf-8").strip()] + list(zapp.guests()):
             print(f"{cid}: {note(URL, cid)}")
         sys.exit(0)
+    if sys.argv[1:2] == ["pending"]:  # для расписания: закреп тем гостям, у кого его ещё нет (нажали Start) — молча
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import zapp
+        pins = json.loads(PINS.read_text(encoding="utf-8")) if PINS.exists() else {}
+        for cid in [g for g in zapp.guests() if str(g) not in pins]:
+            res = note(URL, cid)
+            if not res.startswith("не получилось"):
+                print(f"{cid}: {res}")
+        sys.exit(0)
     if sys.argv[1:2] == ["fix"]:  # python3 zmenu.py fix — кнопка приложения и пульт всем: владельцу, гостям, респондентам
         fix(URL)
         sys.exit(0)
