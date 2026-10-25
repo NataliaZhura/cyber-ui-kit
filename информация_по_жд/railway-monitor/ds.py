@@ -72,6 +72,28 @@ def put_key():
     print("Ключ добавлен в ~/.openclaw/.env")
 
 
+def put_model(cfg, path, value):
+    """Через openclaw config set; если OpenClaw 2026.10+ не узнаёт модели DeepSeek (они заданы модулем, а не в
+    models.providers) — пишем прямо в openclaw.json тот же вид записи, что уже стоит у других агентов (копия сделана)."""
+    try:
+        guest.put(f"{path}.model", value)
+        return
+    except SystemExit as e:
+        if "Unknown model" not in str(e):
+            raise
+    data = json.loads(cfg.read_text(encoding="utf-8"))
+    node = data
+    *head, last = f"{path}.model".split(".")
+    for k in head:
+        node = node[int(k)] if isinstance(node, list) else node[k]
+    node[last] = value
+    tmp = cfg.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.chmod(tmp, cfg.stat().st_mode)  # в настройках есть ключи — права как у исходного файла
+    tmp.replace(cfg)
+    print("  (записано напрямую в openclaw.json — config set не узнал модель DeepSeek)")
+
+
 def switch(on, agents):
     owner = "--owner" in agents
     no_gpt = "--no-gpt" in agents  # запасной — только DeepSeek: подписка GPT не расходуется вовсе
@@ -92,9 +114,9 @@ def switch(on, agents):
             continue
         if on:
             fb = [m for m in (DS_PRO, "deepseek/deepseek-flash") if m != DS][:1] + ([] if no_gpt else [GPT])
-            guest.put(f"{path}.model", {"primary": DS, "fallbacks": fb})
+            put_model(cfg, path, {"primary": DS, "fallbacks": fb})
         else:
-            guest.put(f"{path}.model", {"primary": GPT, "fallbacks": [DS, DS_PRO]})
+            put_model(cfg, path, {"primary": GPT, "fallbacks": [DS, DS_PRO]})
         print(f"{a}: было {cur.get(a)} → стало {models()[1].get(a)}")
     subprocess.run(["systemctl", "--user", "restart", "openclaw-gateway"], check=False)
     print("Робот перезапущен. Проверка: напиши тестовому боту «привет» и посмотри журнал:\n"
