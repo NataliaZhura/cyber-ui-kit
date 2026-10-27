@@ -169,6 +169,8 @@ def run(uid, body):
     if role != "owner":
         import zclosed
         md = zclosed.strip(md)
+        if kind == "forecast":  # гостю — только открытые факторы: что влияет и что сейчас, без вкладов и весов
+            md = md.rstrip() + "\n\n" + zclosed.factors_md()
     out = own / "model" / f"{time.strftime('%Y-%m-%d_%H%M')}_{name}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(md, encoding="utf-8")

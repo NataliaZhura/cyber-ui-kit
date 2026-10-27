@@ -174,7 +174,7 @@ const HINTS = {vagon: "тип: обычный / инновационный / к�
   model: "пришли файл в чат или «демо»"};
 // Формы «Новый отчёт» по разделам: компания, период и другие параметры → задача ЖДуше с точным названием отчёта и файла.
 // Пустое поле — значение по умолчанию (написано в подсказке). Отчёт называется «Раздел: Компания — период».
-const VER = "27.10.2026 · методика только владельцу";  // видно внизу вкладки: если старая — закройте и откройте приложение заново
+const VER = "27.10.2026 · открытые факторы гостям";  // видно внизу вкладки: если старая — закройте и откройте приложение заново
 const WAG = ["все типы", "полувагоны", "крытые", "зерновозы", "фитинговые платформы"];
 const FORMS = {
   poluvagony: {file: "полувагоны", f: [["period"], ["focus", "select", "Что смотреть", ["всё", "ставки", "парк и баланс", "погрузка", "операторы"]]]},
@@ -324,7 +324,6 @@ function renderBuild() {
   const r = F.res;
   if (!r) { $("view").innerHTML = `<div class="err">Считаю…</div>`; return calc(); }
   const C = !!r.closed;  // не владелец: только результат, методика скрыта
-  if (C && F.view === "factors") F.view = "rate";
   const d = (r.defaults || {})[r.scenario] || {};
   const inp = (k, step) => { const [name, unit] = r.factors[k]; const v = F.set[k] ?? d[k];
     return `<div><small>${esc(name)}, ${esc(unit)}</small><input inputmode="decimal" data-f="${k}" value="${esc(String(v).replace(".", ","))}"></div>`; };
@@ -365,12 +364,17 @@ function renderBuild() {
     : `<button class="main-btn ghost" data-open>Изменить допущения ▾</button><div class="note">Значения сценариев уже подобраны (пояснения — во вкладке «Факторы»). Свои — только если есть свежая цифра.</div>`;
   const head = `<h2><button class="back" data-back>‹</button>Прогноз: ${esc(r.wagon)}</h2>
     <div class="box"><label>Тип вагона</label>${seg("wagon", [["inno", "Полувагон иннов."], ["gon", "Полувагон тип."], ["kr158", "Крытый 158"], ["kr138", "Крытый 138"], ["hop_grain", "Зерновоз"], ["fit80", "Фитинг 80'"]])}${seg("scenario", [["pess", "Пессимист."], ["base", "Базовый"], ["opt", "Оптимист."]])}
-    ${seg("view", C ? [["rate", "① Ставка"], ["value", "② Стоимость"]] : [["rate", "① Ставка"], ["factors", "② Факторы"], ["value", "③ Стоимость"]])}
-    <button class="main-btn ghost" data-deal data-dw="${esc(F.wagon)}">${C ? "③" : "④"} Сделка и выход из неё ›</button>
+    ${seg("view", [["rate", "① Ставка"], ["factors", "② Факторы"], ["value", "③ Стоимость"]])}
+    <button class="main-btn ghost" data-deal data-dw="${esc(F.wagon)}">④ Сделка и выход из неё ›</button>
     <button class="main-btn ghost" data-pdf="forecast">📄 PDF в чат — выбранный период</button></div>${per}`;
   const tail = `<div class="note">Данные рынка на ${esc(r.as_of)}. Оценка рынка, не инвестиционная рекомендация.${C ? "" : " Средняя ошибка модели по проверочным годам ±22–31% в год;"} 2029–2030 — ориентир.</div>`;
   let body = "";
-  if (F.view === "factors") {
+  if (F.view === "factors" && C) {
+    const pf = r.public_factors || {list: []};
+    body = `<div class="box"><label>Что влияет на ставку — открытые данные на ${esc(pf.as_of || "")}</label>${pf.list.map(f =>
+      `<div class="fh"><b>${f.dir === "up" ? "↑" : "↓"} ${esc(f.name)}</b> — ${esc(f.dir_text)}<div class="note">Сейчас: ${esc(f.now)}. Источник: ${esc(f.src)}.</div></div>`).join("")}
+      <div class="note">Главные рыночные факторы. Как именно они учитываются в прогнозе — собственная методика ЖДуши (отдельная консультация).</div></div>`;
+  } else if (F.view === "factors") {
     body = `<div class="box"><label>Из чего складывается рост (${esc(r.parts_scenario)}): изменение от декабря к декабрю</label><div class="wrap">${parts}</div>${pyIn.length ? "" : `<div class="note">Разложение по факторам — по годам с 2027 г.; в выбранном периоде их нет, показаны все годы.</div>`}</div>
     <div class="box"><label>Цена фактора, ₽/сут</label>${price}<div class="note">На сколько изменится ставка, если фактор за год вырастет на 1%.</div></div>
     <div class="box"><label>Откуда значения факторов</label>${r.fields.map(k => `<div class="fh"><b>${esc(r.factors[k][0])}</b> — сценарий «${esc(r.scenario)}»: ${esc(String(d[k]).replace(".", ","))} ${esc(r.factors[k][1])}${hint(k)}</div>`).join("")}</div>
