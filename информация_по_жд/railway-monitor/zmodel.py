@@ -214,6 +214,15 @@ def run(a):
         print(md)
 
 
+def inno_note(D):
+    """Строка допущения для отчёта: как считается ставка инновационного полувагона."""
+    d = D.get("inno_delta")
+    if d:
+        return f"Инновационный = обычный + {d['up']} ₽ при росте рынка и + {d['down']} ₽ при падении; "
+    ratio = D["start"]["inno"] / D["start"]["gon"]
+    return f"Инновационный = обычный × {fmt(round(ratio, 2))} (надбавка в данных не задана, база 2026 г.); "
+
+
 def paths(D, res, wagons):
     rows = {}
     if "gon" in res:
@@ -221,11 +230,15 @@ def paths(D, res, wagons):
         if "gon" in wagons:
             rows["gon"] = p
         if "inno" in wagons:
-            d = D["inno_delta"]
-            def delta(y):  # рост рынка > +3% — «рост», падение < −3% — «падение», между ними — середина
-                ch = p[y] / p[y - 1] - 1
-                return d["up"] if ch > 0.03 else d["down"] if ch < -0.03 else (d["up"] + d["down"]) / 2
-            rows["inno"] = {y: (D["start"]["inno"] if y == 2026 else round(p[y] + delta(y))) for y in p}
+            d = D.get("inno_delta")
+            if d:
+                def delta(y):  # рост рынка > +3% — «рост», падение < −3% — «падение», между ними — середина
+                    ch = p[y] / p[y - 1] - 1
+                    return d["up"] if ch > 0.03 else d["down"] if ch < -0.03 else (d["up"] + d["down"]) / 2
+                rows["inno"] = {y: (D["start"]["inno"] if y == 2026 else round(p[y] + delta(y))) for y in p}
+            else:  # надбавки в данных нет (правка с сервера 27.10) — пропорция к обычному по базе 2026 г.
+                ratio = D["start"]["inno"] / D["start"]["gon"]
+                rows["inno"] = {y: (D["start"]["inno"] if y == 2026 else round(p[y] * ratio)) for y in p}
     if "kr" in res:
         p = res["kr"]["path"]
         if "kr158" in wagons:
@@ -269,8 +282,7 @@ def report(D, a, wagons, res, ov):
     for w in wagons:
         L.append(f"| {NAMES[w]} | " + " | ".join(n(rows[w][y]) for y in [2026] + YEARS) + " |")
     L += ["", "<small>Все цифры — средняя ставка за год (январь–декабрь). 2026 — оценка средней за год по фактическим "
-          "данным за 9 месяцев (январь–сентябрь). Инновационный = обычный + "
-          f"{D['inno_delta']['up']} ₽ при росте рынка и + {D['inno_delta']['down']} ₽ при падении; крытый 138 м³ = "
+          "данным за 9 месяцев (январь–сентябрь). " + inno_note(D) + "крытый 138 м³ = "
           f"{round(D['kr138_ratio'] * 100)}% от 158 м³. Нижняя граница ставки полувагона — {D['floor']['gon']} ₽.</small>", ""]
     if not a.year:
         L += ["```chart"] + [f"{NAMES[w]}, ₽/сут | " + " | ".join(f"{y}: {rows[w][y]}" for y in [2026] + YEARS) for w in wagons] + ["```", ""]
