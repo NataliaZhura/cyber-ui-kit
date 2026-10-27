@@ -143,7 +143,7 @@ function render() {
   if (S.read) return renderRead();
   const secs = S.data.sections.filter(s => s.group === S.tab);
   const build = S.tab === "Прогнозы" ? `<button class="card build" data-build><b>Построить прогноз ставки</b>
-    <small>полувагоны, крытые, зерновоз, фитинговые платформы · свои значения факторов · октябрь–декабрь 2026 и до 2030</small></button>
+    <small>полувагоны, крытые, зерновоз, фитинговые платформы · ${S.data.role === "owner" ? "свои значения факторов · " : "три сценария · "}октябрь–декабрь 2026 и до 2030</small></button>
     <button class="card build" data-deal><b>Расчёт сделки: вагон в лизинг</b>
     <small>20 лет без аванса, ключевая + 3,5 п.п. · окупаемость, предельная цена, когда выходить и докупать</small></button>`
     : S.tab === "Рынок" && S.data.role === "owner" ? `<button class="card build" data-rates><b>Ставки и парк по месяцам</b>
@@ -174,7 +174,7 @@ const HINTS = {vagon: "тип: обычный / инновационный / к�
   model: "пришли файл в чат или «демо»"};
 // Формы «Новый отчёт» по разделам: компания, период и другие параметры → задача ЖДуше с точным названием отчёта и файла.
 // Пустое поле — значение по умолчанию (написано в подсказке). Отчёт называется «Раздел: Компания — период».
-const VER = "22.10.2026 · формы с периодами";  // видно внизу вкладки: если старая — закройте и откройте приложение заново
+const VER = "27.10.2026 · методика только владельцу";  // видно внизу вкладки: если старая — закройте и откройте приложение заново
 const WAG = ["все типы", "полувагоны", "крытые", "зерновозы", "фитинговые платформы"];
 const FORMS = {
   poluvagony: {file: "полувагоны", f: [["period"], ["focus", "select", "Что смотреть", ["всё", "ставки", "парк и баланс", "погрузка", "операторы"]]]},
@@ -323,7 +323,9 @@ function renderBuild() {
   tg?.BackButton.show();
   const r = F.res;
   if (!r) { $("view").innerHTML = `<div class="err">Считаю…</div>`; return calc(); }
-  const d = r.defaults[r.scenario];
+  const C = !!r.closed;  // не владелец: только результат, методика скрыта
+  if (C && F.view === "factors") F.view = "rate";
+  const d = (r.defaults || {})[r.scenario] || {};
   const inp = (k, step) => { const [name, unit] = r.factors[k]; const v = F.set[k] ?? d[k];
     return `<div><small>${esc(name)}, ${esc(unit)}</small><input inputmode="decimal" data-f="${k}" value="${esc(String(v).replace(".", ","))}"></div>`; };
   const seg = (key, opts) => `<div class="seg">${opts.map(([v, t]) => `<button data-${key}="${v}" class="${F[key] === v ? "on" : ""}">${t}</button>`).join("")}</div>`;
@@ -338,23 +340,23 @@ function renderBuild() {
     `<tr><td>${mlab(m)}</td>${sc.map(k => `<td class="${k === r.scenario ? "b" : ""}">${fmt(r.monthly[k][m])}</td>`).join("")}</tr>`).join("")}</table>`;
   const months = ["октябрь", "ноябрь", "декабрь"];
   const q4 = `<table class="tbl"><tr><th>Сценарий</th>${months.map(m => `<th>${m.slice(0, 3)}</th>`).join("")}<th>средняя за 2026 г.*</th></tr>${sc.map(k =>
-    `<tr class="${k === r.scenario ? "me" : ""}"><td>${k.replace("истичный", "ист.")}<br><small style="color:var(--hint)">${r.pace_label} ${String(r.q4[k].pace).replace(".", ",")}%/мес</small></td>${r.q4[k].months.map((m, i) =>
+    `<tr class="${k === r.scenario ? "me" : ""}"><td>${k.replace("истичный", "ист.")}${C ? "" : `<br><small style="color:var(--hint)">${r.pace_label} ${String(r.q4[k].pace).replace(".", ",")}%/мес</small>`}</td>${r.q4[k].months.map((m, i) =>
     `<td>${fmt(m)}<br><small style="color:var(--hint)">${sgn(r.q4[k].delta[i])}</small></td>`).join("")}<td>${fmt(r.q4[k].avg)}</td></tr>`).join("")}</table>`;
   const years = `<table class="tbl"><tr><th>Сценарий</th>${yrs.map(y => `<th>${y}</th>`).join("")}</tr>${sc.map(k =>
     `<tr class="${k === r.scenario ? "me" : ""}"><td>${k}</td>${yrs.map(y => `<td>${fmt(r.years[k][y])}</td>`).join("")}</tr>`).join("")}</table>`;
-  const pyAll = Object.keys(r.parts), pyIn = pyAll.filter(y => +y >= y0 && +y <= y1), py = pyIn.length ? pyIn : pyAll, keys = [...new Set(py.flatMap(y => Object.keys(r.parts[y])))];
+  const pyAll = Object.keys(r.parts || {}), pyIn = pyAll.filter(y => +y >= y0 && +y <= y1), py = pyIn.length ? pyIn : pyAll, keys = [...new Set(py.flatMap(y => Object.keys(r.parts[y])))];
   const parts = `<table class="tbl"><tr><th>Фактор, ₽/сут</th>${py.map(y => `<th>${y}</th>`).join("")}</tr>${keys.map(k =>
     `<tr><td>${esc(k)}</td>${py.map(y => `<td>${sgn(r.parts[y][k] || 0)}</td>`).join("")}</tr>`).join("")}
-    <tr class="me"><td>Ставка на конец года (декабрь)</td>${py.map(y => `<td>${fmt(r.end[y])}</td>`).join("")}</tr></table>`;
-  const price = `<table class="tbl">${Object.entries(r.price).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${Math.abs(v) < 1 ? "связи нет" : sgn(v) + " ₽"}</td></tr>`).join("")}</table>`;
-  const need = F.wagon === "inno" ? `<div class="box"><label>Что нужно для 1 500 и 1 560 ₽</label><table class="tbl">
+    <tr class="me"><td>Ставка на конец года (декабрь)</td>${py.map(y => `<td>${fmt((r.end || {})[y])}</td>`).join("")}</tr></table>`;
+  const price = `<table class="tbl">${Object.entries(r.price || {}).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${Math.abs(v) < 1 ? "связи нет" : sgn(v) + " ₽"}</td></tr>`).join("")}</table>`;
+  const need = F.wagon === "inno" && !C ? `<div class="box"><label>Что нужно для 1 500 и 1 560 ₽</label><table class="tbl">
     <tr><th>Цель</th><th>Рабочий парк</th><th>в месяц за 3 мес.</th></tr>${r.need.map(n => `<tr><td>${fmt(n.target)} ₽</td>
     <td>−${String(n.pct).replace(".", ",")}% (−${String(n.k).replace(".", ",")} тыс.)</td><td>−${(n.k / 3).toFixed(1).replace(".", ",")} тыс.</td></tr>`).join("")}</table>
     <div class="note">В августе рабочий парк сократился на 6,4 тыс. вагонов за месяц.</div></div>` : "";
   const H = r.help || {};
   const hint = k => { const h = H[k]; if (!h) return "";
     return `<div class="note">${esc(h.what)}<br><b>Почему такие значения:</b> ${esc(h.why)}<br><b>Где смотреть:</b> ${esc(h.where)}; разумно ${esc(h.range)}${h.now ? `<br><b>Сейчас:</b> ${esc(h.now)}` : ""}</div>`; };
-  const setup = F.open ? `<div class="box"><label>Свои допущения — сценарий «${esc(r.scenario)}»</label>
+  const setup = C ? "" : F.open ? `<div class="box"><label>Свои допущения — сценарий «${esc(r.scenario)}»</label>
     <div class="note">Годовые — на 2027–2030 (одно число на все годы или четыре через «;»); IV кв. 2026 — % в месяц. Пустое поле — значение сценария.</div>
     ${r.fields.map(k => `<div class="fh">${inp(k)}${H[k] ? `<div class="note">${esc(H[k].what)} Разумно ${esc(H[k].range)}.${H[k].now ? ` Сейчас: ${esc(H[k].now)}.` : ""}</div>` : ""}</div>`).join("")}
     <div class="note">Почему такие значения в сценариях и где смотреть свежие цифры — вкладка «② Факторы».</div>
@@ -363,10 +365,10 @@ function renderBuild() {
     : `<button class="main-btn ghost" data-open>Изменить допущения ▾</button><div class="note">Значения сценариев уже подобраны (пояснения — во вкладке «Факторы»). Свои — только если есть свежая цифра.</div>`;
   const head = `<h2><button class="back" data-back>‹</button>Прогноз: ${esc(r.wagon)}</h2>
     <div class="box"><label>Тип вагона</label>${seg("wagon", [["inno", "Полувагон иннов."], ["gon", "Полувагон тип."], ["kr158", "Крытый 158"], ["kr138", "Крытый 138"], ["hop_grain", "Зерновоз"], ["fit80", "Фитинг 80'"]])}${seg("scenario", [["pess", "Пессимист."], ["base", "Базовый"], ["opt", "Оптимист."]])}
-    ${seg("view", [["rate", "① Ставка"], ["factors", "② Факторы"], ["value", "③ Стоимость"]])}
-    <button class="main-btn ghost" data-deal data-dw="${esc(F.wagon)}">④ Сделка и выход из неё ›</button>
+    ${seg("view", C ? [["rate", "① Ставка"], ["value", "② Стоимость"]] : [["rate", "① Ставка"], ["factors", "② Факторы"], ["value", "③ Стоимость"]])}
+    <button class="main-btn ghost" data-deal data-dw="${esc(F.wagon)}">${C ? "③" : "④"} Сделка и выход из неё ›</button>
     <button class="main-btn ghost" data-pdf="forecast">📄 PDF в чат — выбранный период</button></div>${per}`;
-  const tail = `<div class="note">Данные рынка на ${esc(r.as_of)}. Оценка рынка, не инвестиционная рекомендация. Средняя ошибка модели по проверочным годам ±22–31% в год; 2029–2030 — ориентир.</div>`;
+  const tail = `<div class="note">Данные рынка на ${esc(r.as_of)}. Оценка рынка, не инвестиционная рекомендация.${C ? "" : " Средняя ошибка модели по проверочным годам ±22–31% в год;"} 2029–2030 — ориентир.</div>`;
   let body = "";
   if (F.view === "factors") {
     body = `<div class="box"><label>Из чего складывается рост (${esc(r.parts_scenario)}): изменение от декабря к декабрю</label><div class="wrap">${parts}</div>${pyIn.length ? "" : `<div class="note">Разложение по факторам — по годам с 2027 г.; в выбранном периоде их нет, показаны все годы.</div>`}</div>
@@ -378,17 +380,17 @@ function renderBuild() {
       ${(() => { const vy = Object.keys(r.value.new).filter(y => +y <= Math.max(y1, 2026)), c = (o, y) => `<td>${String(o[y]).replace(".", ",")}</td>`;
         return `<tr><th></th>${vy.map(y => `<th>${y}</th>`).join("")}</tr><tr><td>Новый</td>${vy.map(y => c(r.value.new, y)).join("")}</tr>
       <tr><td>Б/у 14 лет</td>${vy.map(y => c(r.value.used, y)).join("")}</tr><tr><td>Доход к цене, %</td>${vy.map(y => c(r.value.cap, y)).join("")}</tr>`; })()}</table></div>
-      <div class="note"><b>Что двигает цену вагона:</b> 1) средняя ставка аренды за 3 года — вагон дорожает вслед за доходом; 2) себестоимость завода (металл, комплектующие) — около +4% в год; 3) годовой доход к цене — если он выше обычного коридора, вагон дёшев относительно ставки, ниже — дорог; 4) возраст — б/у дешевле нового по плавной кривой (3 года ×0,88, 8 лет ×0,75, 14 лет ×0,62, 19 лет ×0,50). Подробно — отчёт «Стоимость вагона» в разделе.</div></div>`
+      ${C ? "" : `<div class="note"><b>Что двигает цену вагона:</b> 1) средняя ставка аренды за 3 года — вагон дорожает вслед за доходом; 2) себестоимость завода (металл, комплектующие) — около +4% в год; 3) годовой доход к цене — если он выше обычного коридора, вагон дёшев относительно ставки, ниже — дорог; 4) возраст — б/у дешевле нового по плавной кривой (3 года ×0,88, 8 лет ×0,75, 14 лет ×0,62, 19 лет ×0,50). Подробно — отчёт «Стоимость вагона» в разделе.</div>`}</div>`
       : `<div class="err">Модели стоимости для этого типа нет.</div>`;
   } else {
     body = `<div class="box"><label>${esc(r.wagon)}: ${mlab(ms[0])} — ${mlab(ms[ms.length - 1])}, ₽/сут</label><div class="note">Последний факт — ${fmt(r.now)} ₽ (${esc(r.as_of)}).</div><div class="wrap">${mtab}</div>
-    <div class="note">Октябрь–декабрь 2026 г. — прогноз модели по месяцам. С января 2027 г. — плавный путь через среднюю за год, без сезонности: ориентир по уровню${F.wagon === "hop_grain" ? "; у зерновоза внутри года ставка меняется по сезону в разы — смотрите среднюю за год" : ""}.</div></div>
+    <div class="note">${C ? "С января 2027 г. — ориентир по уровню, без сезонности" : "Октябрь–декабрь 2026 г. — прогноз модели по месяцам. С января 2027 г. — плавный путь через среднюю за год, без сезонности: ориентир по уровню"}${F.wagon === "hop_grain" ? "; у зерновоза внутри года ставка меняется по сезону в разы — смотрите среднюю за год" : ""}.</div></div>
     ${ms[0] <= "2026-12" ? `<div class="box"><label>Октябрь — декабрь 2026 по сценариям</label><div class="wrap">${q4}</div>
-    <div class="note">* Средняя за 2026 г. — январь–сентябрь факт, октябрь–декабрь прогноз (сумма 12 месяцев / 12).</div></div>` : ""}
+    <div class="note">* Средняя за 2026 г. — январь–сентябрь факт, октябрь–декабрь прогноз.</div></div>` : ""}
     ${yrs.length && y1 >= 2027 ? `<div class="box"><label>Средняя ставка за год (январь–декабрь), ₽/сут</label><div class="wrap">${years}</div>
-    <div class="note">2026 — январь–сентябрь факт + октябрь–декабрь прогноз. 2027–2030 — середина между ставкой на начало года (декабрь прошлого) и на конец года (декабрь); пессимистичный — средняя прошлого года + инфляция.</div>
-    ${r.cap.length ? `<div class="note">⚠ Выше рекорда 2024 г. в ${r.cap.join(", ")} г. — заложен рост выпуска вагонов.</div>` : ""}</div>` : ""}
-    ${need}${r.accuracy && r.accuracy.ratio > 0.9 ? `<div class="note">⚠ На прошлых годах модель этого типа не точнее прогноза «средний рост» — смотрите сценарии.</div>` : ""}${setup}`;
+    <div class="note">2026 — январь–сентябрь факт + октябрь–декабрь прогноз.${C ? "" : " 2027–2030 — середина между ставкой на начало года (декабрь прошлого) и на конец года (декабрь); пессимистичный — средняя прошлого года + инфляция."}</div>
+    ${(r.cap || []).length ? `<div class="note">⚠ Выше рекорда 2024 г. в ${r.cap.join(", ")} г. — заложен рост выпуска вагонов.</div>` : ""}</div>` : ""}
+    ${need}${!C && r.accuracy && r.accuracy.ratio > 0.9 ? `<div class="note">⚠ На прошлых годах модель этого типа не точнее прогноза «средний рост» — смотрите сценарии.</div>` : ""}${setup}`;
   }
   $("view").innerHTML = head + body + tail;
 }

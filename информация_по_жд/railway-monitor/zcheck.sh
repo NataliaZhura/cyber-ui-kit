@@ -99,6 +99,23 @@ else:
           + ("ОК" if send.send(own, p, zapp.secret("zhdusha_bot")) else "НЕ ОТПРАВЛЕН"))
 PY
 
+echo "== 4д. Методика закрыта от гостей (файлы гостей за 7 дней, гостевой прогноз)"
+cd "$KIT" && python3 - <<'PY'
+import time, zapp, zclosed
+hits = []
+for d in zapp.BASE.glob("saved_*"):
+    for p in d.rglob("*.md"):
+        if time.time() - p.stat().st_mtime < 7 * 86400:
+            t = p.read_text(encoding="utf-8", errors="ignore").lower()
+            if any(f"# {h}" in t or f"## {h}" in t for h in zclosed.HEADS) or "цена фактора" in t:
+                hits.append(f"{d.name}/{p.relative_to(d)}")
+r = zapp.forecast({"wagon": "inno", "scenario": "base"})
+r = zclosed.public(r)
+leak = [k for k in zclosed.DROP if k in r]
+print("ПРОБЛЕМА: в файлах гостей есть разделы о методике: " + "; ".join(hits[:5]) if hits else "файлы гостей — без методики: ОК")
+print("ПРОБЛЕМА: гостевой прогноз отдаёт " + ", ".join(leak) if leak else "гостевой прогноз в приложении — только результат: ОК")
+PY
+
 echo "== 5. Журналы (последние строки)"
 echo "  задачи и PDF из приложения (saved/task.log):"; tail -n 12 "$KIT/saved/task.log" 2>/dev/null | sed 's/^/    /' || echo "    пусто"
 echo "  ошибки приложения за сутки:"; journalctl -u zhdusha-app --since "-24h" --no-pager 2>/dev/null | grep -i -E "error|traceback|exception" | tail -5 | sed 's/^/    /'

@@ -196,6 +196,9 @@ def run(a):
     L += ["", "<small>Подготовлено по открытым источникам. Цены б/у — запрашиваемые продавцами, сделки обычно на 10–20% "
           "ниже. Выводы — оценка рынка.</small>"]
     md = "\n".join(L) + "\n"
+    if a.guest:  # методика — только владельцу
+        import zclosed
+        md = zclosed.strip(md)
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(md, encoding="utf-8")

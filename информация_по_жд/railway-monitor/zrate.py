@@ -398,6 +398,9 @@ def run(a):
         print(json.dumps(out, ensure_ascii=False))
         return
     md = report(D, a, res, ov)
+    if a.guest:  # методика — только владельцу
+        import zclosed
+        md = zclosed.strip(md)
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(md, encoding="utf-8")

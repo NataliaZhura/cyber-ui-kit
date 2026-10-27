@@ -163,7 +163,12 @@ def run(uid, body):
     kind = body.get("kind")
     if kind not in KINDS:
         sys.exit("Нет такого расчёта")
+    if role != "owner":  # методика — только владельцу: без своих допущений и разделов «как считаем»
+        body["set"] = {}
     name, md = KINDS[kind](body, role != "owner")
+    if role != "owner":
+        import zclosed
+        md = zclosed.strip(md)
     out = own / "model" / f"{time.strftime('%Y-%m-%d_%H%M')}_{name}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(md, encoding="utf-8")

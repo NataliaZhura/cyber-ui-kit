@@ -507,6 +507,9 @@ if __name__ == "__main__":
     if x.cmd == "season":
         sys.exit(print(season_cmd(x.set)))
     res, md = report(x.wagon, x)
+    if x.guest:  # методика — только владельцу
+        import zclosed
+        md = zclosed.strip(md)
     if x.json:
         print(json.dumps({sc: {"year": {str(y): round(v) for y, v in r_["lvl"].items()}, "q4": [round(q) for q in r_["q4"]]}
                           for sc, r_ in res.items()}, ensure_ascii=False))

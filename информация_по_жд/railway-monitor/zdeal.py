@@ -404,6 +404,9 @@ def args(argv=None):
 if __name__ == "__main__":
     a = args()
     D, md = report(a)
+    if a.guest:  # методика — только владельцу
+        import zclosed
+        md = zclosed.strip(md)
     if a.json:
         print(json.dumps(as_json(D, a), ensure_ascii=False))
     elif a.out:

@@ -202,6 +202,9 @@ def run(a):
         kr_f = pick("kr")
         res["kr"] = forecast_one(D, "kr", kr_f, a.scenario, ov, gon_path=g["path"])
     md = report(D, a, wagons, res, ov)
+    if a.guest:  # методика — только владельцу
+        import zclosed
+        md = zclosed.strip(md)
     out = Path(a.out) if a.out else None
     if out:
         out.parent.mkdir(parents=True, exist_ok=True)

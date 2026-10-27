@@ -522,10 +522,15 @@ class App(BaseHTTPRequestHandler):
             q = urllib.parse.urlencode({"u": uid, "f": fid, "e": exp, "s": link_sig(token, uid, fid, exp)})
             return self.reply(200, {"url": f"/file?{q}"})
         if path == "/api/forecast":
+            if role != "owner":  # методика — только владельцу: без своих допущений, факторов и точности
+                body["set"] = {}
             try:
                 out = forecast(body)
             except Exception as e:  # noqa: BLE001 — ошибка расчёта не должна ронять приложение
                 out = {"error": f"Расчёт не удался: {type(e).__name__}"}
+            if role != "owner":
+                import zclosed
+                out = zclosed.public(out)
             return self.reply(400 if "error" in out else 200, out)
         if path == "/api/rates":  # ставки и парк по месяцам — данные партнёра, только владельцу
             if role != "owner":
@@ -562,7 +567,10 @@ class App(BaseHTTPRequestHandler):
             try:
                 a = zdeal.args(argv)
                 D, _ = zdeal.report(a)
-                return self.reply(200, zdeal.as_json(D, a))
+                out = zdeal.as_json(D, a)
+                if role != "owner":  # как построен стресс — методика, только владельцу
+                    out["stress_note"] = "Стресс — резко неблагоприятный рынок; если предельная цена в стрессе ниже цены — нужен резерв" if out.get("stress_note") else ""
+                return self.reply(200, out)
             except SystemExit as e:
                 return self.reply(400, {"error": str(e) or "Нет данных модели"})
             except Exception as e:  # noqa: BLE001
