@@ -138,14 +138,20 @@ def run(a):
     rp = rate_paths(a.scenario)
     L = ["# Стоимость вагона: покупать, держать или продавать", "",
          f"<small>Сценарий ставок: {'базовый' if a.scenario == 'base' else 'пессимистичный'} · возраст б/у: {a.age} лет · "
-         f"показатели светофора на {V['as_of']} · ₽ без НДС</small>", "",
-         f"{{{{класс:{vd['class']}}}}} **{vd['title']}** — {vd['text']}", "", "## Светофор рынка полувагонов", "",
-         "| Показатель | Сейчас | Сигнал | Почему важно |", "|---|---|---|---|"]
-    for s, pts in rows:
-        mark = "🟢 покупать" if pts > 0 else "🔴 против" if pts < 0 else "🟡 нейтрально"
-        L.append(f"| {s['name']}{'' if s.get('scored', True) else ' *'} | {s['shown']} | {mark} | {s['why']} |")
-    L += ["", f"Сумма баллов: **{score:+d}** из {sum(1 for s in V['signals'] if s.get('scored', True))}. "
-          f"{V['backtest_note']}", "", "<small>* подтверждающий сигнал — в сумму не входит.</small>", ""]
+         f"данные рынка на {V['as_of']} · ₽ без НДС</small>", "",
+         f"{{{{класс:{vd['class']}}}}} **{vd['title']}** — {vd['text']}", "", "## Светофор рынка полувагонов", ""]
+    if a.guest:  # гостю — только сигналы: без расчёта, порогов и «почему» (методика — только владельцу)
+        L += ["| Сигнал рынка | Оценка |", "|---|---|"]
+        for s, pts in rows:
+            L.append(f"| {s['name'].split(' (')[0]} | {'🟢 покупать' if pts > 0 else '🔴 против' if pts < 0 else '🟡 нейтрально'} |")
+        L.append("")
+    else:
+        L += ["| Показатель | Сейчас | Сигнал | Почему важно |", "|---|---|---|---|"]
+        for s, pts in rows:
+            mark = "🟢 покупать" if pts > 0 else "🔴 против" if pts < 0 else "🟡 нейтрально"
+            L.append(f"| {s['name']}{'' if s.get('scored', True) else ' *'} | {s['shown']} | {mark} | {s['why']} |")
+        L += ["", f"Сумма баллов: **{score:+d}** из {sum(1 for s in V['signals'] if s.get('scored', True))}. "
+              f"{V['backtest_note']}", "", "<small>* подтверждающий сигнал — в сумму не входит.</small>", ""]
     L += ["## Цена вагона: сейчас и прогноз", "", "```cards"]
     paths, bottoms, used_paths = {}, {}, {}
     for t in types:
