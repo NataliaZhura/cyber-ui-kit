@@ -125,6 +125,10 @@ def cmd_sort():
         subprocess.run([sys.executable, str(BASE / "zobs.py"), "pdf"] + [str(p) for p in logi])
         # новый месяц: сначала сверка с прошлым прогнозом и оповещения, потом новый прогноз — в журнал
         subprocess.run([sys.executable, str(BASE / "zrates.py"), "alerts", "--send"])
+        pf = Path.home() / ".secrets" / "zhdusha_planfact"  # кому «Прогноз и факт» после выпуска: ID по строке
+        for uid in (pf.read_text(encoding="utf-8").split() if pf.exists() else []):
+            if uid.isdigit():
+                subprocess.run([sys.executable, str(BASE / "zpdf.py"), uid, '{"kind": "planfact"}'])
         subprocess.run([sys.executable, str(BASE / "zrates.py"), "snap"])
         subprocess.run([sys.executable, str(BASE / "zsurvey.py"), "build"])  # анкета: ставки с ≥ 3 ответами → база
         subprocess.Popen([sys.executable, str(BASE / "zsecond.py"), "run"], start_new_session=True)  # второе мнение GPT

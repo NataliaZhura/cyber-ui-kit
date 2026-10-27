@@ -6,6 +6,7 @@
         {"kind": "deal", "wagon": "inno", "scenario": "base", "term": 20, "price": "", "spread": "", "util": "", "opex": ""}
         {"kind": "rates", "from": "2026-01", "to": "2026-09"}          — только владельцу (данные партнёра)
         {"kind": "retro", "wagon": "inno", "from": "2025-06", "to": "2026-09"}   — только владельцу
+        {"kind": "planfact"}                                                — прогноз и факт (гостю — без ставок факта)
 
 Файл кладётся на полку того, кто считал (владелец — saved/model/, гость — saved_<агент>/model/), PDF приходит в чат
 с кнопкой «Читать в приложении». Запускает мини-приложение (zapp.py, /api/pdf); можно и вручную.
@@ -148,7 +149,12 @@ def retro_md(b, guest):
     return f"анализ_по_месяцам_{w}", "\n".join(keep).replace("\n", f"{per}\n", 1) + "\n"
 
 
-KINDS = {"forecast": forecast_md, "deal": deal_md, "rates": rates_md, "retro": retro_md}
+def planfact_md(b, guest):
+    import zrates
+    return f"прогноз_и_факт_{time.strftime('%Y-%m')}", zrates.planfact(guest)
+
+
+KINDS = {"forecast": forecast_md, "deal": deal_md, "rates": rates_md, "retro": retro_md, "planfact": planfact_md}
 
 
 def run(uid, body):
