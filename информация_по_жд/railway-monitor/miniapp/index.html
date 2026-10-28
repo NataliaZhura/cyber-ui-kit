@@ -194,7 +194,7 @@ const FORMS = {
     ["term", "number", "Срок, лет", "пусто — 5"], ["rate", "number", "Своя ставка аренды, ₽/сут", "пусто — рыночная"]]},
   model: {file: "финмодель", f: [["company", "company", "Компания (заёмщик или лизингополучатель)"], ["xlsx", "file", "Файл модели (Excel)"],
     ["horizon", "number", "Горизонт дисконтирования, лет", "пусто — 20 лет"], ["disc", "text", "Ставка дисконтирования", "пусто — ключевая + 3,5 п.п."],
-    ["util", "number", "Загрузка вагонов, %", "пусто — 95"], ["opex", "number", "Расходы, % выручки", "пусто — 12"],
+    ["util", "number", "Загрузка вагонов, %", "пусто — 95"], ["opex", "number", "Расходы, % выручки", "пусто — 14"],
     ["resid", "number", "Остаточная стоимость в конце, % цены", "пусто — по модели цены б/у"],
     ["scen", "select", "Сценарии", ["все: база, снижение, рост, стресс", "только база и стресс"]],
     ["check", "select", "Что проверить", ["всё: покрытие долга, точка пробоя, выход", "покрытие платежей по годам", "когда выходить из сделки"]]]},
@@ -466,7 +466,7 @@ function renderDeal() {
     <div class="box"><label>Тип вагона</label>${seg("wagon", [["inno", "Полувагон иннов."], ["gon", "Полувагон тип."], ["kr158", "Крытый 158"], ["kr138", "Крытый 138"], ["hop_grain", "Зерновоз"], ["hop_grain_inno", "Зерновоз иннов."], ["fit80", "Фитинг 80'"], ["fit40", "Фитинг 40'"], ["fit60", "Фитинг 60'"]])}
     ${seg("scenario", [["pess", "Пессимист."], ["base", "Базовый"], ["opt", "Оптимист."]])}
     <label>Срок лизинга</label><div class="seg">${[5, 10, 15, 20].map(t => `<button data-dterm="${t}" class="${String(DL.set.term || 20) === String(t) ? "on" : ""}">${t} лет</button>`).join("")}</div>
-    <div class="f2">${inp("price", "Цена, млн ₽ без НДС", f2(me.price))}${inp("spread", "Надбавка к ключевой, п.п.", "3,5")}${inp("util", "Загрузка, %", "95")}${inp("opex", "Расходы, % выручки", "12")}</div>
+    <div class="f2">${inp("price", "Цена, млн ₽ без НДС", f2(me.price))}${inp("spread", "Надбавка к ключевой, п.п.", "3,5")}${inp("util", "Загрузка, %", "95")}${inp("opex", "Расходы, % выручки", "14")}</div>
     <button class="main-btn" data-dcalc>Рассчитать и прислать PDF</button><button class="main-btn ghost" data-pdf="deal">📄 PDF в чат</button><button class="main-btn ghost" data-dreset>Вернуть значения по умолчанию</button></div>
     <div class="box"><label>${esc(r.wagon)}: ${esc(verdict)}</label><div class="note">Цена ${f2(me.price)} млн ₽ против предельной ${f2(me.maxp)} млн ₽ (${esc(r.scenario.toLowerCase())} сценарий).</div>
     <div class="wrap"><table class="tbl"><tr><th>Сценарий</th><th>Цена</th><th>Предельная</th><th>Доходность, %</th><th>Окупаемость</th><th>Платёж не покрыт</th><th>Выйти</th></tr>${Object.entries(s).map(([k, x]) =>

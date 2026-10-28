@@ -3,7 +3,7 @@
 докупать. 4 типа вагонов, три сценария ставки. Без нейросети (0 токенов).
 
   python3 zdeal.py run --wagon inno|gon|kr158|kr138|hop_grain|hop_grain_inno|fit80|fit40|fit60
-                       [--price 5.2] [--scenario base|opt|pess] [--spread 3.5] [--term 20] [--util 95] [--opex 12]
+                       [--price 5.2] [--scenario base|opt|pess] [--spread 3.5] [--term 20] [--util 95] [--opex 14]
                        [--key "2027=12;2028=9"] [--guest] [--out файл.md | --json]
 
 Условия лизинга (владелец, 21.10.2026): 20 лет, без аванса, ставка = ключевая + 3,5 п.п., плавающая — платёж
@@ -123,7 +123,7 @@ def age_k(a):
     return ztypes.age_k(a)
 
 
-def deal(w, sc, price=None, spread=3.5, term=20, util=95, opex=12, key=None, buy=Y0):
+def deal(w, sc, price=None, spread=3.5, term=20, util=95, opex=14, key=None, buy=Y0):
     """Покупка в конце года buy, лизинг на term лет. Все суммы — млн ₽ без НДС."""
     rate, newp, note = paths(w, sc)
     rate, newp = dict(rate), dict(newp)
@@ -393,7 +393,7 @@ def args(argv=None):
     r.add_argument("--spread", type=float, default=3.5)
     r.add_argument("--term", type=int, default=20)
     r.add_argument("--util", type=float, default=95)
-    r.add_argument("--opex", type=float, default=12)
+    r.add_argument("--opex", type=float, default=14)  # 12% + ремонт +6% в год (сверка 28.10.2026)
     r.add_argument("--key", default="")
     r.add_argument("--guest", action="store_true")
     r.add_argument("--json", action="store_true")

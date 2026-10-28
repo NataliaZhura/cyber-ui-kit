@@ -203,6 +203,9 @@ def scenario(D, T, scen, ov):
         s = {f: [float(x) for x in src[f][2:6]] for f in T["factors"]}  # индексы 2..5 = 2027..2030
     if scen == "opt" and "opt" in T:
         s.update({f: list(v) for f, v in T["opt"].items()})
+        if T.get("model") == "kr":  # оптимистичный крытых задан в коде — поправки сверки поверх него
+            import zfix
+            s = zfix.apply_list(s, "kr", "opt")
     for k, v in (ov or {}).items():
         if k in s:
             vals = [float(x) for x in str(v).split(";")]

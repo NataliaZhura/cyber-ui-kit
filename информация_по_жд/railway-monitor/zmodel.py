@@ -28,7 +28,8 @@ MAX_FACTORS = 3
 def load():
     if not DATA.exists():
         sys.exit(f"Нет {DATA} — модель не загружена на сервер (prognoz.sh).")
-    return json.loads(DATA.read_text(encoding="utf-8"))
+    import zfix  # поправки сценариев по сверке с рынком (forecast/scen_fix.json)
+    return zfix.apply(json.loads(DATA.read_text(encoding="utf-8")), "kr", 2025)
 
 
 def solve(a, b):

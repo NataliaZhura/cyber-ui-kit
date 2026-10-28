@@ -61,7 +61,8 @@ FACTORS = {  # ключ → (название, единица)
 def load():
     if not DATA.exists():
         sys.exit(f"Нет {DATA} — данные модели не загружены на сервер.")
-    return json.loads(DATA.read_text(encoding="utf-8"))
+    import zfix  # поправки сценариев по сверке с рынком (forecast/scen_fix.json)
+    return zfix.apply(json.loads(DATA.read_text(encoding="utf-8")), "rate", 2026)
 
 
 def n(v):
