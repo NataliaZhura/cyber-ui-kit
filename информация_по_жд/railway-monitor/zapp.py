@@ -29,6 +29,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -43,6 +44,20 @@ CONFIG = BASE / "miniapp.json"
 OC = Path.home() / ".openclaw"
 MAX_UPLOAD = 20 * 1024 * 1024
 SHOW = {".pdf", ".docx", ".xlsx", ".xls", ".pptx", ".csv", ".png", ".jpg", ".jpeg", ".md"}
+PDF_REPEAT = 120  # с: тот же расчёт от того же человека повторно не отправляется (02.11.2026 — 4 одинаковых PDF)
+PDF_SENT, PDF_LOCK = {}, threading.Lock()
+
+
+def pdf_repeat(uid, body):
+    """True — такой же PDF этому человеку уже отправлен меньше PDF_REPEAT секунд назад; иначе запоминает отправку."""
+    key, now = (uid, json.dumps(body, ensure_ascii=False, sort_keys=True)), time.time()
+    with PDF_LOCK:
+        for k in [k for k, t in PDF_SENT.items() if now - t > PDF_REPEAT]:
+            del PDF_SENT[k]
+        if key in PDF_SENT:
+            return True
+        PDF_SENT[key] = now
+        return False
 
 # Разделы = пункты меню (zmenu.py) без /start, /new; /find, /remember, /save — во вкладке «Задача».
 # Ключевые слова — только для раскладки старых файлов (sort) и файлов без папки; порядок важен.
@@ -590,6 +605,8 @@ class App(BaseHTTPRequestHandler):
         if path == "/api/pdf":  # расчёт из приложения → PDF в чат (zpdf.py), без нейросети
             if body.get("kind") in ("rates", "retro") and role != "owner":
                 return self.reply(403, {"error": "Этот расчёт доступен владельцу."})
+            if pdf_repeat(uid, body):  # повторное нажатие, пока первый PDF ещё в пути
+                return self.reply(200, {"ok": True, "msg": "Этот PDF уже отправлен — придёт в чат через 10–30 секунд"})
             log = (SAVED / "task.log").open("a", encoding="utf-8")
             subprocess.Popen([sys.executable, str(BASE / "zpdf.py"), uid, json.dumps(body, ensure_ascii=False)], cwd=BASE,
                              stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
