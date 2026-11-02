@@ -193,7 +193,7 @@ def forecasts():
             res = {s: Z.forecast(D, w, s) for s in Z.SCN}
             made = f"2026-{len(Z.months(D, w)):02d}"
             ev = res["base"].get("events")
-            tg = [zobs.shift(made, k) for k in (1, 2, 3)]
+            tg = [zobs.shift(made, k) for k in range(1, len(res["base"]["q4"]) + 1)]  # месяцы до декабря
             q = {m: {s: res[s]["q4"][i] for s in res} for i, m in enumerate(tg)}
             noev = {m: res["base"]["q4"][i] / (ev["q4"][i] if ev and ev["comp"] else 1) for i, m in enumerate(tg)}
             out[w] = (made, q, noev)
